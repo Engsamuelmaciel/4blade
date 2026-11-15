@@ -120,7 +120,7 @@ Página pública, sem login e sem baixar aplicativo, sincronizada com o sistema.
 - **Projeto novo**, repositório próprio (a criar pelo responsável).
 - Padrão da casa: Cloudflare Workers (API) + D1 (banco SQL, migrações versionadas) + tela web instalável no celular (PWA, JavaScript simples), CSP rígida.
 - **Multi-empresa desde o dia 1:** toda tabela tem `barbearia_id`; o servidor filtra sempre pela barbearia da sessão (nunca pelo que vem da tela).
-- **Reaproveitar do FrotaZ** (`Engsamuelmaciel/Novo-sistem`, pasta `apps/api`): login, sessão, senha, limite de tentativas, auditoria, utilitários, testes com D1 local, service worker e estilo base.
+- **Reaproveitar do FrotaZ** (cópia em `referencia/frotaz/`): login, sessão, senha, limite de tentativas, auditoria, utilitários, testes com D1 local, service worker e estilo base.
 - Dinheiro sempre em **centavos (inteiro)** no banco; nunca número com vírgula.
 - Fuso: America/Sao_Paulo para "dia" do caixa e da agenda.
 

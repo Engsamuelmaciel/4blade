@@ -16,7 +16,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 - **Multi-empresa:** toda tabela de dados tem `barbearia_id`; o servidor SEMPRE filtra pela barbearia da sessão, nunca pelo que vem da tela. Teste de isolamento obrigatório em toda rota nova.
 - **Plano** na barbearia (`basico` | `profissional`); limites de usuários por perfil conferidos no servidor (ver especificação).
 - Dinheiro em centavos (inteiro). Fuso America/Sao_Paulo.
-- Reaproveitar do FrotaZ (`Engsamuelmaciel/Novo-sistem`, pasta `apps/api`): login/senha/sessão/limite de tentativas/auditoria (`src/index.js`, `src/util.js`, `migrations/0001_base.sql`), testes com D1 local (`test/d1-local.js`, `test/ambiente.js`), service worker e estilo base. Não copiar nada de frota.
+- Reaproveitar a base do FrotaZ, já copiada em `referencia/frotaz/` (ver o LEIAME de lá; não acessar outro repositório): login/senha/sessão/limite de tentativas/auditoria (`src/index.js`, `src/util.js`, `migrations/0001_base.sql`), testes com D1 local (`test/d1-local.js`, `test/ambiente.js`), service worker e estilo base. Não copiar nada de frota.
 - WhatsApp sempre por link `wa.me` com mensagem pronta (sem API paga).
 
 ## Convenções da tela (herdadas do FrotaZ)

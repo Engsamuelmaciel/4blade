@@ -13,7 +13,7 @@ Projeto novo: sistema de gestão para barbearias, vendido para várias barbearia
 
 Tecnologia (obrigatória): Cloudflare Workers + D1 (migrações versionadas em migrations/) + tela web instalável (PWA, JavaScript sem framework), CSP rígida (sem style="" no HTML). Testes com node --test e D1 local.
 
-Reaproveite, adaptando, do repositório Engsamuelmaciel/Novo-sistem (pasta apps/api): login por usuário e senha com hash, troca obrigatória no 1º acesso, limite de 5 tentativas/15 min, sessão de 12 h, auditoria, util.js, testes com D1 local (test/d1-local.js, test/ambiente.js), service worker e estilo base. Não copie nada específico de frota.
+Reaproveite, adaptando, a base que já está neste repositório em referencia/frotaz/ (leia referencia/frotaz/LEIAME.md; NÃO acesse nenhum outro repositório): login por usuário e senha com hash, troca obrigatória no 1º acesso, limite de 5 tentativas/15 min, sessão de 12 h, auditoria, util.js, testes com D1 local (test/d1-local.js, test/ambiente.js), service worker e estilo base. Não copie nada específico de frota.
 
 E1 deve entregar:
 1. Multi-empresa: tabela barbearias (com campo plano: basico | profissional); toda tabela de dados tem barbearia_id; o servidor SEMPRE filtra pela barbearia da sessão, nunca pelo que vem da tela. Limite de usuários ativos por perfil conforme o plano (Básico: 1 gerente, 3 barbeiros, 1 caixa; Profissional: 2 gerentes, 10 barbeiros + adicionais, 2 caixas), conferido no servidor; desativar libera a vaga.

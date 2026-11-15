@@ -1,0 +1,38 @@
+# FrotaZ — Worker da Cloudflare (API em /api/* + tela da pasta public/).
+# ATENÇÃO: os ids abaixo são MARCADORES. Este projeto NÃO usa o banco nem o espaço de arquivos do SIGEO.
+# Antes do primeiro deploy, crie os recursos NOVOS e troque os ids (passo a passo no LEIAME.md):
+#   npx wrangler d1 create frotaz-db            -> copie o "database_id"
+#   npx wrangler kv namespace create ARQUIVOS       -> copie o "id"
+name = "frotaz"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+keep_vars = true
+
+# Tela servida pelo mesmo Worker. Endereços /api/* vão sempre para a API (src/index.js); o resto vem de public/.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+not_found_handling = "single-page-application"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "frotaz-db"
+database_id = "TROQUE-PELO-ID-DO-SEU-BANCO"
+migrations_dir = "migrations"
+
+# Prévias de branches (wrangler preview) usam SEMPRE um banco de TESTE separado. Nunca apontar para o banco real aqui.
+[[previews.d1_databases]]
+binding = "DB"
+database_name = "frotaz-db-teste"
+database_id = "TROQUE-PELO-ID-DO-BANCO-DE-TESTE"
+migrations_dir = "migrations"
+
+# Arquivos dos documentos (Workers KV: até 25 MiB por arquivo; o sistema limita a 10 MB por arquivo e 400 MB no total)
+[[kv_namespaces]]
+binding = "ARQUIVOS"
+id = "TROQUE-PELO-ID-DO-SEU-KV"
+
+[[previews.kv_namespaces]]
+binding = "ARQUIVOS"
+id = "TROQUE-PELO-ID-DO-KV-DE-TESTE"
