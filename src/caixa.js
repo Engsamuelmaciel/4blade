@@ -88,6 +88,23 @@ export async function resumoCaixa(db, barbeariaId, caixa) {
   };
 }
 
+// Sangria automática (conta paga ou comissão paga com dinheiro do caixa): confere caixa de hoje aberto e dinheiro suficiente.
+// Devolve { id, comando } para ir no mesmo lote da operação.
+export async function sangriaAutomatica(ctx, valorCentavos, motivo) {
+  const caixa = await caixaDoDia(ctx.db, ctx.barbeariaId, hojeBrasil());
+  if (!caixa || caixa.situacao !== "aberto") erro("Para pagar com dinheiro do caixa, o caixa de hoje precisa estar aberto.", 409);
+  const { totais } = await resumoCaixa(ctx.db, ctx.barbeariaId, caixa);
+  if (valorCentavos > totais.dinheiroEsperadoCentavos) {
+    erro(`Não há dinheiro suficiente no caixa (na gaveta: ${(totais.dinheiroEsperadoCentavos / 100).toFixed(2).replace(".", ",")}).`, 409);
+  }
+  const id = crypto.randomUUID();
+  return {
+    id,
+    comando: ctx.db.prepare(`INSERT INTO caixa_movimentos (id, barbearia_id, caixa_id, tipo, forma, valor_centavos, motivo, criado_por)
+                             VALUES (?, ?, ?, 'sangria', 'dinheiro', ?, ?, ?)`).bind(id, ctx.barbeariaId, caixa.id, -valorCentavos, motivo, ctx.user.id)
+  };
+}
+
 async function caixaDoDia(db, barbeariaId, data) {
   return db.prepare(`SELECT c.*, u.nome AS aberto_por_nome FROM caixas c JOIN usuarios u ON u.id = c.aberto_por
                      WHERE c.barbearia_id = ? AND c.data = ?`).bind(barbeariaId, data).first();

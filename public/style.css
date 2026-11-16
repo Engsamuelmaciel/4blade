@@ -397,6 +397,58 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
 .lista.historico .item { padding: 8px 12px; }
 .linha-servico input[type=number] { min-height: 44px; text-align: right; }
 
+/* ---------- E4: painel, gráficos, comissões, contas, contador ---------- */
+.oculto { display: none; }
+.filtro-periodo { margin-bottom: 14px; }
+.cartoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.cartao-num {
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--cartao); border-radius: 14px; padding: 12px 14px;
+  box-shadow: 0 1px 3px rgba(28, 25, 23, .12); color: var(--texto); text-decoration: none;
+}
+.cartao-num strong { font-size: 24px; line-height: 1.15; }
+.cartao-num .suave { font-size: 13px; }
+.cartao-tit { font-size: 14px; font-weight: 700; color: var(--suave); }
+.cartao-num.positivo strong { color: var(--ok); }
+.cartao-num.negativo strong { color: var(--erro); }
+.contas-cartao { grid-column: 1 / -1; }
+.linha-conta { font-size: 15px; font-weight: 600; padding: 2px 8px; border-radius: 6px; }
+.linha-conta.vermelha { background: var(--erro-fundo); color: var(--erro); }
+.linha-conta.amarela { background: var(--amarelo-fundo); color: var(--amarelo); }
+.lista-avisos { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.lista-avisos li { padding: 8px 10px; border-radius: 8px; font-weight: 600; font-size: 15px; }
+.aviso-vermelha { background: var(--erro-fundo); color: var(--erro); }
+.aviso-amarela { background: var(--amarelo-fundo); color: var(--amarelo); }
+.grafico { width: 100%; height: auto; display: block; }
+.grafico .barra { fill: var(--destaque); }
+.grafico .barra.primeira { fill: var(--ok); }
+.grafico .eixo { stroke: var(--borda); stroke-width: 2; }
+.grafico .rotulo { font-size: 19px; fill: var(--suave); }
+.grafico .rotulo-valor { font-size: 19px; fill: var(--texto); font-weight: 700; }
+.ranking { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.ranking-topo { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; font-size: 16px; }
+.ranking progress { width: 100%; height: 18px; appearance: none; -webkit-appearance: none; border: none; border-radius: 9px; background: #e7e5e4; overflow: hidden; }
+.ranking progress::-webkit-progress-bar { background: #e7e5e4; border-radius: 9px; }
+.ranking progress::-webkit-progress-value { background: var(--destaque); border-radius: 9px; }
+.ranking progress::-moz-progress-bar { background: var(--destaque); border-radius: 9px; }
+.ranking .primeiro progress::-webkit-progress-value { background: var(--ok); }
+.ranking .primeiro progress::-moz-progress-bar { background: var(--ok); }
+.grafico .rotulo-nome { font-size: 15px; fill: var(--texto); font-weight: 600; }
+.tabela { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 15px; }
+.tabela th, .tabela td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #e7e5e4; }
+.tabela td.forte { font-weight: 800; }
+.item.conta-atrasada { border-left-color: var(--erro); }
+.item.conta-hoje { border-left-color: #ca8a04; }
+.item.conta-paga, .item.conta-cancelada { border-left-color: var(--borda); }
+.botoes-planilha { display: flex; flex-wrap: wrap; gap: 8px; }
+
+@media (min-width: 900px) {
+  .cartoes { grid-template-columns: repeat(3, 1fr); }
+  .contas-cartao { grid-column: auto; }
+  .duas-colunas.iguais { grid-template-columns: 1fr 1fr; }
+  .duas-colunas.iguais > section:last-child { position: static; }
+}
+
 /* ---------- computador ---------- */
 @media (min-width: 900px) {
   .duas-colunas { display: grid; grid-template-columns: 3fr 2fr; gap: 20px; align-items: start; }

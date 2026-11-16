@@ -347,6 +347,7 @@ const gestao = () => usuario.perfil === "proprietario" || usuario.perfil === "ge
 function telaInicio() {
   const itens = gestao()
     ? [
+      ["#/painel", "Painel", "Faturamento, lucro e avisos"],
       ["#/agenda", "Agenda", "Todos os profissionais"],
       ["#/caixa", "Caixa", "Entradas, vendas e fechamento"],
       ["#/equipe", "Equipe", "Usuários, comissões e horários"],
@@ -354,11 +355,16 @@ function telaInicio() {
       ["#/estoque", "Estoque", "Entradas, ajustes e inventário"],
       ["#/produtos", "Produtos", "Cadastro, preço e validade"],
       ["#/clientes", "Clientes", "Cadastro com aceite LGPD"],
+      ["#/comissoes", "Comissões e vales", "Fechamento por período"],
+      ["#/contas", "Contas a pagar", "Vencimentos e pagamentos"],
+      ["#/contador", "Contador e dados", "Relatório e cópia dos dados"],
+      ...(usuario.perfil === "gerente" ? [["#/desempenho", "Meu desempenho", "Minha comissão e extrato"]] : []),
       ["#/funcionamento", "Funcionamento", "Dias, horários e datas fechadas"],
       ["#/mensagens", "Mensagens", "Modelos para o WhatsApp"]
     ]
     : [
       ["#/agenda", "Minha agenda", "Marcar, avisar e finalizar"],
+      ["#/desempenho", "Meu desempenho", "Comissão, vales e extrato"],
       ["#/servicos", "Serviços", "Preços da barbearia"],
       ["#/produtos", "Produtos", "Preço e disponível"]
     ];
@@ -1183,6 +1189,387 @@ function janelaInventario(produtos) {
   return promessa;
 }
 
+// ---------- ARQUIVOS: compartilhar (celular) ou baixar (computador) ----------
+function blobDeBase64(b64, tipo) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: tipo });
+}
+function baixar(nome, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = el("a", { href: url, download: nome, class: "oculto" });
+  document.body.append(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
+}
+const ehCelular = () => window.matchMedia("(pointer: coarse)").matches;
+// No celular abre o "Compartilhar" (WhatsApp, e-mail…); no computador baixa os arquivos.
+async function compartilharOuBaixar(arquivos, titulo) {
+  const files = arquivos.map(([nome, blob]) => new File([blob], nome, { type: blob.type }));
+  if (ehCelular() && navigator.canShare?.({ files })) {
+    try { await navigator.share({ files, title: titulo }); return "compartilhado"; } catch (e) { if (e.name === "AbortError") return "cancelado"; }
+  }
+  for (const [nome, blob] of arquivos) baixar(nome, blob);
+  return "baixado";
+}
+async function baixarPlanilha(caminho, nome) {
+  const resp = await fetch(`/api${caminho}`, { headers: { Authorization: `Bearer ${localStorage.getItem(CHAVE_TOKEN)}` } });
+  if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).erro || "Não foi possível gerar a planilha.");
+  return compartilharOuBaixar([[nome, await resp.blob()]], nome);
+}
+
+// ---------- GRÁFICOS EM SVG (sem biblioteca; CSP permite atributos em SVG) ----------
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svg(tag, attrs = {}, ...filhos) {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) if (v !== null && v !== undefined) e.setAttribute(k, String(v));
+  e.append(...filhos.filter(Boolean));
+  return e;
+}
+const reaisCurto = c => (c >= 100000 ? `${Math.round(c / 100000)} mil` : reais(c).replace("R$", "").trim().replace(/,00$/, ""));
+
+function graficoBarras(dados) {
+  const L = 640, A = 220, ME = 8, MB = 34, MT = 20;
+  const max = Math.max(1, ...dados.map(d => d.valorCentavos));
+  const largura = (L - ME * 2) / dados.length;
+  const poucos = dados.length <= 7;
+  return svg("svg", { viewBox: `0 0 ${L} ${A}`, class: "grafico", role: "img", "aria-label": "Faturamento por dia" },
+    svg("line", { x1: ME, y1: A - MB, x2: L - ME, y2: A - MB, class: "eixo" }),
+    ...dados.flatMap((d, i) => {
+      const h = Math.round(((A - MB - MT) * d.valorCentavos) / max);
+      const x = ME + i * largura + largura * 0.15;
+      const w = largura * 0.7;
+      const rotulo = poucos || i % 5 === 4 || i === dados.length - 1;
+      return [
+        svg("rect", { x, y: A - MB - h, width: w, height: Math.max(h, d.valorCentavos ? 2 : 0), rx: 3, class: "barra" },
+          svg("title", {}, `${dataBR(d.data)}: ${reais(d.valorCentavos)}`)),
+        poucos && d.valorCentavos ? svg("text", { x: x + w / 2, y: A - MB - h - 5, "text-anchor": "middle", class: "rotulo-valor" }, reaisCurto(d.valorCentavos)) : null,
+        rotulo ? svg("text", { x: x + w / 2, y: A - MB + 16, "text-anchor": "middle", class: "rotulo" }, poucos ? `${DIAS_CURTO[diaDaSemana(d.data)]} ${d.data.slice(8)}` : d.data.slice(8)) : null
+      ];
+    }));
+}
+
+// Ranking com barras de progresso (sem estilo inline; legível no celular).
+function graficoRanking(lista) {
+  const max = Math.max(1, ...lista.map(r => r.faturamentoCentavos));
+  return el("ol", { class: "ranking" }, lista.map((r, i) => el("li", { class: i === 0 ? "primeiro" : "", "data-ranking": r.nome },
+    el("div", { class: "ranking-topo" }, el("strong", { text: `${i + 1}º ${r.nome}` }), el("span", { text: `${reais(r.faturamentoCentavos)} · ${r.atendimentosQtd} atend.` })),
+    el("progress", { max: String(max), value: String(r.faturamentoCentavos), "aria-label": `Faturamento de ${r.nome}` }))));
+}
+
+// ---------- PAINEL DO GERENTE ----------
+let periodoPainel = "hoje";
+function filtroPeriodo(atual, aoMudar) {
+  return el("div", { class: "alterna filtro-periodo", role: "group", "aria-label": "Período" },
+    [["hoje", "Hoje"], ["semana", "Semana"], ["mes", "Mês"]].map(([v, t]) =>
+      botao(t, () => aoMudar(v), `pequeno ${atual === v ? "ativo" : ""}`)));
+}
+function cartao(titulo, valor, detalhe = null, classe = "", teste = null) {
+  return el("div", { class: `cartao-num ${classe}`, "data-cartao": teste || titulo },
+    el("span", { class: "cartao-tit", text: titulo }),
+    el("strong", { text: valor }),
+    detalhe ? el("span", { class: "suave", text: detalhe }) : null);
+}
+
+async function telaPainel() {
+  const p = await api(`/painel?periodo=${periodoPainel}`);
+  const c = p.cartoes;
+  const av = p.avisos;
+  const avisos = [
+    ...av.caixasAbertosDiasAnteriores.map(d => ["vermelha", `Caixa de ${dataBR(d)} ainda aberto`]),
+    ...av.diferencasCaixa.map(d => ["vermelha", `Diferença no caixa de ${dataBR(d.data)}: ${d.diferencaCentavos > 0 ? "sobra" : "falta"} de ${reais(Math.abs(d.diferencaCentavos))}`]),
+    av.valoresAlterados ? ["amarela", `${av.valoresAlterados} atendimento(s) com valor alterado (veja na agenda)`] : null,
+    ...av.estoqueBaixo.map(n => ["amarela", `Estoque baixo: ${n}`]),
+    ...av.produtosVencendo.map(n => ["amarela", `Produto vencendo: ${n}`])
+  ].filter(Boolean);
+  const textoPeriodo = p.periodo.ini === p.periodo.fim ? dataBR(p.periodo.ini) : `${dataBR(p.periodo.ini)} a ${dataBR(p.periodo.fim)}`;
+  mostrar(
+    cabecalho("Painel", textoPeriodo),
+    filtroPeriodo(periodoPainel, v => { periodoPainel = v; telaPainel(); }),
+    el("div", { class: "cartoes" },
+      cartao("Faturamento bruto", reais(c.brutoCentavos), `Serviços ${reais(c.atendimentosCentavos)} · produtos ${reais(c.vendasCentavos)}`, "", "bruto"),
+      cartao("Atendimentos", String(c.atendimentosQtd), `Ticket médio ${reais(c.ticketMedioCentavos)}`, "", "atendimentos"),
+      cartao("Vendas de produtos", reais(c.vendasCentavos), `${c.vendasQtd} venda(s) · ${c.unidadesVendidas} un.`, "", "vendas"),
+      cartao("Comissões", reais(c.comissoesCentavos), c.comissoesPorBarbeiro.filter(b => b.comissaoCentavos).map(b => `${b.nome.split(" ")[0]} ${reais(b.comissaoCentavos)}`).join(" · ") || "—", "", "comissoes"),
+      cartao("Lucro", reais(c.lucroCentavos),
+        p.periodo.nome === "mes" ? `Bruto − comissões − custo dos produtos (${reais(c.custoProdutosCentavos)}) − contas pagas (${reais(c.contasPagasCentavos)})`
+          : `Bruto − comissões − custo dos produtos (${reais(c.custoProdutosCentavos)})`, c.lucroCentavos < 0 ? "negativo" : "positivo", "lucro"),
+      el("a", { class: "cartao-num contas-cartao", href: "#/contas", "data-cartao": "contas" },
+        el("span", { class: "cartao-tit", text: "Contas a pagar" }),
+        el("span", { class: `linha-conta ${p.contas.atrasadas.qtd ? "vermelha" : ""}`, text: `Atrasadas: ${p.contas.atrasadas.qtd} · ${reais(p.contas.atrasadas.totalCentavos)}` }),
+        el("span", { class: `linha-conta ${p.contas.hoje.qtd ? "amarela" : ""}`, text: `Vencem hoje: ${p.contas.hoje.qtd} · ${reais(p.contas.hoje.totalCentavos)}` }),
+        el("span", { class: "linha-conta", text: `Próximos 7 dias: ${p.contas.proximos7Dias.qtd} · ${reais(p.contas.proximos7Dias.totalCentavos)}` }))),
+    avisos.length ? el("section", { class: "cartao avisos" }, el("h3", { text: "Avisos" }),
+      el("ul", { class: "lista-avisos" }, avisos.map(([cor, t]) => el("li", { class: `aviso-${cor}`, text: t })))) : null,
+    el("div", { class: "duas-colunas iguais" },
+      el("section", { class: "cartao" }, el("h3", { text: `Faturamento por dia (R$, ${p.faturamentoPorDia.length} dias)` }), graficoBarras(p.faturamentoPorDia)),
+      el("section", { class: "cartao" }, el("h3", { text: "Ranking (atendimentos no período)" }),
+        p.ranking.length ? graficoRanking(p.ranking) : el("p", { class: "suave", text: "Sem atendimentos." }))));
+}
+
+// ---------- DESEMPENHO DO BARBEIRO (só dele) + EXTRATO ----------
+let periodoDesempenho = "semana";
+async function telaDesempenho() {
+  const d = await api(`/desempenho?periodo=${periodoDesempenho}`);
+  const pf = d.proximoFechamento;
+  const mesInput = el("input", { type: "month", value: hojeLocal().slice(0, 7), "aria-label": "Mês do extrato", name: "mesExtrato" });
+  const formExtrato = el("form", { class: "cartao" },
+    el("h3", { text: "Extrato do mês" }),
+    el("p", { class: "suave", text: "Atendimentos, comissões e vales do mês, em PDF e planilha (útil para quem é MEI)." }),
+    el("div", { class: "campo" }, el("label", { for: "mes-extrato", text: "Mês" }), Object.assign(mesInput, { id: "mes-extrato" })),
+    el("button", { type: "submit", class: "botao principal", text: "Baixar extrato" }));
+  formExtrato.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(formExtrato, async () => {
+      const e = await api(`/extrato?mes=${mesInput.value}`);
+      const r = await compartilharOuBaixar([
+        [`${e.arquivos.nomeBase}.pdf`, blobDeBase64(e.arquivos.pdfBase64, "application/pdf")],
+        [`${e.arquivos.nomeBase}.csv`, new Blob([e.arquivos.csv], { type: "text/csv" })]
+      ], "Extrato 4blade");
+      if (r !== "cancelado") avisar(r === "compartilhado" ? "Extrato compartilhado." : "Extrato baixado (PDF e planilha).");
+    });
+  });
+  mostrar(
+    cabecalho("Meu desempenho", d.barbeiro.nome),
+    filtroPeriodo(periodoDesempenho, v => { periodoDesempenho = v; telaDesempenho(); }),
+    el("div", { class: "cartoes" },
+      cartao("Atendimentos", String(d.atendimentosQtd), null, "", "atendimentos"),
+      cartao("Faturamento bruto", reais(d.faturamentoCentavos), null, "", "bruto"),
+      cartao("Minha comissão", reais(d.comissaoCentavos), `Serviços ${reais(d.comissaoServicoCentavos)} · produtos ${reais(d.comissaoProdutoCentavos)}`, "positivo", "comissao"),
+      cartao("Vales", reais(d.valesCentavos), null, "", "vales"),
+      cartao("Próximo fechamento", reais(pf.previstoCentavos), `${pf.desde ? `Desde ${dataBR(pf.desde)}: ` : ""}comissões ${reais(pf.comissoesCentavos)} − vales ${reais(pf.valesCentavos)}`, "", "proximo")),
+    formExtrato);
+}
+
+// ---------- COMISSÕES E VALES (gestão) ----------
+const estadoComissao = { ini: null, fim: null };
+async function telaComissoes() {
+  const ontem = somaDias(hojeLocal(), -1);
+  estadoComissao.fim ||= ontem;
+  estadoComissao.ini ||= somaDias(estadoComissao.fim, -6);
+  const q = `dataIni=${estadoComissao.ini}&dataFim=${estadoComissao.fim}`;
+  const [prev, fech, vales, ag] = await Promise.all([
+    api(`/comissoes/previa?${q}`), api("/comissoes/fechamentos"),
+    api(`/vales?dataIni=${somaDias(hojeLocal(), -60)}&dataFim=${hojeLocal()}`), api(`/agenda?data=${hojeLocal()}`)
+  ]);
+  const formPeriodo = el("form", { class: "cartao" },
+    el("h3", { text: "Fechar comissão" }),
+    el("div", { class: "lado-a-lado" },
+      campo("De", { name: "ini", type: "date", value: estadoComissao.ini, required: true }),
+      campo("Até", { name: "fim", type: "date", value: estadoComissao.fim, required: true })),
+    el("div", { class: "lado-a-lado" },
+      botao("Semana passada", () => { estadoComissao.fim = ontem; estadoComissao.ini = somaDias(ontem, -6); telaComissoes(); }, "pequeno"),
+      el("button", { type: "submit", class: "botao pequeno", text: "Ver período" })),
+    prev.barbeiros.length
+      ? el("table", { class: "tabela" },
+        el("thead", {}, el("tr", {}, ["Profissional", "Comissões", "Vales", "A pagar"].map(t => el("th", { text: t })))),
+        el("tbody", {}, prev.barbeiros.map(b => el("tr", { "data-previa": b.nome },
+          el("td", { text: b.nome }), el("td", { text: reais(b.comissaoCentavos) }), el("td", { text: `− ${reais(b.valesCentavos)}` }),
+          el("td", { class: "forte", text: b.jaFechadoNoPeriodo ? "já fechado" : reais(b.aPagarCentavos) })))))
+      : el("p", { class: "suave", text: "Nada para fechar nesse período." }),
+    prev.barbeiros.some(b => !b.jaFechadoNoPeriodo)
+      ? botao("Fechar comissão do período", () => abrirJanela("Fechar comissão", el("p", { text: `Fecha ${dataBR(estadoComissao.ini)} a ${dataBR(estadoComissao.fim)}. Depois de fechado, os atendimentos, vendas e vales do período não podem mais ser alterados.` }), {
+        ok: "Fechar", perigo: true,
+        aoConfirmar: async () => {
+          await api("/comissoes/fechar", { metodo: "POST", corpo: { dataIni: estadoComissao.ini, dataFim: estadoComissao.fim } });
+          avisar("Comissão fechada."); telaComissoes();
+        }
+      }), "principal") : null);
+  formPeriodo.addEventListener("submit", ev => { ev.preventDefault(); estadoComissao.ini = formPeriodo.ini.value; estadoComissao.fim = formPeriodo.fim.value; telaComissoes(); });
+
+  const listaFech = fech.fechamentos.length
+    ? el("ul", { class: "lista" }, fech.fechamentos.map(f => el("li", { class: "item", "data-fechamento": f.barbeiro },
+      el("div", { class: "item-topo" }, el("strong", { text: f.barbeiro }), el("span", { class: "preco", text: reais(f.aPagarCentavos) }),
+        el("span", { class: `etiqueta ${f.pagoEm ? "verde" : "amarela"}`, text: f.pagoEm ? `Pago ${dataBR(f.pagoEm)}` : "A pagar" })),
+      el("p", { class: "suave", text: `${dataBR(f.dataIni)} a ${dataBR(f.dataFim)} · serviços ${reais(f.comissaoServicoCentavos)} + produtos ${reais(f.comissaoProdutoCentavos)} − vales ${reais(f.valesCentavos)}` }),
+      f.pagoEm ? null : el("div", { class: "item-acoes" }, botao("Registrar pagamento", () => abrirJanela(`Pagar ${f.barbeiro}`, [
+        el("p", { text: `Valor: ${reais(f.aPagarCentavos)}` }),
+        caixaMarcar("Pago com dinheiro do caixa (vira sangria do caixa de hoje)", { name: "comCaixa" })
+      ], {
+        ok: "Registrar",
+        aoConfirmar: async form => {
+          await api("/comissoes/fechamentos/pagar", { metodo: "POST", corpo: { id: f.id, comCaixa: form.comCaixa.checked } });
+          avisar("Pagamento registrado."); telaComissoes();
+        }
+      }), "pequeno")))))
+    : el("p", { class: "suave", text: "Nenhum fechamento ainda." });
+
+  const formVale = el("form", { class: "cartao" },
+    el("h3", { text: "Lançar vale (adiantamento)" }),
+    campo("Profissional", { tag: "select", name: "barb", opcoes: ag.profissionais.map(p => [p.id, p.nome]) }),
+    el("div", { class: "lado-a-lado" },
+      campo("Valor (R$)", { name: "valor", inputmode: "decimal", required: true }),
+      campo("Data", { name: "dataVale", type: "date", value: hojeLocal(), required: true })),
+    campo("Descrição (opcional)", { name: "desc", maxlength: "120" }),
+    el("button", { type: "submit", class: "botao principal", text: "Lançar vale" }));
+  formVale.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(formVale, async () => {
+      const v = paraCentavos(formVale.valor.value);
+      if (!v) throw new Error("Valor inválido. Exemplo: 50,00");
+      await api("/vales", { metodo: "POST", corpo: { barbeiroId: formVale.barb.value, valorCentavos: v, data: formVale.dataVale.value, descricao: formVale.desc.value || null } });
+      avisar("Vale lançado."); telaComissoes();
+    });
+  });
+  const listaVales = vales.vales.length
+    ? el("ul", { class: "lista" }, vales.vales.map(v => el("li", { class: `item ${v.situacao === "cancelado" ? "inativo" : ""}`, "data-vale": v.barbeiro },
+      el("div", { class: "item-topo" }, el("strong", { text: `${dataBR(v.data)} · ${v.barbeiro}` }), el("span", { class: "preco", text: reais(v.valorCentavos) }),
+        v.situacao === "cancelado" ? el("span", { class: "etiqueta vermelha", text: "Cancelado" }) : v.fechado ? el("span", { class: "etiqueta", text: "Fechado" }) : null),
+      v.descricao || v.motivoCancelamento ? el("p", { class: "suave", text: [v.descricao, v.motivoCancelamento ? `Motivo: ${v.motivoCancelamento}` : null].filter(Boolean).join(" · ") }) : null,
+      v.situacao === "ativo" && !v.fechado ? el("div", { class: "item-acoes" }, botao("Cancelar", () => pedirMotivo("Cancelar vale", "Nada é apagado; fica registrado.", async motivo => {
+        await api("/vales/cancelar", { metodo: "POST", corpo: { id: v.id, motivo } });
+        avisar("Vale cancelado."); telaComissoes();
+      }, "Cancelar vale"), "pequeno perigo")) : null)))
+    : el("p", { class: "suave", text: "Nenhum vale nos últimos 60 dias." });
+
+  mostrar(cabecalho("Comissões e vales", "Comissão = valor bruto × % de cada profissional (serviços e produtos). A pagar = comissões − vales."),
+    el("div", { class: "duas-colunas" },
+      el("section", {}, formPeriodo, el("h3", { text: "Fechamentos" }), listaFech),
+      el("section", {}, formVale, el("h3", { text: "Vales recentes" }), listaVales)));
+}
+
+// ---------- CONTAS A PAGAR ----------
+const NOME_CATEGORIA = { aluguel: "Aluguel", luz: "Luz", agua: "Água", fornecedor: "Fornecedor", outros: "Outros" };
+const STATUS_CONTA = { atrasada: ["Atrasada", "vermelha"], hoje: ["Vence hoje", "amarela"], proxima: ["Próximos 7 dias", ""], futura: ["Em aberto", ""], paga: ["Paga", "verde"], cancelada: ["Cancelada", "vermelha"] };
+async function telaContas() {
+  const { contas } = await api("/contas");
+  const form = el("form", { class: "cartao" },
+    el("h3", { text: "Nova conta" }),
+    campo("Descrição", { name: "desc", required: true, maxlength: "100" }),
+    el("div", { class: "lado-a-lado" },
+      campo("Categoria", { tag: "select", name: "cat", opcoes: Object.entries(NOME_CATEGORIA) }),
+      campo("Valor (R$)", { name: "valor", inputmode: "decimal", required: true })),
+    campo("Vencimento", { name: "venc", type: "date", required: true, value: hojeLocal() }),
+    caixaMarcar("Recorrente (todo mês)", { name: "rec" }),
+    el("button", { type: "submit", class: "botao principal", text: "Salvar conta" }));
+  form.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(form, async () => {
+      const v = paraCentavos(form.valor.value);
+      if (!v) throw new Error("Valor inválido. Exemplo: 1500,00");
+      await api("/contas", { metodo: "POST", corpo: { descricao: form.desc.value, categoria: form.cat.value, valorCentavos: v, vencimento: form.venc.value, recorrente: form.rec.checked } });
+      avisar("Conta cadastrada."); telaContas();
+    });
+  });
+  const lista = contas.length
+    ? el("ul", { class: "lista" }, contas.map(c => el("li", { class: `item conta-${c.status}`, "data-conta": c.descricao },
+      el("div", { class: "item-topo" }, el("strong", { text: c.descricao }), el("span", { class: "preco", text: reais(c.valorCentavos) }),
+        el("span", { class: `etiqueta ${STATUS_CONTA[c.status][1]}`, text: STATUS_CONTA[c.status][0] })),
+      el("p", { class: "suave", text: [NOME_CATEGORIA[c.categoria], `vence ${dataBR(c.vencimento)}`, c.recorrente ? "mensal" : null,
+        c.pagoEm ? `paga em ${dataBR(c.pagoEm)}${c.pagoComCaixa ? " com dinheiro do caixa" : ""}` : null, c.motivoCancelamento].filter(Boolean).join(" · ") }),
+      c.situacao === "aberta" ? el("div", { class: "item-acoes" },
+        botao("Pagar", () => abrirJanela(`Pagar ${c.descricao}`, [
+          el("p", { text: `${reais(c.valorCentavos)} · pagamento com data de hoje.${c.recorrente ? " A do mês seguinte já fica cadastrada." : ""}` }),
+          caixaMarcar("Pago com dinheiro do caixa (vira sangria do caixa de hoje)", { name: "comCaixa" })
+        ], {
+          ok: "Confirmar pagamento",
+          aoConfirmar: async f => {
+            const r = await api("/contas/pagar", { metodo: "POST", corpo: { id: c.id, comCaixa: f.comCaixa.checked } });
+            avisar(r.mensagem); telaContas();
+          }
+        }), "pequeno principal"),
+        botao("Cancelar", () => pedirMotivo("Cancelar conta", "Nada é apagado; fica registrado.", async motivo => {
+          await api("/contas/cancelar", { metodo: "POST", corpo: { id: c.id, motivo } });
+          avisar("Conta cancelada."); telaContas();
+        }, "Cancelar conta"), "pequeno perigo")) : null)))
+    : el("p", { class: "vazio", text: "Nenhuma conta em aberto." });
+  mostrar(cabecalho("Contas a pagar", "Atrasadas em vermelho, vencendo hoje em amarelo. Mostra as em aberto e as pagas nos últimos 30 dias."),
+    el("div", { class: "duas-colunas" }, el("section", {}, lista), el("section", {}, form)));
+}
+
+// ---------- ENVIAR AO CONTADOR + CÓPIA DOS DADOS ----------
+const NOME_PLANILHA = {
+  clientes: "Clientes", atendimentos: "Atendimentos", caixa: "Caixa", estoque: "Estoque (saldo)",
+  "estoque-movimentos": "Estoque (movimentos)", contas: "Contas a pagar", comissoes: "Comissões e vales"
+};
+async function telaContador() {
+  const [{ contador }, { envios }] = await Promise.all([api("/configuracoes/contador"), api("/contador/envios")]);
+  const formContato = el("form", { class: "cartao" },
+    el("h3", { text: "Contato do contador" }),
+    campo("Nome", { name: "nome", value: contador.nome || "", maxlength: "80" }),
+    el("div", { class: "lado-a-lado" },
+      campo("WhatsApp", { name: "tel", value: contador.telefone ? fone(contador.telefone) : "", inputmode: "tel" }),
+      campo("E-mail", { name: "email", type: "email", value: contador.email || "" })),
+    el("button", { type: "submit", class: "botao", text: "Salvar contato" }));
+  formContato.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(formContato, async () => {
+      await api("/configuracoes/contador", { metodo: "POST", corpo: { nome: formContato.nome.value || null, telefone: formContato.tel.value || null, email: formContato.email.value || null } });
+      avisar("Contato salvo.");
+    });
+  });
+
+  const mesPassado = somaDias(`${hojeLocal().slice(0, 7)}-01`, -1).slice(0, 7);
+  const formEnviar = el("form", { class: "cartao" },
+    el("h3", { text: "Enviar ao contador" }),
+    el("p", { class: "suave", text: "Gera o resumo em PDF e a planilha com todos os lançamentos. No celular abre o Compartilhar (WhatsApp, e-mail…); no computador baixa os arquivos. Não é nota fiscal." }),
+    campo("Período", { tag: "select", name: "tipo", opcoes: [["mes", "Um mês"], ["ano", "Um ano inteiro"]] }),
+    el("div", { class: "campo", "data-campo": "mes" }, el("label", { for: "ref-mes", text: "Mês" }), el("input", { type: "month", id: "ref-mes", name: "refMes", value: mesPassado })),
+    Object.assign(el("div", { class: "campo", "data-campo": "ano" }, el("label", { for: "ref-ano", text: "Ano" }),
+      el("input", { type: "number", id: "ref-ano", name: "refAno", min: "2020", max: "2100", value: hojeLocal().slice(0, 4), inputmode: "numeric" })), { hidden: true }),
+    el("button", { type: "submit", class: "botao principal", text: "Gerar e enviar" }));
+  formEnviar.tipo.addEventListener("change", () => {
+    formEnviar.querySelector("[data-campo=mes]").hidden = formEnviar.tipo.value !== "mes";
+    formEnviar.querySelector("[data-campo=ano]").hidden = formEnviar.tipo.value !== "ano";
+  });
+  formEnviar.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(formEnviar, async () => {
+      const tipo = formEnviar.tipo.value;
+      const ref = tipo === "mes" ? formEnviar.refMes.value : formEnviar.refAno.value;
+      const r = await api("/contador/enviar", { metodo: "POST", corpo: { tipo, ref } });
+      const arqs = [
+        [`${r.arquivos.nomeBase}.pdf`, blobDeBase64(r.arquivos.pdfBase64, "application/pdf")],
+        [`${r.arquivos.nomeBase}.csv`, new Blob([r.arquivos.csv], { type: "text/csv" })]
+      ];
+      await janelaEnvio(r, arqs);
+      telaContador();
+    });
+  });
+
+  const listaEnvios = envios.length
+    ? el("ul", { class: "lista" }, envios.map(e => el("li", { class: `item ${e.alteradoDepois ? "conta-atrasada" : ""}`, "data-envio": e.referencia },
+      el("div", { class: "item-topo" }, el("strong", { text: e.tipo === "mes" ? `Mês ${e.referencia.split("-").reverse().join("/")}` : `Ano ${e.referencia}` }),
+        e.alteradoDepois ? el("span", { class: "etiqueta vermelha", text: "Alterado depois do envio" }) : null),
+      el("p", { class: "suave", text: `Enviado em ${dataBR(e.em.slice(0, 10))} por ${e.por}` }),
+      e.alteradoDepois ? el("p", { class: "erro", text: "Houve alteração depois do envio ao contador; gere de novo." }) : null)))
+    : el("p", { class: "suave", text: "Nenhum envio ainda." });
+
+  const copia = el("section", { class: "cartao" },
+    el("h3", { text: "Cópia dos dados" }),
+    el("p", { class: "suave", text: "Baixe todos os dados da barbearia em planilhas (abrem no Excel), quando quiser." }),
+    el("div", { class: "botoes-planilha" }, Object.entries(NOME_PLANILHA).map(([k, nome]) =>
+      botao(nome, async () => {
+        try { await baixarPlanilha(`/exportar/${k}`, `4blade-${k}-${hojeLocal()}.csv`); } catch (e) { avisar(e.message, "erro"); }
+      }, "pequeno"))));
+
+  mostrar(cabecalho("Contador e cópia dos dados"),
+    el("div", { class: "duas-colunas" },
+      el("section", {}, formEnviar, el("h3", { text: "Envios registrados" }), listaEnvios),
+      el("section", {}, formContato, copia)));
+}
+
+function janelaEnvio(r, arqs) {
+  const rel = r.relatorio;
+  const tel = r.contador?.telefone;
+  return abrirJanela(`Relatório ${rel.periodo.titulo} pronto`, [
+    el("dl", { class: "conferencia" },
+      el("dt", { text: "Entradas" }), el("dd", { text: reais(rel.entradas.totalCentavos) }),
+      el("dt", { text: "Comissões" }), el("dd", { text: `− ${reais(rel.comissoes.totalCentavos)}` }),
+      el("dt", { text: "Custo dos produtos vendidos" }), el("dd", { text: `− ${reais(rel.resultado.custoProdutosVendidosCentavos)}` }),
+      el("dt", { text: "Contas pagas" }), el("dd", { text: `− ${reais(rel.saidas.contasPagasCentavos)}` }),
+      el("dt", { class: "forte", text: "Resultado" }), el("dd", { class: "forte", "data-teste": "resultado", text: reais(rel.resultado.resultadoCentavos) })),
+    el("p", { class: "suave", text: `Cota-parte da barbearia ${reais(rel.cotaParte.barbeariaCentavos)} · dos profissionais ${reais(rel.cotaParte.profissionaisCentavos)} (o contador confirma se a barbearia usa a Lei do Salão-Parceiro).` }),
+    el("div", { class: "item-acoes" },
+      botao(ehCelular() ? "Compartilhar PDF e planilha" : "Baixar PDF e planilha", async () => {
+        const res = await compartilharOuBaixar(arqs, `Relatório ${rel.periodo.titulo}`);
+        if (res !== "cancelado") avisar(res === "compartilhado" ? "Arquivos compartilhados." : "Arquivos baixados.");
+      }, "principal pequeno"),
+      tel ? el("a", { class: "botao pequeno whats", href: `https://wa.me/55${tel}?text=${encodeURIComponent(`Olá${r.contador.nome ? `, ${r.contador.nome.split(" ")[0]}` : ""}! Segue o relatório da ${usuario.barbearia.nome} de ${rel.periodo.titulo} (PDF e planilha).`)}`, target: "_blank", rel: "noopener", text: "Abrir WhatsApp do contador" }) : null)
+  ], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
+}
+
 // ---------- EQUIPE ----------
 async function telaEquipe() {
   const { usuarios, vagas } = await api("/usuarios");
@@ -1505,6 +1892,11 @@ const ROTAS = {
   caixa: { perfis: ["caixa", "proprietario", "gerente"], tela: telaCaixa },
   funcionamento: { perfis: ["proprietario", "gerente"], tela: telaFuncionamento },
   estoque: { perfis: ["proprietario", "gerente"], tela: telaEstoque },
+  painel: { perfis: ["proprietario", "gerente"], tela: telaPainel },
+  comissoes: { perfis: ["proprietario", "gerente"], tela: telaComissoes },
+  contas: { perfis: ["proprietario", "gerente"], tela: telaContas },
+  contador: { perfis: ["proprietario", "gerente"], tela: telaContador },
+  desempenho: { perfis: ["gerente", "barbeiro"], tela: telaDesempenho },
   "caixa-historico": { perfis: ["proprietario", "gerente"], tela: telaHistoricoCaixa },
   "caixa-dia": { perfis: ["proprietario", "gerente"], tela: data => telaCaixa(/^\d{4}-\d{2}-\d{2}$/.test(data || "") ? data : hojeLocal()) },
   equipe: { perfis: ["proprietario", "gerente"], tela: telaEquipe },

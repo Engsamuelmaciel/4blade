@@ -28,6 +28,11 @@ function estatico(caminho) {
 
 await amb.criarPlataforma("suporte");
 console.log("plataforma de teste pronta (usuário suporte, senha Nova-suporte-senha)");
+if (process.argv.includes("--semana")) {
+  const { semearSemana, SENHA_SEMANA } = await import("./semana-simulada.mjs");
+  await semearSemana(amb);
+  console.log(`semana simulada pronta: dono.semana, gerente.semana, ana.semana, beto.semana, caixa.semana (senha ${SENHA_SEMANA})`);
+}
 if (process.argv.includes("--demo")) {
   const { semearDemonstracao, SENHA_DEMO } = await import("./demonstracao.mjs");
   await semearDemonstracao(amb);

@@ -292,6 +292,10 @@ async function reabrir(ctx) {
   const f = await db.prepare("SELECT f.*, c.situacao AS caixa_situacao FROM finalizacoes f JOIN caixas c ON c.id = f.caixa_id WHERE f.agendamento_id = ? AND f.estornada = 0")
     .bind(a.id).first();
   if (!f) erro("Finalização não encontrada.", 404);
+  if (await db.prepare(`SELECT 1 FROM comissoes c JOIN fechamento_comissao_itens i ON i.tipo = 'servico' AND i.ref_id = c.id
+                        WHERE c.finalizacao_id = ?`).bind(f.id).first()) {
+    erro("A comissão desse atendimento já entrou num fechamento de comissão: não dá para reabrir.", 409);
+  }
   if (f.caixa_situacao !== "aberto") {
     erro(isGestao(user)
       ? "O caixa desse dia já foi fechado: reabra o caixa (com motivo) antes de reabrir o atendimento."

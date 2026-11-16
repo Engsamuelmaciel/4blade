@@ -42,7 +42,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - Regras que decidi (confirmar com o responsável): sem funcionamento cadastrado a agenda não aceita horário; bloqueio por cima de horário marcado é recusado; finalizar só horários de hoje ou anteriores (a entrada vai para o caixa de hoje); "Propor horário" usa a data/hora do próprio horário; proprietário não tem agenda própria (só gerente e barbeiro).
   - Pendente para a E3: fechar/reabrir caixa (o gerente reabrir atendimento com caixa fechado depende disso), sangria, suprimento, vendas.
   - Testes: `npm test` (61) + `node test/navegador-e1.mjs` e `node test/navegador-e2.mjs` (prints em `docs/prints/e1/` e `docs/prints/e2/`).
-- 16/11/2026: **E3 (Caixa e estoque) pronta** na ramificação `e3-caixa-estoque` (a partir da `e2-agenda`), aguardando avaliação. Próximo: E4 (Gestão).
+- 16/11/2026: **E3 (Caixa e estoque) pronta** na ramificação `e3-caixa-estoque` (a partir da `e2-agenda`); o responsável mandou seguir.
   - Banco: `migrations/0003_caixa_estoque.sql` (só tabelas novas): produto_estoque (saldo com CHECK ≥ 0), estoque_movimentos, vendas, venda_itens, caixa_movimentos (venda, estorno_venda, sangria, suprimento, correcao_saida/entrada), caixa_fechamentos.
   - API: `src/caixa.js` (resumo, sangria/suprimento, corrigir forma, fechar, reabrir, histórico/dia), `src/estoque.js` (estoque, entrada com custo médio, ajuste, inventário, histórico, vendas e cancelamento).
   - Correção de forma = par de movimentos (sai da forma antiga, entra na nova) ligado ao lançamento; estornos usam a forma ATUAL (`formaEfetiva`).
@@ -50,6 +50,16 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - Venda guarda vendedor (barbeiro) e custo unitário do momento — base para comissão de produto e lucro na E4. Barbeiro vende em seu nome (botão no horário da agenda).
   - Regras que decidi (confirmar): sangria não pode passar do dinheiro na gaveta; preço do produto na venda é o de tabela (sem alterar); "repor" quando saldo < mínimo; validade do produto = a mais próxima entre a atual e a da nova entrada.
   - Testes: `npm test` (72, inclui o dia simulado conferido à mão) + navegador E1, E2 e E3. Demonstração local: `npm run demo` (senha dos usuários *.demo: `Demo-4blade-2026`).
+- 16/11/2026: **E4 (Gestão) pronta** na ramificação `e4-gestao` (a partir da `e3-caixa-estoque`), aguardando avaliação. **Fase 1 (E1–E4) completa.** Próximo: avaliação; depois publicação de teste na Cloudflare (precisa de confirmação + token do responsável) e fase 2 (E5).
+  - Banco: `migrations/0004_gestao.sql` (só tabelas novas): comissoes_produto, vales, fechamentos_comissao + fechamento_comissao_itens (UNIQUE: cada comissão/vale entra em um só fechamento), contas, configuracoes (contato do contador), envios_contador.
+  - API: `src/gestao.js` (comissões/prévia/fechamento/pagamento, vales, contas, painel, desempenho, extrato), `src/contador.js` (relatório, envio com impressão digital, envios com aviso de alteração, contato, exportar CSV), `src/pdf.js` (PDF sem biblioteca, Helvetica/WinAnsi), `src/csv.js` (ponto e vírgula, BOM, vírgula decimal, proteção contra fórmula).
+  - Dia de cada lançamento = dia do caixa. Painel: hoje; semana = hoje e 6 dias antes; mês = dia 1º até hoje. Lucro dia/semana = bruto − comissões − custo dos produtos vendidos (custo guardado na venda); mês = também − contas pagas (pelo dia do pagamento).
+  - Comissão de produto: gravada na venda para gerente/barbeiro (% de produto dele); estornada se a venda for cancelada. Venda registrada pelo caixa sem vendedor não gera comissão.
+  - Fechado não muda: não dá para reabrir atendimento, cancelar venda ou cancelar/lançar vale que já entrou (ou cairia) num fechamento de comissão; período sobreposto é recusado.
+  - Conta recorrente paga gera a do mês seguinte (31 → último dia do mês). "Pago com dinheiro do caixa" (conta ou comissão) = sangria no caixa de hoje (exige caixa aberto e dinheiro suficiente).
+  - Contador: entradas por forma (serviços × produtos), saídas (contas por categoria, compras de mercadoria, sangrias avulsas), comissões/vales/pago, resultado, cota-parte (barbearia = bruto − comissões; profissionais = comissões — o contador confirma se usa a Lei 13.352), estoque no fim (saldo × custo médio atual), diferenças de caixa e lista detalhada. Aviso de alteração: compara a impressão digital (recalcula até 2 períodos por consulta).
+  - Regras que decidi (confirmar): vale não sai do caixa (só registro) — a comissão paga pode sair; ranking por faturamento em atendimentos; extrato do barbeiro mostra só o primeiro nome do cliente.
+  - Testes: `npm test` (78, inclui a semana simulada conferida à mão) + navegador E1–E4. `npm run demo` sobe com a demonstração e com a semana simulada (`*.semana`, senha `Senha-Semana-2026`).
 
 ## Pendências fora do código
 - Conferir domínios 4blade.com.br e forblade.com.br (registro.br) e a marca no INPI (classe 42).

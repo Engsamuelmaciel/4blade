@@ -1,14 +1,14 @@
 {
   "name": "4blade",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test --no-warnings test/*.test.js",
     "tela": "node test/servidor-local.mjs 8787",
-    "teste-navegador": "node test/navegador-e1.mjs && node test/navegador-e2.mjs && node test/navegador-e3.mjs",
+    "teste-navegador": "node test/navegador-e1.mjs && node test/navegador-e2.mjs && node test/navegador-e3.mjs && node test/navegador-e4.mjs",
     "dev": "wrangler dev",
-    "demo": "node --no-warnings test/servidor-local.mjs 8787 --demo"
+    "demo": "node --no-warnings test/servidor-local.mjs 8787 --demo --semana"
   },
   "devDependencies": {
     "wrangler": "4.149.0"

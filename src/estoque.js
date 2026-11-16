@@ -186,16 +186,17 @@ async function vender(ctx) {
   const input = await readJson(request);
   const caixa = await caixaAbertoDeHoje(ctx);
 
-  // Quem vendeu: barbeiro = ele mesmo; caixa/gestão podem indicar o barbeiro (comissão de produto: E4).
-  let vendedorId = user.id;
+  // Quem vendeu: barbeiro = ele mesmo; caixa/gestão podem indicar o barbeiro (comissão de produto vai para ele).
+  let vendedor = { id: user.id, perfil: user.perfil, comissao_produto_bp: user.comissao_produto_bp };
   if (input.vendedorId && input.vendedorId !== user.id) {
     if (user.perfil === "barbeiro") erro("Você só registra venda em seu nome.", 403);
     if (!validId(input.vendedorId)) erro("Vendedor inválido.");
-    const v = await db.prepare("SELECT id, perfil, ativo FROM usuarios WHERE id = ? AND barbearia_id = ?").bind(input.vendedorId, ctx.barbeariaId).first();
+    const v = await db.prepare("SELECT id, perfil, ativo, comissao_produto_bp FROM usuarios WHERE id = ? AND barbearia_id = ?").bind(input.vendedorId, ctx.barbeariaId).first();
     if (!v) erro("Vendedor não encontrado.", 404);
     if (!atende(v.perfil) || !v.ativo) erro("Vendedor deve ser um gerente ou barbeiro ativo.");
-    vendedorId = v.id;
+    vendedor = v;
   }
+  const vendedorId = vendedor.id;
   let clienteId = null;
   let agendamentoId = null;
   if (input.agendamentoId) {
@@ -240,6 +241,13 @@ async function vender(ctx) {
                   SELECT ?, ?, ?, 'venda', ?, ?, ?, ? WHERE ${existe[0]}`)
         .bind(crypto.randomUUID(), ctx.barbeariaId, i.p.id, -i.q, i.custo, id, user.id, ...existe[1])
     ]),
+    // Comissão de produto: só para quem atende (gerente/barbeiro), pelo % de produto dele, guardada à parte.
+    ...(atende(vendedor.perfil) && Number(vendedor.comissao_produto_bp) > 0 ? [
+      db.prepare(`INSERT INTO comissoes_produto (id, barbearia_id, barbeiro_id, venda_id, base_centavos, percentual_bp, valor_centavos)
+                  SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${existe[0]}`)
+        .bind(crypto.randomUUID(), ctx.barbeariaId, vendedorId, id, total, Number(vendedor.comissao_produto_bp),
+          Math.round((total * Number(vendedor.comissao_produto_bp)) / 10000), ...existe[1])
+    ] : []),
     ...pagamentos.map(pg => db.prepare(`INSERT INTO caixa_movimentos (id, barbearia_id, caixa_id, tipo, forma, valor_centavos, venda_id, criado_por)
                   SELECT ?, ?, ?, 'venda', ?, ?, ?, ? WHERE ${existe[0]}`)
       .bind(crypto.randomUUID(), ctx.barbeariaId, caixa.id, pg.forma, pg.valorCentavos, id, user.id, ...existe[1])),
@@ -264,6 +272,10 @@ async function cancelarVenda(ctx) {
   if (!v) erro("Venda não encontrada.", 404);
   if (v.situacao !== "ativa") erro("Essa venda já foi cancelada.", 409);
   if (v.caixa_situacao !== "aberto") erro("O caixa dessa venda já foi fechado: o gerente precisa reabrir o caixa antes.", 409);
+  if (await db.prepare(`SELECT 1 FROM comissoes_produto c JOIN fechamento_comissao_itens i ON i.tipo = 'produto' AND i.ref_id = c.id
+                        WHERE c.venda_id = ?`).bind(v.id).first()) {
+    erro("A comissão dessa venda já entrou num fechamento de comissão: não dá para cancelar.", 409);
+  }
   const itens = (await db.prepare("SELECT * FROM venda_itens WHERE venda_id = ?").bind(v.id).all()).results;
   // Momento único deste pedido: os passos seguintes só acontecem se ESTE cancelamento foi o que valeu.
   const momento = new Date().toISOString();
@@ -285,6 +297,7 @@ async function cancelarVenda(ctx) {
     db.prepare(`INSERT INTO caixa_movimentos (id, barbearia_id, caixa_id, tipo, forma, valor_centavos, venda_id, referencia_id, motivo, criado_por)
                 SELECT 'est-' || lower(hex(randomblob(16))), barbearia_id, caixa_id, 'estorno_venda', ${formaEfetiva("m.id", "m.forma")}, -valor_centavos, venda_id, m.id, ?, ?
                 FROM caixa_movimentos m WHERE m.venda_id = ? AND m.tipo = 'venda' AND ${feito[0]}`).bind(motivo, user.id, v.id, ...feito[1]),
+    db.prepare(`UPDATE comissoes_produto SET estornada = 1 WHERE venda_id = ? AND ${feito[0]}`).bind(v.id, ...feito[1]),
     auditoriaSe(ctx, ...feito, "venda_cancelada", v.id, { motivo, total: v.total_centavos })
   ]);
   if (!(await db.prepare("SELECT 1 FROM vendas WHERE id = ? AND cancelada_por = ? AND cancelada_em = ?").bind(v.id, user.id, momento).first())) {
