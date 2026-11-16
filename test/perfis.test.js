@@ -27,8 +27,8 @@ describe("cada perfil recusado nas rotas que não pode", () => {
       ["GET", "/api/servicos", undefined, ["proprietario", "gerente", "barbeiro", "caixa"]],
       ["POST", "/api/servicos/alterar", { id: servico.id, precoCentavos: 4500 }, ["proprietario", "gerente"]],
       ["GET", "/api/produtos", undefined, ["proprietario", "gerente", "barbeiro", "caixa"]],
-      ["GET", "/api/clientes", undefined, ["proprietario", "gerente"]],
-      ["GET", "/api/modelos-mensagem", undefined, ["proprietario", "gerente"]]
+      ["GET", "/api/clientes", undefined, ["proprietario", "gerente", "caixa"]],          // caixa = recepção (pedido de 16/11/2026)
+      ["GET", "/api/modelos-mensagem", undefined, ["proprietario", "gerente", "caixa"]]
     ];
     let n = 0;
     for (const [metodo, caminho, corpo, podem] of rotas) {
@@ -52,8 +52,11 @@ describe("cada perfil recusado nas rotas que não pode", () => {
       ["/api/clientes", { nome: "Cliente X", telefone: "11 90000-0001", aceiteLgpd: true }],
       ["/api/modelos-mensagem/alterar", { tipo: "lembrete", texto: "Oi {cliente}, até {data}!" }]
     ];
+    // caixa (recepção) cadastra cliente e edita mensagens; serviço e produto continuam só com a gestão
+    const recepcao = ["/api/clientes", "/api/modelos-mensagem/alterar"];
     for (const [caminho, corpo] of criacoes) {
       for (const perfil of ["plataforma", "barbeiro", "caixa"]) {
+        if (perfil === "caixa" && recepcao.includes(caminho)) continue;
         assert.equal((await post(caminho, tokens[perfil], corpo)).status, 403, `${perfil} em ${caminho}`);
       }
     }

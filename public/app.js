@@ -485,6 +485,9 @@ function janelaPlano(b) {
 
 // ---------- INÍCIO (menu por perfil) ----------
 const gestao = () => usuario.perfil === "proprietario" || usuario.perfil === "gerente";
+const ehCaixa = () => usuario.perfil === "caixa";
+// Gestão e caixa (recepção) veem e marcam na agenda de todos os profissionais.
+const veTodas = () => gestao() || ehCaixa();
 
 
 // ---------- datas e horas ----------
@@ -518,10 +521,10 @@ async function telaAgenda() {
   const v = estadoAgenda.visao;
   const d0 = estadoAgenda.data;
   const q = new URLSearchParams({ data: d0, dias: v === "semana" ? "7" : "1" });
-  if (gestao() && estadoAgenda.barbeiroId) q.set("barbeiroId", estadoAgenda.barbeiroId);
+  if (veTodas() && estadoAgenda.barbeiroId) q.set("barbeiroId", estadoAgenda.barbeiroId);
   // Mês e Ano usam o cálculo de ocupação (livre / poucos / cheio / fechado) por dia.
   const periodo = v === "mes" ? [`${d0.slice(0, 7)}-01`, ultimoDiaMes(d0.slice(0, 7))] : v === "ano" ? [`${d0.slice(0, 4)}-01-01`, `${d0.slice(0, 4)}-12-31`] : null;
-  const qo = periodo ? new URLSearchParams({ inicio: periodo[0], fim: periodo[1], ...(gestao() && estadoAgenda.barbeiroId ? { barbeiroId: estadoAgenda.barbeiroId } : {}) }) : null;
+  const qo = periodo ? new URLSearchParams({ inicio: periodo[0], fim: periodo[1], ...(veTodas() && estadoAgenda.barbeiroId ? { barbeiroId: estadoAgenda.barbeiroId } : {}) }) : null;
   const [ag, oc] = await Promise.all([api(`/agenda?${q}`), qo ? api(`/agenda/ocupacao?${qo}`) : null, carregarServicos()]);
 
   const irPara = (d, visao = v) => { estadoAgenda.data = d; estadoAgenda.visao = visao; comCarga(telaAgenda).catch(e => avisar(e.message, "erro")); };
@@ -530,7 +533,7 @@ async function telaAgenda() {
   dataInput.addEventListener("change", () => dataInput.value && irPara(dataInput.value));
   const rotuloPeriodo = v === "mes" ? el("strong", { class: "rotulo-periodo", text: `${MESES[Number(d0.slice(5, 7)) - 1]} ${d0.slice(0, 4)}` })
     : v === "ano" ? el("strong", { class: "rotulo-periodo", text: d0.slice(0, 4) }) : dataInput;
-  const filtro = gestao()
+  const filtro = veTodas()
     ? el("select", { "aria-label": "Profissional", class: "filtro-prof" },
       el("option", { value: "", text: "Todos os profissionais", selected: !estadoAgenda.barbeiroId || null }),
       ag.profissionais.map(p => el("option", { value: p.id, text: p.nome, selected: p.id === estadoAgenda.barbeiroId || null })))
@@ -547,7 +550,7 @@ async function telaAgenda() {
     filtro,
     el("div", { class: "acoes-agenda" },
       botao("+ Novo horário", () => janelaMarcar(ag), "principal pequeno"),
-      botao("Bloquear", () => janelaBloquear(ag), "pequeno")));
+      ehCaixa() ? null : botao("Bloquear", () => janelaBloquear(ag), "pequeno")));
 
   const profs = ag.profissionais.filter(p => !estadoAgenda.barbeiroId || p.id === estadoAgenda.barbeiroId);
   let corpo;
@@ -579,9 +582,9 @@ async function telaAgenda() {
   const subtitulo = v === "dia" ? `${DIAS[diaDaSemana(d0)]}, ${dataBR(d0)}` : v === "semana" ? `Semana de ${dataBR(ag.data)} a ${dataBR(ag.ate)}`
     : v === "mes" ? "Toque num dia para ver os horários" : "Toque num mês para ver o calendário";
   mostrar(
-    cabecalho(gestao() ? "Agenda" : "Minha agenda", subtitulo),
+    cabecalho(veTodas() ? "Agenda" : "Minha agenda", subtitulo),
     barra,
-    !ag.caixaAberto && (v === "dia" || v === "semana") ? el("p", { class: "info", text: "O caixa de hoje ainda não foi aberto: para finalizar atendimentos, peça para abrir o caixa." }) : null,
+    !ag.caixaAberto && (v === "dia" || v === "semana") ? el("p", { class: "info", text: ehCaixa() ? "O caixa de hoje ainda não foi aberto: abra o caixa para cobrar os atendimentos." : "O caixa de hoje ainda não foi aberto: para finalizar atendimentos, peça para abrir o caixa." }) : null,
     corpo);
 }
 
@@ -649,7 +652,7 @@ function cartaoBloqueio(b, ini, fim, mostrarNome) {
       el("span", { class: "etiqueta", text: "Bloqueado" })),
     el("p", { class: "suave", text: [mostrarNome ? b.barbeiroNome : null, b.motivo || "Sem motivo informado"].filter(Boolean).join(" · ") }),
     el("div", { class: "item-acoes" },
-      botao("Desbloquear", () => pedirMotivo("Desbloquear horário", "O horário volta a ficar livre na agenda.", async motivo => {
+      ehCaixa() ? null : botao("Desbloquear", () => pedirMotivo("Desbloquear horário", "O horário volta a ficar livre na agenda.", async motivo => {
         await api("/agenda/bloqueios/cancelar", { metodo: "POST", corpo: { id: b.id, motivo } });
         avisar("Horário desbloqueado.");
         telaAgenda();
@@ -698,7 +701,7 @@ function cartaoAgendamento(a, mostrarNome) {
     ultimaMsg ? el("p", { class: "suave", text: `${ultimaMsg.tipo === "lembrete" ? "Lembrete" : "Proposta"} aberto no WhatsApp por ${ultimaMsg.por.split(" ")[0]} às ${horaLocal(ultimaMsg.em)}` }) : null,
     el("div", { class: "item-acoes" },
       a.situacao === "agendado" ? [
-        botao("Finalizar", () => janelaFinalizar(a), "pequeno principal"),
+        ehCaixa() ? null : botao("Finalizar", () => janelaFinalizar(a), "pequeno principal"),
         botaoWhatsapp(a, "lembrete", "Enviar lembrete"),
         botaoWhatsapp(a, "proposta", "Propor horário"),
         botao("Faltou", () => abrirJanela(`${a.cliente.nome} faltou?`, el("p", { text: "O horário fica registrado como falta." }), {
@@ -719,9 +722,9 @@ function cartaoAgendamento(a, mostrarNome) {
           }
         }), "pequeno perigo")
       ] : null,
-      a.situacao === "finalizado" || a.situacao === "agendado"
+      !ehCaixa() && (a.situacao === "finalizado" || a.situacao === "agendado")
         ? botao("Vender produto", () => janelaVenda({ agendamento: a, aoTerminar: telaAgenda }), "pequeno") : null,
-      a.situacao === "finalizado" ? botao("Reabrir", () => pedirMotivo("Reabrir atendimento", "Estorna a entrada no caixa e a comissão, e o horário volta para agendado. Fica registrado.", async motivo => {
+      a.situacao === "finalizado" && !ehCaixa() ? botao("Reabrir", () => pedirMotivo("Reabrir atendimento", "Estorna a entrada no caixa e a comissão, e o horário volta para agendado. Fica registrado.", async motivo => {
         await api("/agenda/reabrir", { metodo: "POST", corpo: { id: a.id, motivo } });
         avisar("Atendimento reaberto."); telaAgenda();
       }, "Reabrir"), "pequeno") : null,
@@ -729,7 +732,7 @@ function cartaoAgendamento(a, mostrarNome) {
 }
 
 function campoProfissional(ag) {
-  if (!gestao()) return null;
+  if (!veTodas()) return null;
   const padrao = estadoAgenda.barbeiroId || (ag.profissionais.some(p => p.id === usuario.id) ? usuario.id : ag.profissionais[0]?.id);
   return campo("Profissional", { tag: "select", name: "prof", valor: padrao, opcoes: ag.profissionais.map(p => [p.id, p.nome]) });
 }
@@ -737,7 +740,7 @@ function campoProfissional(ag) {
 function janelaMarcar(ag) {
   const servicos = servicosCache || [];
   // Sem profissional ou sem serviço não há como marcar: explica o que falta em vez de um formulário vazio.
-  if (gestao() && !ag.profissionais.length) return abrirJanela("Novo horário", el("p", { text: "Nenhum profissional com agenda. Cadastre um gerente ou barbeiro em Equipe e ajustes → Equipe (o proprietário não tem agenda própria)." }), { ok: "Entendi", semCancelar: true, aoConfirmar: () => true });
+  if (veTodas() && !ag.profissionais.length) return abrirJanela("Novo horário", el("p", { text: "Nenhum profissional com agenda. Cadastre um gerente ou barbeiro em Equipe e ajustes → Equipe (o proprietário não tem agenda própria)." }), { ok: "Entendi", semCancelar: true, aoConfirmar: () => true });
   if (!servicos.length) return abrirJanela("Novo horário", el("p", { text: "Nenhum serviço cadastrado. Cadastre em Catálogo e estoque → Serviços (nome, preço e duração)." }), { ok: "Entendi", semCancelar: true, aoConfirmar: () => true });
   // Telefone é opcional: sem ele, o cliente fica só com o nome (sem WhatsApp).
   const nomeCampo = campo("Nome do cliente", { name: "cliNome", autocomplete: "off" });
@@ -2249,9 +2252,10 @@ async function telaClientes(busca = "") {
         !c.telefone ? null : c.aceiteLgpd ? el("span", { class: "etiqueta verde", text: "LGPD ok" }) : el("span", { class: "etiqueta amarela", text: "Sem aceite" })),
       el("p", { class: "suave", text: c.telefone ? fone(c.telefone) : "Sem telefone" }),
       c.observacao ? el("p", { class: "suave", text: c.observacao }) : null,
-      linhaAcoesCadastro("clientes", c, () => telaClientes(busca), () => editarEmJanela(`Editar ${c.nome}`, def, c)))))
+      ehCaixa() ? el("div", { class: "item-acoes" }, botao("Editar", () => editarEmJanela(`Editar ${c.nome}`, def, c), "pequeno"))
+        : linhaAcoesCadastro("clientes", c, () => telaClientes(busca), () => editarEmJanela(`Editar ${c.nome}`, def, c)))))
     : el("p", { class: "vazio", text: busca ? "Nenhum cliente encontrado." : "Nenhum cliente ainda." });
-  mostrar(cabecalho("Clientes", "Na agenda (próxima entrega) o cliente também é cadastrado pelo telefone, na hora de marcar."),
+  mostrar(cabecalho("Clientes", "Na agenda o cliente também é cadastrado na hora de marcar (pelo telefone ou só pelo nome)."),
     el("div", { class: "duas-colunas" }, el("section", {}, buscaForm, lista), el("section", {}, formCadastro(def))));
 }
 
@@ -2329,7 +2333,8 @@ function gruposDoMenu() {
   const p = usuario.perfil;
   if (p === "plataforma") return [{ id: "plataforma", titulo: "Plataforma", icone: "loja", itens: [["plataforma", "Barbearias", "loja"]] }];
   if (p === "caixa") return [
-    { id: "caixa", titulo: "Caixa", icone: "caixa", itens: [["caixa", "Caixa", "caixa"], ["produtos", "Produtos", "produtos"]] }
+    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
+    { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
   ];
   if (p === "barbeiro") return [
     { id: "atendimento", titulo: "Meu trabalho", icone: "agenda", itens: [["agenda", "Minha agenda", "agenda"], ["desempenho", "Meu desempenho", "grafico"]] },
@@ -2406,11 +2411,11 @@ const ROTAS = {
   "caixa-historico": { perfis: ["proprietario", "gerente"], tela: telaHistoricoCaixa },
   "caixa-dia": { perfis: ["proprietario", "gerente"], tela: data => telaCaixa(/^\d{4}-\d{2}-\d{2}$/.test(data || "") ? data : hojeLocal()) },
   equipe: { perfis: ["proprietario", "gerente"], tela: telaEquipe },
-  servicos: { perfis: ["proprietario", "gerente", "barbeiro"], tela: telaServicos },
+  servicos: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaServicos },
   produtos: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaProdutos },
-  clientes: { perfis: ["proprietario", "gerente"], tela: () => telaClientes() },
-  mensagens: { perfis: ["proprietario", "gerente"], tela: telaMensagens },
-  agenda: { perfis: ["proprietario", "gerente", "barbeiro"], tela: telaAgenda }
+  clientes: { perfis: ["proprietario", "gerente", "caixa"], tela: () => telaClientes() },
+  mensagens: { perfis: ["proprietario", "gerente", "caixa"], tela: telaMensagens },
+  agenda: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgenda }
 };
 
 async function rotear() {

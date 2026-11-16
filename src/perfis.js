@@ -27,6 +27,9 @@ export function podeGerenciarPerfil(user, perfilAlvo) {
   return false;
 }
 
+// Quem vê e marca na agenda de todos os profissionais: gestão e caixa (recepção). O caixa não vê comissão.
+export const veTodasAgendas = u => isGestao(u) || u.perfil === "caixa";
+
 // Quem atende (tem agenda e comissão).
 export const atende = perfil => perfil === "gerente" || perfil === "barbeiro";
 

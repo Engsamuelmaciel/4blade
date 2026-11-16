@@ -5,7 +5,7 @@ import {
   json, fail, HttpError, readJson, validId, textoLimpo, textoOpcional, validCentavos, normalizarTelefone,
   exigirMotivo, auditoria, auditoriaSe, hojeBrasil
 } from "./util.js";
-import { isGestao, atende } from "./perfis.js";
+import { isGestao, atende, veTodasAgendas } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
 import {
   horaParaMin, exigirData, exigirMomento, somarDias, regrasDoDia, conferirHorario, momento, carregarRegras, diaSemana, janelaDoDia, livreNaJanela,
@@ -18,17 +18,18 @@ const erro = (msg, status = 400) => { throw new HttpError(msg, status); };
 
 function exigirAgenda(ctx) {
   exigirBarbearia(ctx);
-  if (!isGestao(ctx.user) && ctx.user.perfil !== "barbeiro") erro("Sem permissão", 403);
+  if (!veTodasAgendas(ctx.user) && ctx.user.perfil !== "barbeiro") erro("Sem permissão", 403);
 }
 
 // Profissional da agenda: barbeiro só ele mesmo; gestão escolhe qualquer gerente/barbeiro ativo da barbearia.
 async function profissional(ctx, barbeiroId) {
   const { user, db } = ctx;
-  if (!isGestao(user)) {
+  if (!veTodasAgendas(user)) {
     if (barbeiroId && barbeiroId !== user.id) erro("Você só pode mexer na sua própria agenda.", 403);
     return { id: user.id, nome: user.nome, comissao_servico_bp: user.comissao_servico_bp };
   }
-  const id = barbeiroId || user.id;
+  const id = barbeiroId || (atende(user.perfil) ? user.id : null);
+  if (!id) erro("Escolha o profissional.");
   if (!validId(id)) erro("Profissional inválido.");
   const p = await db.prepare("SELECT id, nome, perfil, ativo, comissao_servico_bp FROM usuarios WHERE id = ? AND barbearia_id = ?")
     .bind(id, ctx.barbeariaId).first();
@@ -38,7 +39,7 @@ async function profissional(ctx, barbeiroId) {
 }
 
 // Busca o horário marcado dentro da barbearia e confere se o usuário pode mexer nele.
-async function agendamentoPermitido(ctx, id) {
+async function agendamentoPermitido(ctx, id, { cobrar = false } = {}) {
   if (!validId(id)) erro("Horário inválido.");
   const a = await ctx.db.prepare(`
     SELECT a.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone, u.nome AS barbeiro_nome,
@@ -47,9 +48,9 @@ async function agendamentoPermitido(ctx, id) {
     WHERE a.id = ? AND a.barbearia_id = ?
   `).bind(id, ctx.barbeariaId).first();
   if (!a) erro("Horário não encontrado.", 404);
-  // Caixa: só cobra (finaliza) atendimentos de hoje, pela tela do caixa.
+  // Caixa (recepção): mexe em qualquer agenda (marcar, faltou, cancelar, WhatsApp), mas só cobra atendimentos de hoje.
   if (ctx.user.perfil === "caixa") {
-    if (a.data !== hojeBrasil()) erro("No caixa só dá para cobrar atendimentos de hoje.", 403);
+    if (cobrar && a.data !== hojeBrasil()) erro("No caixa só dá para cobrar atendimentos de hoje.", 403);
     return a;
   }
   if (!isGestao(ctx.user) && a.barbeiro_id !== ctx.user.id) erro("Esse horário é da agenda de outro profissional.", 403);
@@ -68,16 +69,17 @@ async function listarAgenda(ctx) {
   const dias = url.searchParams.get("dias") === "7" ? 7 : 1;
   const ate = somarDias(data, dias - 1);
   const gestao = isGestao(user);
+  const todas = veTodasAgendas(user);
   // Barbeiro: sempre a própria agenda, ignorando o que vier na tela.
-  const filtro = gestao ? (url.searchParams.get("barbeiroId") || null) : user.id;
+  const filtro = todas ? (url.searchParams.get("barbeiroId") || null) : user.id;
   if (filtro && !validId(filtro)) erro("Profissional inválido.");
 
   const condA = `a.barbearia_id = ? AND a.data BETWEEN ? AND ?${filtro ? " AND a.barbeiro_id = ?" : ""}`;
   const pa = [ctx.barbeariaId, data, ate, ...(filtro ? [filtro] : [])];
   const [prof, ags, servs, fins, itens, pags, coms, msgs, estornos, blq, modelos, caixa] = await Promise.all([
     db.prepare(`SELECT id, nome, perfil FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('gerente','barbeiro')
-                ${gestao ? "" : "AND id = ?"} ORDER BY CASE perfil WHEN 'gerente' THEN 0 ELSE 1 END, nome`)
-      .bind(ctx.barbeariaId, ...(gestao ? [] : [user.id])).all(),
+                ${todas ? "" : "AND id = ?"} ORDER BY CASE perfil WHEN 'gerente' THEN 0 ELSE 1 END, nome`)
+      .bind(ctx.barbeariaId, ...(todas ? [] : [user.id])).all(),
     db.prepare(`SELECT a.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone, u.nome AS barbeiro_nome,
                   (SELECT group_concat(nome, ' + ') FROM (SELECT nome FROM agendamento_servicos s WHERE s.agendamento_id = a.id ORDER BY s.rowid)) AS servicos_nomes,
                   si.serie_id, se.intervalo_semanas
@@ -311,7 +313,7 @@ async function finalizar(ctx) {
 
 export async function finalizarDados(ctx, input) {
   const { db, user } = ctx;
-  const a = await agendamentoPermitido(ctx, input.id);
+  const a = await agendamentoPermitido(ctx, input.id, { cobrar: true });
   if (a.situacao !== "agendado") erro(`Esse horário está "${a.situacao}"; só dá para finalizar um horário agendado.`, 409);
   const hoje = hojeBrasil();
   if (a.data > hoje) erro("Não dá para finalizar um horário de um dia que ainda não chegou.", 409);
@@ -520,7 +522,7 @@ async function ocupacao(ctx) {
   const ini = exigirData(url.searchParams.get("inicio"), "Início");
   const fim = exigirData(url.searchParams.get("fim"), "Fim");
   if (fim < ini || fim > somarDias(ini, 400)) erro("Período inválido (até 1 ano).");
-  const filtro = isGestao(user) ? (url.searchParams.get("barbeiroId") || null) : user.id;
+  const filtro = veTodasAgendas(user) ? (url.searchParams.get("barbeiroId") || null) : user.id;
   if (filtro && !validId(filtro)) erro("Profissional inválido.");
   const [profsR, ags, blqs, minDur, regras] = await Promise.all([
     db.prepare(`SELECT id, nome FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('gerente','barbeiro')${filtro ? " AND id = ?" : ""}`)
@@ -603,6 +605,8 @@ export async function atendimentoAvulso(ctx) {
 export async function rotasAgenda(ctx, path, method) {
   if (path !== "/agenda" && !path.startsWith("/agenda/")) return null;
   exigirAgenda(ctx);
+  // Caixa: cobra pela tela do caixa; não reabre atendimento nem bloqueia agenda de profissional.
+  if (ctx.user.perfil === "caixa" && ["/agenda/finalizar", "/agenda/reabrir", "/agenda/bloqueios", "/agenda/bloqueios/cancelar"].includes(path)) erro("Sem permissão", 403);
   if (path === "/agenda" && method === "GET") return listarAgenda(ctx);
   if (path === "/agenda/ocupacao" && method === "GET") return ocupacao(ctx);
   if (path === "/agenda" && method === "POST") return marcar(ctx);

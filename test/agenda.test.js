@@ -157,8 +157,10 @@ describe("agenda (4.1)", () => {
       ["/api/agenda/finalizar", { id: idOutro, itens: [], pagamentos: [] }]
     ]) assert.equal((await post(rota, barb.token, corpo)).status, 403, rota);
 
-    assert.equal((await get("/api/agenda", cx.token)).status, 403);
-    assert.equal((await marcar(cx.token, {})).status, 403);
+    // caixa (recepção, pedido de 16/11/2026): vê todas as agendas e marca para qualquer profissional, mas não reabre nem bloqueia
+    assert.equal((await get("/api/agenda", cx.token)).status, 200);
+    assert.equal((await post("/api/agenda/bloqueios", cx.token, { barbeiroId: barb.id, inicio: `${AMANHA}T12:00`, fim: `${AMANHA}T13:00` })).status, 403);
+    assert.equal((await post("/api/agenda/reabrir", cx.token, { id: idOutro, motivo: "teste" })).status, 403);
   });
 
   test("situações: faltou e cancelado (cancelar exige motivo); horário cancelado libera a vaga", async () => {

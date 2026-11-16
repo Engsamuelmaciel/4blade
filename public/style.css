@@ -462,6 +462,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
   .navega-data .botao.seta { min-width: 44px; }
   .filtro-prof { width: 100%; }
   .acoes-agenda { display: grid; grid-template-columns: 1fr 1fr; }
+  .acoes-agenda > .botao:only-child { grid-column: 1 / -1; }
   .acoes-agenda .botao, .pdv-acoes .botao { width: 100%; }
   .pdv-barra > .pdv-acoes { width: 100%; margin-left: 0; display: grid; grid-template-columns: repeat(3, 1fr); }
   .pdv-barra > .pdv-acoes > a { grid-column: 1 / -1; text-align: center; }

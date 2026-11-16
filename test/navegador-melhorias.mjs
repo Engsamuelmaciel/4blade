@@ -237,6 +237,34 @@ async function rodar(tela) {
     await page.click(".pdv-barra .alterna button:has-text('Lançamentos')");
     await page.waitForSelector('[data-lancamento="Hugo Avulso Fictício"]');
     await print("caixa-lancamentos");
+
+    passo("caixa (recepção) vê a agenda de todos, marca para um barbeiro e acessa clientes, mensagens e catálogo");
+    const gruposCaixa = await page.locator("#menu .grupo-titulo").allInnerTexts();
+    assert.ok(gruposCaixa.some(t => /Atendimento/.test(t)) && gruposCaixa.some(t => /Catálogo/.test(t)), `menu do caixa: ${gruposCaixa}`);
+    await ir(page, "Agenda");
+    await page.waitForSelector(".filtro-prof");
+    assert.equal(await page.locator(".acoes-agenda button:has-text('Bloquear')").count(), 0, "caixa não bloqueia agenda");
+    await page.click("button:has-text('+ Novo horário')");
+    const nomesProf = await page.locator("dialog[open] #c-prof option").allInnerTexts();
+    assert.ok(nomesProf.includes("Ana Barbeira") && nomesProf.includes("Beto Barbeiro"), `profissionais: ${nomesProf}`);
+    await page.selectOption("dialog[open] #c-prof", { label: "Beto Barbeiro" });
+    await page.fill("dialog[open] #c-data", AMANHA);
+    await page.fill("dialog[open] #c-hora", "17:00");
+    await page.check("dialog[open] input[name=serv] >> nth=0");
+    await page.fill("dialog[open] #c-cliNome", "Ivo Recepção Fictício");
+    await ok();
+    await page.waitForSelector('[data-prof="Beto Barbeiro"] [data-agendamento="Ivo Recepção Fictício"]');
+    assert.equal(await page.locator('[data-agendamento="Ivo Recepção Fictício"] button:has-text("Finalizar")').count(), 0, "caixa cobra pela tela do caixa");
+    assert.ok(await page.locator('[data-prof="Ana Barbeira"]').isVisible(), "vê a agenda da Ana também");
+    await print("caixa-agenda-todos");
+    await ir(page, "Clientes");
+    await page.waitForSelector('[data-cliente="Ivo Recepção Fictício"]');
+    assert.equal(await page.locator('[data-cliente="Ivo Recepção Fictício"] button:has-text("Desativar")').count(), 0);
+    await ir(page, "Mensagens");
+    await page.waitForSelector("h2:has-text('Modelos de mensagem')");
+    await ir(page, "Serviços");
+    await page.waitForSelector("h2:has-text('Serviços')");
+    await print("caixa-catalogo-servicos");
     await sair();
 
     // ---------- PAINEL ----------

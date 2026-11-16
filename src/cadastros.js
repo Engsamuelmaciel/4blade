@@ -5,6 +5,13 @@ import {
   normalizarTelefone, exigirMotivo, auditoria, diferenca
 } from "./util.js";
 import { isGestao } from "./perfis.js";
+
+// Caixa (recepção) também cuida de clientes: ver, cadastrar e editar (desativar continua com a gestão).
+const cuidaDeClientes = (user, nome) => nome === "clientes" && user.perfil === "caixa";
+function exigirEdicao(ctx, nome) {
+  exigirBarbearia(ctx);
+  if (!isGestao(ctx.user) && !cuidaDeClientes(ctx.user, nome)) throw new HttpError("Sem permissão", 403);
+}
 import { telefoneReal } from "./agenda-util.js";
 import { comandosEntrada, lerEstoqueInicial } from "./estoque.js";
 import { exigirBarbearia, exigirGestao } from "./usuarios.js";
@@ -126,7 +133,7 @@ async function rotasCadastro(ctx, nome, def, path, method) {
 
   if (path === base && method === "GET") {
     exigirBarbearia(ctx);
-    const gestao = isGestao(user);
+    const gestao = isGestao(user) || cuidaDeClientes(user, nome);
     if (!gestao && !def.leituraRestrita) return fail("Sem permissão", 403);
     const url = new URL(request.url);
     let sql = def.selectLista || `SELECT * FROM ${def.tabela} WHERE barbearia_id = ?`;
@@ -145,7 +152,7 @@ async function rotasCadastro(ctx, nome, def, path, method) {
   }
 
   if (path === base && method === "POST") {
-    exigirGestao(ctx);
+    exigirEdicao(ctx, nome);
     const input = await readJson(request);
     const valores = {};
     for (const [api, c] of Object.entries(def.campos)) {
@@ -173,8 +180,9 @@ async function rotasCadastro(ctx, nome, def, path, method) {
   }
 
   if (path === `${base}/alterar` && method === "POST") {
-    exigirGestao(ctx);
+    exigirEdicao(ctx, nome);
     const input = await readJson(request);
+    if (!isGestao(user) && input.ativo !== undefined) return fail("Só o gerente ou o proprietário desativa ou reativa.", 403);
     if (!validId(input.id)) return fail("Registro inválido.");
     // Sempre dentro da barbearia da sessão: id de outra barbearia = "não encontrado".
     const atual = await db.prepare(`SELECT * FROM ${def.tabela} WHERE id = ? AND barbearia_id = ?`).bind(input.id, ctx.barbeariaId).first();
@@ -237,7 +245,9 @@ export function validarModelo(texto) {
 
 async function rotasModelos(ctx, path, method) {
   const { db, request } = ctx;
-  exigirGestao(ctx);
+  // Modelos de mensagem do WhatsApp: gestão e caixa (recepção, que envia os lembretes).
+  exigirBarbearia(ctx);
+  if (!isGestao(ctx.user) && ctx.user.perfil !== "caixa") throw new HttpError("Sem permissão", 403);
   if (path === "/modelos-mensagem" && method === "GET") {
     const r = await db.prepare("SELECT tipo, texto, atualizado_em FROM modelos_mensagem WHERE barbearia_id = ? ORDER BY tipo")
       .bind(ctx.barbeariaId).all();

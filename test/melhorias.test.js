@@ -107,8 +107,8 @@ describe("caixa como PDV: cobrar atendimento e atendimento sem horário", () => 
     assert.equal((await get("/api/caixa/hoje", cx.token)).dados.totais.entradasCentavos, 4000);
     assert.equal((await post("/api/caixa/cobrar", barb.token, { id: hoje })).status, 403);
     assert.equal((await get("/api/caixa/atendimentos", barb.token)).status, 403);
-    // caixa continua sem acesso à agenda completa
-    assert.equal((await get("/api/agenda", cx.token)).status, 403);
+    // caixa não cobra pela rota da agenda (só pela tela do caixa)
+    assert.equal((await post("/api/agenda/finalizar", cx.token, { id: hoje, itens: [], pagamentos: [] })).status, 403);
   });
 
   test("atendimento sem horário: cria, finaliza, entra no caixa e gera comissão do barbeiro", async () => {
@@ -247,5 +247,45 @@ describe("editar conta lançada (pedido de 16/11/2026)", () => {
     assert.equal((await post("/api/contas/alterar", barb.token, { id: c.id, descricao: "X" })).status, 403);
     const outra = await cenario("beta", amb, amb.p);
     assert.equal((await post("/api/contas/alterar", outra.ger.token, { id: c.id, descricao: "Invasão" })).status, 404);
+  });
+});
+
+describe("caixa como recepção: agenda de todos, clientes, mensagens e catálogo (pedido de 16/11/2026)", () => {
+  test("caixa vê todas as agendas sem comissão, marca para qualquer profissional, cancela e manda lembrete; isolamento", async () => {
+    const amb = await cenario();
+    const { post, get, ger, barb, cx, corte, cliente } = amb;
+    // marca para o barbeiro e para o gerente
+    const m1 = await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "09:00", servicoIds: [corte.id], cliente });
+    assert.equal(m1.status, 201, JSON.stringify(m1.dados));
+    const m2 = await post("/api/agenda", cx.token, { barbeiroId: ger.id, data: AMANHA, hora: "09:00", servicoIds: [corte.id], cliente: { nome: "Cliente do Gerente" } });
+    assert.equal(m2.status, 201, JSON.stringify(m2.dados));
+    // sem escolher profissional: recusa (o caixa não tem agenda própria)
+    const sem = await post("/api/agenda", cx.token, { data: AMANHA, hora: "10:00", servicoIds: [corte.id], cliente });
+    assert.equal(sem.status, 400);
+    assert.match(sem.dados.erro, /profissional/);
+    // vê os dois, com o filtro por profissional, e a ocupação
+    const ag = (await get(`/api/agenda?data=${AMANHA}`, cx.token)).dados;
+    assert.equal(ag.agendamentos.length, 2);
+    assert.equal(ag.profissionais.length, 2);
+    assert.equal((await get(`/api/agenda?data=${AMANHA}&barbeiroId=${barb.id}`, cx.token)).dados.agendamentos.length, 1);
+    assert.equal((await get(`/api/agenda/ocupacao?inicio=${AMANHA}&fim=${AMANHA}`, cx.token)).status, 200);
+    // lembrete e cancelamento em horário de outro dia
+    assert.equal((await post("/api/agenda/mensagem", cx.token, { id: m1.dados.agendamento.id, tipo: "lembrete" })).status, 201);
+    assert.equal((await post("/api/agenda/situacao", cx.token, { id: m2.dados.agendamento.id, situacao: "cancelado", motivo: "Cliente desmarcou" })).status, 200);
+    // clientes: lista, cadastra, edita; não desativa
+    const novo = await post("/api/clientes", cx.token, { nome: "Recepção Fictícia", telefone: "11 95555-1111", aceiteLgpd: true });
+    assert.equal(novo.status, 201, JSON.stringify(novo.dados));
+    assert.equal((await post("/api/clientes/alterar", cx.token, { id: novo.dados.cliente.id, nome: "Recepção Fictícia 2" })).status, 200);
+    assert.equal((await post("/api/clientes/alterar", cx.token, { id: novo.dados.cliente.id, ativo: false, motivo: "teste de permissão" })).status, 403);
+    assert.ok((await get("/api/clientes", cx.token)).dados.clientes.some(c => c.nome === "Recepção Fictícia 2"));
+    // catálogo: vê serviços e produtos; não altera
+    assert.equal((await get("/api/servicos", cx.token)).status, 200);
+    assert.equal((await post("/api/servicos/alterar", cx.token, { id: corte.id, precoCentavos: 1 })).status, 403);
+    // isolamento: caixa de outra barbearia não vê nem marca nesta
+    const outra = await cenario("beta", amb, amb.p);
+    assert.equal((await get(`/api/agenda?data=${AMANHA}`, outra.cx.token)).dados.agendamentos.length, 0);
+    assert.equal((await post("/api/agenda", outra.cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "11:00", servicoIds: [corte.id], cliente })).status, 404);
+    assert.equal((await post("/api/agenda/situacao", outra.cx.token, { id: m1.dados.agendamento.id, situacao: "faltou" })).status, 404);
+    assert.ok(!(await get("/api/clientes", outra.cx.token)).dados.clientes.some(c => c.nome === "Recepção Fictícia 2"));
   });
 });
