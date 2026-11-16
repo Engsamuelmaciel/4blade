@@ -14,16 +14,18 @@
 </head>
 <body>
   <header class="topo">
-    <img class="marca" src="/icons/marca.png" alt="" width="44" height="44">
+    <button type="button" class="btn-menu" id="btn-menu" aria-label="Abrir menu" aria-controls="menu" aria-expanded="false" hidden></button>
+    <img class="marca" src="/icons/marca.png" alt="" width="34" height="34">
     <div class="topo-textos">
       <h1>4blade</h1>
       <p class="sub" id="topo-sub"></p>
     </div>
     <nav class="topo-acoes" id="topo-acoes" hidden>
-      <button type="button" class="topo-botao" id="btn-inicio">Início</button>
       <button type="button" class="topo-botao" id="btn-sair">Sair</button>
     </nav>
   </header>
+  <aside class="menu-lateral" id="menu" aria-label="Menu" hidden></aside>
+  <div class="fundo-menu" id="fundo-menu" hidden></div>
   <main id="app" tabindex="-1">
     <p class="carregando">Carregando…</p>
   </main>

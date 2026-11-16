@@ -9,6 +9,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
+import { ir } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -111,7 +112,7 @@ async function rodar(tela) {
     // ---------- GERENTE: entradas e ajuste ----------
     passo("gerente dá entrada no estoque e registra uma quebra");
     await entrar("gabriel.navalha", "Senha-Gabriel-2026");
-    await page.click("a.menu-item:has-text('Estoque')");
+    await ir(page, "Estoque");
     await page.waitForSelector('[data-estoque="Pomada modeladora"]');
     for (const [nome, qtd, custo] of [["Pomada modeladora", "10", "20,00"], ["Óleo para barba", "6", "15,00"]]) {
       await page.click(`[data-estoque="${nome}"] button:has-text("Entrada")`);
@@ -138,7 +139,7 @@ async function rodar(tela) {
     await entrar("camila.navalha", "Senha-Camila-2026");
     await page.fill("#c-troco", "100,00");
     await page.click("button:has-text('Abrir caixa')");
-    await page.waitForSelector("text=Lançamentos do dia");
+    await page.waitForSelector(".pdv-topo");
     // 2 atendimentos finalizados pelo barbeiro (pela API): 40,00 dinheiro e 70,00 pix
     const barbTok = (await chamar("/auth/login", { login: "bruno.navalha", senha: "Senha-Bruno-2026" })).token;
     const servs = (await chamar("/servicos", null, ger)).servicos;
@@ -150,17 +151,23 @@ async function rodar(tela) {
       const m = await chamar("/agenda", { data: HOJE, hora, servicoIds: itens.map(s => s.id), cliente: { telefone: tel, nome, aceiteLgpd: true } }, barbTok);
       await chamar("/agenda/finalizar", { id: m.agendamento.id, itens: itens.map(s => ({ servicoId: s.id, precoCobradoCentavos: s.precoCentavos })), pagamentos: [{ forma, valorCentavos: valor }] }, barbTok);
     }
-    await page.click("button:has-text('Atualizar')");
+    const aba = nome => page.click(`.pdv-barra .alterna button:has-text('${nome}')`);
+    await aba("Lançamentos");
     await page.waitForSelector('[data-lancamento="Elias Cliente Fictício"]');
 
-    await page.click("button:has-text('Vender produto')");
-    await page.fill("[aria-label='Quantidade de Pomada modeladora']", "2");
-    await page.waitForSelector("dialog[open] [data-teste=total-venda]:has-text('90,00')");
-    await page.selectOption("#c-forma1", "dinheiro");
-    assert.equal(await page.locator("dialog[open] [data-venda-produto='Shampoo anticaspa']").count(), 0, "sem estoque não aparece para vender");
+    // PDV: produtos em botões + carrinho
+    await aba("Vender");
+    await page.waitForSelector('[data-produto-pdv="Pomada modeladora"]');
+    assert.equal(await page.locator("[data-produto-pdv='Shampoo anticaspa']").count(), 0, "sem estoque não aparece para vender");
+    await page.click('[data-produto-pdv="Pomada modeladora"]');
+    await page.click('[data-produto-pdv="Pomada modeladora"]');
+    await page.waitForSelector("[data-teste=total-venda]:has-text('90,00')");
+    await page.selectOption("[data-teste=carrinho] #c-forma1", "dinheiro");
     await print("caixa-venda-de-produto");
-    await ok();
+    await page.click("[data-teste=carrinho] button:has-text('Finalizar venda')");
     await page.waitForSelector("text=Venda registrada");
+    await aba("Lançamentos");
+    await page.waitForSelector('[data-lancamento="2x Pomada modeladora"]');
 
     await page.click("button:has-text('Sangria')");
     await page.fill("dialog[open] [name=valor]", "50,00");
@@ -204,7 +211,7 @@ async function rodar(tela) {
     // ---------- BARBEIRO ----------
     passo("barbeiro vê disponível/indisponível, sem custo");
     await entrar("bruno.navalha", "Senha-Bruno-2026");
-    await page.click("a.menu-item:has-text('Produtos')");
+    await ir(page, "Produtos");
     await page.waitForSelector('[data-produto="Shampoo anticaspa"]');
     assert.match(await texto('[data-produto="Shampoo anticaspa"]'), /Indisponível/);
     assert.match(await texto('[data-produto="Pomada modeladora"]'), /Disponível/);
@@ -215,7 +222,7 @@ async function rodar(tela) {
     // ---------- GERENTE: histórico, reabrir caixa, inventário ----------
     passo("gerente vê o histórico, reabre o caixa com motivo e faz inventário");
     await entrar("gabriel.navalha", "Senha-Gabriel-2026");
-    await page.click("a.menu-item:has-text('Caixa')");
+    await ir(page, "Caixa");
     await page.click("a:has-text('Caixas de outros dias')");
     await page.waitForSelector(`[data-caixa-dia="${HOJE}"]`);
     assert.match(await texto(`[data-caixa-dia="${HOJE}"]`), /falta R\$\s?5,00/);
@@ -229,8 +236,7 @@ async function rodar(tela) {
     await page.waitForSelector("text=Reaberto 1x");
     await print("gerente-caixa-reaberto");
 
-    await page.click("#btn-inicio");
-    await page.click("a.menu-item:has-text('Estoque')");
+    await ir(page, "Estoque");
     await page.click("button:has-text('Inventário')");
     await page.fill("[aria-label='Contado de Pomada modeladora']", "7");
     await page.waitForSelector('dialog[open] [data-inventario="Pomada modeladora"] >> text=diferença -1');

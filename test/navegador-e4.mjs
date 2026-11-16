@@ -10,6 +10,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
+import { ir } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -90,7 +91,7 @@ async function rodar(tela) {
     // ---------- PAINEL ----------
     passo("gerente vê o painel com os números conferidos à mão");
     await entrar("gerente.semana");
-    await page.click("a.menu-item:has-text('Painel')");
+    await ir(page, "Painel");
     await page.waitForSelector("[data-cartao=bruto]");
     // hoje: Beto 70,00; comissão 40% = 28,00; lucro 42,00
     assert.match(await texto("[data-cartao=bruto]"), R("70,00"));
@@ -118,8 +119,7 @@ async function rodar(tela) {
 
     // ---------- COMISSÕES E VALES ----------
     passo("gerente lança e cancela um vale, fecha a comissão da semana e registra um pagamento");
-    await page.click("#btn-inicio");
-    await page.click("a.menu-item:has-text('Comissões e vales')");
+    await ir(page, "Comissões e vales");
     await page.waitForSelector("text=Lançar vale");
     await page.selectOption("#c-barb", { label: "Beto Barbeiro" });
     await page.fill("#c-valor", "10,00");
@@ -149,8 +149,7 @@ async function rodar(tela) {
 
     // ---------- CONTAS ----------
     passo("gerente cadastra conta e paga a atrasada com dinheiro do caixa");
-    await page.click("#btn-inicio");
-    await page.click("a.menu-item:has-text('Contas a pagar')");
+    await ir(page, "Contas a pagar");
     await page.fill("#c-desc", "Água (fictícia)");
     await page.selectOption("#c-cat", "agua");
     await page.fill("#c-valor", "90,00");
@@ -166,8 +165,7 @@ async function rodar(tela) {
 
     // ---------- CONTADOR ----------
     passo("gerente envia ao contador (PDF + planilha) e vê o aviso de alteração");
-    await page.click("#btn-inicio");
-    await page.click("a.menu-item:has-text('Contador e dados')");
+    await ir(page, "Contador e dados");
     await page.fill("#c-nome", "Contabilidade Fictícia");
     await page.fill("#c-tel", "(11) 95555-0000");
     await page.click("button:has-text('Salvar contato')");
@@ -191,8 +189,7 @@ async function rodar(tela) {
     const vendaId = cxDia.lancamentos.find(l => l.tipo === "venda").vendaId;
     const canc = await fetch(`${base}/api/vendas/cancelar`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tCaixa}` }, body: JSON.stringify({ id: vendaId, motivo: "Cliente devolveu" }) });
     assert.equal(canc.status, 200);
-    await page.click("#btn-inicio");
-    await page.click("a.menu-item:has-text('Contador e dados')");
+    await ir(page, "Contador e dados");
     await page.waitForSelector(`[data-envio="${dia(4).slice(0, 7)}"] >> text=Alterado depois do envio`);
     await print("gerente-contador-aviso-alteracao");
     const planilha = await baixados(() => page.click(".botoes-planilha button:has-text('Clientes')"), 1);
@@ -203,7 +200,7 @@ async function rodar(tela) {
     // ---------- BARBEIRA ----------
     passo("barbeira vê só o próprio desempenho e baixa o extrato");
     await entrar("ana.semana");
-    await page.click("a.menu-item:has-text('Meu desempenho')");
+    await ir(page, "Meu desempenho");
     await page.waitForSelector("[data-cartao=comissao]");
     // semana: 4 atendimentos, 180,00, comissão 94,50, vales 20,00
     assert.match(await texto("[data-cartao=atendimentos]"), /4/);

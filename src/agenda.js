@@ -8,7 +8,7 @@ import {
 import { isGestao, atende } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
 import {
-  horaParaMin, exigirData, exigirMomento, somarDias, regrasDoDia, conferirHorario, momento,
+  horaParaMin, exigirData, exigirMomento, somarDias, regrasDoDia, conferirHorario, momento, carregarRegras, diaSemana, janelaDoDia, livreNaJanela,
   carregarModelos, linksWhatsapp, lerPagamentos, formaEfetiva, FORMAS
 } from "./agenda-util.js";
 
@@ -46,6 +46,11 @@ async function agendamentoPermitido(ctx, id) {
     WHERE a.id = ? AND a.barbearia_id = ?
   `).bind(id, ctx.barbeariaId).first();
   if (!a) erro("Horário não encontrado.", 404);
+  // Caixa: só cobra (finaliza) atendimentos de hoje, pela tela do caixa.
+  if (ctx.user.perfil === "caixa") {
+    if (a.data !== hojeBrasil()) erro("No caixa só dá para cobrar atendimentos de hoje.", 403);
+    return a;
+  }
   if (!isGestao(ctx.user) && a.barbeiro_id !== ctx.user.id) erro("Esse horário é da agenda de outro profissional.", 403);
   return a;
 }
@@ -73,8 +78,10 @@ async function listarAgenda(ctx) {
                 ${gestao ? "" : "AND id = ?"} ORDER BY CASE perfil WHEN 'gerente' THEN 0 ELSE 1 END, nome`)
       .bind(ctx.barbeariaId, ...(gestao ? [] : [user.id])).all(),
     db.prepare(`SELECT a.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone, u.nome AS barbeiro_nome,
-                  (SELECT group_concat(nome, ' + ') FROM (SELECT nome FROM agendamento_servicos s WHERE s.agendamento_id = a.id ORDER BY s.rowid)) AS servicos_nomes
+                  (SELECT group_concat(nome, ' + ') FROM (SELECT nome FROM agendamento_servicos s WHERE s.agendamento_id = a.id ORDER BY s.rowid)) AS servicos_nomes,
+                  si.serie_id, se.intervalo_semanas
                 FROM agendamentos a JOIN clientes c ON c.id = a.cliente_id JOIN usuarios u ON u.id = a.barbeiro_id
+                LEFT JOIN agendamento_serie_itens si ON si.agendamento_id = a.id LEFT JOIN agendamento_series se ON se.id = si.serie_id
                 WHERE ${condA} ORDER BY a.inicio`).bind(...pa).all(),
     db.prepare(`SELECT s.* FROM agendamento_servicos s JOIN agendamentos a ON a.id = s.agendamento_id WHERE ${condA} ORDER BY s.rowid`).bind(...pa).all(),
     db.prepare(`SELECT f.* FROM finalizacoes f JOIN agendamentos a ON a.id = f.agendamento_id WHERE ${condA} AND f.estornada = 0`).bind(...pa).all(),
@@ -112,6 +119,7 @@ async function listarAgenda(ctx) {
       id: a.id, barbeiroId: a.barbeiro_id, barbeiroNome: a.barbeiro_nome, data: a.data,
       inicio: a.inicio.slice(11), fim: a.fim.slice(11), situacao: a.situacao, motivo: a.motivo || null,
       observacao: a.observacao || null,
+      serie: a.serie_id ? { id: a.serie_id, intervaloSemanas: a.intervalo_semanas } : null,
       cliente: { id: a.cliente_id, nome: a.cliente_nome, telefone: a.cliente_telefone },
       servicos: (servPor[a.id] || []).map(s => ({ id: s.servico_id, nome: s.nome, duracaoMin: s.duracao_min })),
       whatsapp: linksWhatsapp(a, modelos, user.barbearia_nome),
@@ -140,6 +148,64 @@ async function listarAgenda(ctx) {
 }
 
 // ---------- MARCAR ----------
+// Cliente sempre identificado pelo telefone: existe → usa; não existe → nasce aqui (com aceite LGPD).
+// Põe em "comandos" o cadastro do cliente novo (para ir no mesmo lote) e devolve { id, nome, novo }.
+async function clienteDaMarcacao(ctx, c = {}, comandos, origem = "agenda") {
+  const { db, user } = ctx;
+  const telefone = normalizarTelefone(c.telefone);
+  if (!telefone) erro("Telefone do cliente inválido: DDD + número.");
+  const cliente = await db.prepare("SELECT id, nome, ativo FROM clientes WHERE barbearia_id = ? AND telefone = ?").bind(ctx.barbeariaId, telefone).first();
+  if (cliente && !cliente.ativo) erro("Esse cliente está desativado. Peça ao gerente para reativar.", 409);
+  if (cliente) return { id: cliente.id, nome: cliente.nome, novo: false };
+  const nome = textoLimpo(c.nome, 2, 80);
+  if (!nome) erro("Cliente novo: informe o nome.");
+  if (c.aceiteLgpd !== true) erro("Cliente novo: é preciso o aceite do uso do telefone para o atendimento (LGPD).");
+  const id = crypto.randomUUID();
+  comandos.push(
+    db.prepare(`INSERT INTO clientes (id, barbearia_id, nome, telefone, aceite_lgpd, aceite_lgpd_em, aceite_lgpd_por) VALUES (?, ?, ?, ?, 1, ?, ?)`)
+      .bind(id, ctx.barbeariaId, nome, telefone, new Date().toISOString(), user.id),
+    auditoria(ctx, "cliente_criado", id, { origem, depois: { nome, telefone, aceite_lgpd: 1 } })
+  );
+  return { id, nome, novo: true };
+}
+
+async function servicosEscolhidos(ctx, servicoIds) {
+  if (!Array.isArray(servicoIds) || servicoIds.length < 1 || servicoIds.length > 6) erro("Escolha de 1 a 6 serviços.");
+  if (new Set(servicoIds).size !== servicoIds.length || !servicoIds.every(validId)) erro("Serviços inválidos.");
+  const r = await ctx.db.prepare(`SELECT id, nome, duracao_min, preco_centavos FROM servicos WHERE barbearia_id = ? AND ativo = 1
+                                  AND id IN (${servicoIds.map(() => "?").join(",")})`).bind(ctx.barbeariaId, ...servicoIds).all();
+  if (r.results.length !== servicoIds.length) erro("Serviço não encontrado ou desativado.", 404);
+  const ordem = Object.fromEntries(servicoIds.map((id, i) => [id, i]));
+  return r.results.sort((a, b) => ordem[a.id] - ordem[b.id]);
+}
+
+// Comandos para gravar UM horário, só se não houver sobreposição nem bloqueio (conferência e gravação no mesmo comando).
+function comandosDoHorario(ctx, { id, prof, cliente, data, ini, fim, servs, observacao, serieId }) {
+  const { db, user } = ctx;
+  const inicio = momento(data, ini);
+  const termino = momento(data, fim);
+  const conflito = `
+    NOT EXISTS (SELECT 1 FROM agendamentos WHERE barbearia_id = ? AND barbeiro_id = ? AND situacao IN ('agendado','finalizado') AND inicio < ? AND fim > ?)
+    AND NOT EXISTS (SELECT 1 FROM bloqueios WHERE barbearia_id = ? AND barbeiro_id = ? AND ativo = 1 AND inicio < ? AND fim > ?)`;
+  const pConflito = [ctx.barbeariaId, prof.id, termino, inicio, ctx.barbeariaId, prof.id, termino, inicio];
+  const existe = ["EXISTS (SELECT 1 FROM agendamentos WHERE id = ?)", [id]];
+  return [
+    db.prepare(`INSERT INTO agendamentos (id, barbearia_id, barbeiro_id, cliente_id, data, inicio, fim, observacao, criado_por)
+                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${conflito}`)
+      .bind(id, ctx.barbeariaId, prof.id, cliente.id, data, inicio, termino, observacao, user.id, ...pConflito),
+    ...servs.map(sv => db.prepare(`INSERT INTO agendamento_servicos (id, barbearia_id, agendamento_id, servico_id, nome, duracao_min)
+                SELECT ?, ?, ?, ?, ?, ? WHERE ${existe[0]}`)
+      .bind(crypto.randomUUID(), ctx.barbeariaId, id, sv.id, sv.nome, sv.duracao_min, ...existe[1])),
+    ...(serieId ? [db.prepare(`INSERT INTO agendamento_serie_itens (serie_id, agendamento_id, barbearia_id) SELECT ?, ?, ? WHERE ${existe[0]}`)
+      .bind(serieId, id, ctx.barbeariaId, ...existe[1])] : []),
+    auditoriaSe(ctx, ...existe, "agendamento_criado", id, {
+      depois: { barbeiro: prof.id, cliente: cliente.id, inicio, fim: termino, servicos: servs.map(x => x.nome), serie: serieId || undefined }
+    })
+  ];
+}
+
+const NOME_DIA_SEMANA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+
 async function marcar(ctx) {
   const { db, user, request } = ctx;
   const input = await readJson(request);
@@ -148,72 +214,82 @@ async function marcar(ctx) {
   if (data < somarDias(hojeBrasil(), -1) || data > somarDias(hojeBrasil(), 366)) erro("Escolha uma data entre ontem e daqui a um ano.");
   const ini = horaParaMin(input.hora);
   if (ini === null) erro("Hora inválida (HH:MM).");
-  if (!Array.isArray(input.servicoIds) || input.servicoIds.length < 1 || input.servicoIds.length > 6) erro("Escolha de 1 a 6 serviços.");
-  if (new Set(input.servicoIds).size !== input.servicoIds.length || !input.servicoIds.every(validId)) erro("Serviços inválidos.");
   const observacao = textoOpcional(input.observacao, 300);
   if (observacao === false) erro("Observação muito longa (até 300 letras).");
-
-  const servs = await db.prepare(`SELECT id, nome, duracao_min FROM servicos WHERE barbearia_id = ? AND ativo = 1
-                                  AND id IN (${input.servicoIds.map(() => "?").join(",")})`).bind(ctx.barbeariaId, ...input.servicoIds).all();
-  if (servs.results.length !== input.servicoIds.length) erro("Serviço não encontrado ou desativado.", 404);
-  const ordem = Object.fromEntries(input.servicoIds.map((id, i) => [id, i]));
-  servs.results.sort((a, b) => ordem[a.id] - ordem[b.id]);
-  const fim = ini + servs.results.reduce((s, x) => s + x.duracao_min, 0);
+  const servs = await servicosEscolhidos(ctx, input.servicoIds);
+  const fim = ini + servs.reduce((t, x) => t + x.duracao_min, 0);
   if (fim > 24 * 60) erro("O horário passa da meia-noite.");
-  conferirHorario(await regrasDoDia(db, ctx.barbeariaId, prof.id, data), ini, fim);
 
-  // Cliente sempre identificado pelo telefone: existe → usa; não existe → nasce aqui (com aceite LGPD).
-  const c = input.cliente || {};
-  const telefone = normalizarTelefone(c.telefone);
-  if (!telefone) erro("Telefone do cliente inválido: DDD + número.");
+  // Horário fixo: repete a cada N semanas até a data final (no máximo 6 meses).
+  let datas = [data];
+  let rep = null;
+  if (input.repetir) {
+    rep = input.repetir;
+    if (!Number.isInteger(rep.intervaloSemanas) || rep.intervaloSemanas < 1 || rep.intervaloSemanas > 4) erro("Repetição inválida: a cada 1, 2, 3 ou 4 semanas.");
+    const ate = exigirData(rep.ate, "Data final da repetição");
+    if (ate <= data) erro("A data final da repetição precisa ser depois do primeiro horário.");
+    if (ate > somarDias(data, 183)) erro("Repetição de no máximo 6 meses. Depois é só renovar.");
+    datas = [];
+    for (let d = data; d <= ate; d = somarDias(d, 7 * rep.intervaloSemanas)) datas.push(d);
+  }
+
+  const regras = await carregarRegras(db, ctx.barbeariaId, data, datas.at(-1));
+  // O primeiro horário precisa ser válido (mensagem clara); os seguintes que não couberem são pulados e listados.
+  conferirHorario(regras(data, prof.id), ini, fim);
+  const pulados = [];
+  const validas = [];
+  for (const d of datas) {
+    try { conferirHorario(regras(d, prof.id), ini, fim); validas.push(d); }
+    catch (e) { pulados.push({ data: d, motivo: e.message }); }
+  }
+
   const comandos = [];
-  let cliente = await db.prepare("SELECT id, nome, ativo FROM clientes WHERE barbearia_id = ? AND telefone = ?").bind(ctx.barbeariaId, telefone).first();
-  if (cliente && !cliente.ativo) erro("Esse cliente está desativado. Peça ao gerente para reativar.", 409);
-  if (!cliente) {
-    const nome = textoLimpo(c.nome, 2, 80);
-    if (!nome) erro("Cliente novo: informe o nome.");
-    if (c.aceiteLgpd !== true) erro("Cliente novo: é preciso o aceite do uso do telefone para o atendimento (LGPD).");
-    cliente = { id: crypto.randomUUID(), nome, novo: true };
+  const cliente = await clienteDaMarcacao(ctx, input.cliente, comandos);
+  const serieId = rep ? crypto.randomUUID() : null;
+  if (rep) {
     comandos.push(
-      db.prepare(`INSERT INTO clientes (id, barbearia_id, nome, telefone, aceite_lgpd, aceite_lgpd_em, aceite_lgpd_por) VALUES (?, ?, ?, ?, 1, ?, ?)`)
-        .bind(cliente.id, ctx.barbeariaId, nome, telefone, new Date().toISOString(), user.id),
-      auditoria(ctx, "cliente_criado", cliente.id, { origem: "agenda", depois: { nome, telefone, aceite_lgpd: 1 } })
+      db.prepare(`INSERT INTO agendamento_series (id, barbearia_id, barbeiro_id, cliente_id, intervalo_semanas, hora, data_ini, data_fim, criado_por)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(serieId, ctx.barbeariaId, prof.id, cliente.id, rep.intervaloSemanas, input.hora, data, datas.at(-1), user.id),
+      auditoria(ctx, "horario_fixo_criado", serieId, { depois: { barbeiro: prof.id, cliente: cliente.id, intervaloSemanas: rep.intervaloSemanas, hora: input.hora, de: data, ate: datas.at(-1) } })
     );
   }
-
-  const id = crypto.randomUUID();
-  const inicio = momento(data, ini);
-  const termino = momento(data, fim);
-  const conflito = `
-    NOT EXISTS (SELECT 1 FROM agendamentos WHERE barbearia_id = ? AND barbeiro_id = ? AND situacao IN ('agendado','finalizado') AND inicio < ? AND fim > ?)
-    AND NOT EXISTS (SELECT 1 FROM bloqueios WHERE barbearia_id = ? AND barbeiro_id = ? AND ativo = 1 AND inicio < ? AND fim > ?)`;
-  const pConflito = [ctx.barbeariaId, prof.id, termino, inicio, ctx.barbeariaId, prof.id, termino, inicio];
-  // Conferência de sobreposição e gravação no MESMO comando (dois toques ao mesmo tempo não marcam o mesmo horário).
-  comandos.push(
-    db.prepare(`INSERT INTO agendamentos (id, barbearia_id, barbeiro_id, cliente_id, data, inicio, fim, observacao, criado_por)
-                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${conflito}`)
-      .bind(id, ctx.barbeariaId, prof.id, cliente.id, data, inicio, termino, observacao, user.id, ...pConflito),
-    ...servs.results.map(s => db.prepare(`INSERT INTO agendamento_servicos (id, barbearia_id, agendamento_id, servico_id, nome, duracao_min)
-                SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM agendamentos WHERE id = ?)`)
-      .bind(crypto.randomUUID(), ctx.barbeariaId, id, s.id, s.nome, s.duracao_min, id)),
-    auditoriaSe(ctx, "EXISTS (SELECT 1 FROM agendamentos WHERE id = ?)", [id], "agendamento_criado", id, {
-      depois: { barbeiro: prof.id, cliente: cliente.id, inicio, fim: termino, servicos: servs.results.map(s => s.nome) }
-    })
-  );
+  const ids = validas.map(d => [d, crypto.randomUUID()]);
+  for (const [d, id] of ids) comandos.push(...comandosDoHorario(ctx, { id, prof, cliente, data: d, ini, fim, servs, observacao, serieId }));
   await db.batch(comandos);
-  const criado = await db.prepare("SELECT id FROM agendamentos WHERE id = ?").bind(id).first();
-  if (!criado) {
-    const b = await db.prepare("SELECT 1 FROM bloqueios WHERE barbearia_id = ? AND barbeiro_id = ? AND ativo = 1 AND inicio < ? AND fim > ?")
-      .bind(ctx.barbeariaId, prof.id, termino, inicio).first();
-    erro(b ? "Esse horário está bloqueado na agenda do profissional." : "Já existe outro atendimento nesse horário para esse profissional.", 409);
+
+  const criados = (await db.prepare(`SELECT id, data FROM agendamentos WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids.map(x => x[1])).all()).results;
+  const criadosSet = new Set(criados.map(x => x.id));
+  for (const [d, id] of ids) if (!criadosSet.has(id)) pulados.push({ data: d, motivo: "Já existe outro atendimento ou bloqueio nesse horário." });
+  pulados.sort((x, y) => x.data.localeCompare(y.data));
+
+  const primeiro = ids.find(([d]) => d === data);
+  if (!primeiro || !criadosSet.has(primeiro[1])) {
+    if (rep && criados.length) { /* o 1º conflitou, mas a série seguiu */ } else {
+      const b = await db.prepare("SELECT 1 FROM bloqueios WHERE barbearia_id = ? AND barbeiro_id = ? AND ativo = 1 AND inicio < ? AND fim > ?")
+        .bind(ctx.barbeariaId, prof.id, momento(data, fim), momento(data, ini)).first();
+      erro(b ? "Esse horário está bloqueado na agenda do profissional." : "Já existe outro atendimento nesse horário para esse profissional.", 409);
+    }
   }
-  return json({ agendamento: { id, inicio, fim: termino, barbeiroId: prof.id, cliente: { id: cliente.id, nome: cliente.nome, novo: Boolean(cliente.novo) } } }, 201);
+  return json({
+    agendamento: primeiro && criadosSet.has(primeiro[1])
+      ? { id: primeiro[1], inicio: momento(data, ini), fim: momento(data, fim), barbeiroId: prof.id, cliente }
+      : null,
+    ...(rep ? {
+      serie: {
+        id: serieId, intervaloSemanas: rep.intervaloSemanas, diaSemana: NOME_DIA_SEMANA[diaSemana(data)], hora: input.hora,
+        criados: criados.length, datas: criados.map(x => x.data).sort(), pulados
+      }
+    } : {})
+  }, 201);
 }
 
 // ---------- FINALIZAR ----------
 async function finalizar(ctx) {
-  const { db, user, request } = ctx;
-  const input = await readJson(request);
+  return finalizarDados(ctx, await readJson(ctx.request));
+}
+
+export async function finalizarDados(ctx, input) {
+  const { db, user } = ctx;
   const a = await agendamentoPermitido(ctx, input.id);
   if (a.situacao !== "agendado") erro(`Esse horário está "${a.situacao}"; só dá para finalizar um horário agendado.`, 409);
   const hoje = hojeBrasil();
@@ -279,7 +355,8 @@ async function finalizar(ctx) {
   if (!(await db.prepare("SELECT 1 FROM finalizacoes WHERE id = ?").bind(fid).first())) {
     erro("Não foi possível finalizar: o horário mudou ou o caixa foi fechado. Atualize a tela.", 409);
   }
-  return json({ finalizacao: { id: fid, totalCentavos: total, valorAlterado, comissaoCentavos: comissao } }, 201);
+  // O caixa nunca vê comissão.
+  return json({ finalizacao: { id: fid, totalCentavos: total, valorAlterado, ...(user.perfil === "caixa" ? {} : { comissaoCentavos: comissao }) } }, 201);
 }
 
 // ---------- REABRIR (finalizado por engano) ----------
@@ -330,6 +407,19 @@ async function mudarSituacao(ctx) {
   if (!["faltou", "cancelado"].includes(input.situacao)) erro("Situação inválida (faltou ou cancelado).");
   if (a.situacao !== "agendado") erro("Só um horário agendado pode virar falta ou cancelamento.", 409);
   const motivo = input.situacao === "cancelado" ? exigirMotivo(input.motivo) : (textoLimpo(input.motivo, 3, 300) || null);
+  // Horário fixo: cancelar "este e os próximos" da série.
+  if (input.situacao === "cancelado" && input.serie === true) {
+    const it = await db.prepare("SELECT serie_id FROM agendamento_serie_itens WHERE agendamento_id = ? AND barbearia_id = ?").bind(a.id, ctx.barbeariaId).first();
+    if (!it) erro("Esse horário não faz parte de um horário fixo.");
+    const proximos = `id IN (SELECT agendamento_id FROM agendamento_serie_itens WHERE serie_id = ?) AND barbearia_id = ? AND situacao = 'agendado' AND inicio >= ?`;
+    const qtd = await db.prepare(`SELECT COUNT(*) AS n FROM agendamentos WHERE ${proximos}`).bind(it.serie_id, ctx.barbeariaId, a.inicio).first();
+    await db.batch([
+      db.prepare(`UPDATE agendamentos SET situacao = 'cancelado', motivo = ?, atualizado_em = CURRENT_TIMESTAMP WHERE ${proximos}`).bind(motivo, it.serie_id, ctx.barbeariaId, a.inicio),
+      db.prepare("UPDATE agendamento_series SET ativo = 0, motivo_encerramento = ?, data_fim = ? WHERE id = ? AND barbearia_id = ?").bind(motivo, somarDias(a.data, -1), it.serie_id, ctx.barbeariaId),
+      auditoria(ctx, "horario_fixo_encerrado", it.serie_id, { motivo, aPartirDe: a.data, cancelados: Number(qtd.n) })
+    ]);
+    return json({ mensagem: `Horário fixo encerrado: ${qtd.n} horário(s) cancelado(s) a partir de ${a.data.split("-").reverse().join("/")}.`, cancelados: Number(qtd.n) });
+  }
   await db.batch([
     db.prepare("UPDATE agendamentos SET situacao = ?, motivo = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND barbearia_id = ? AND situacao = 'agendado'")
       .bind(input.situacao, motivo, a.id, ctx.barbeariaId),
@@ -402,10 +492,98 @@ async function clientePorTelefone(ctx) {
   return json({ telefone, cliente: c ? { id: c.id, nome: c.nome, telefone: c.telefone, ativo: Boolean(c.ativo) } : null });
 }
 
+// ---------- OCUPAÇÃO POR DIA (calendário Mês/Ano): livre, poucos horários, cheio, fechado ----------
+async function ocupacao(ctx) {
+  const { db, user, request } = ctx;
+  const url = new URL(request.url);
+  const ini = exigirData(url.searchParams.get("inicio"), "Início");
+  const fim = exigirData(url.searchParams.get("fim"), "Fim");
+  if (fim < ini || fim > somarDias(ini, 400)) erro("Período inválido (até 1 ano).");
+  const filtro = isGestao(user) ? (url.searchParams.get("barbeiroId") || null) : user.id;
+  if (filtro && !validId(filtro)) erro("Profissional inválido.");
+  const [profsR, ags, blqs, minDur, regras] = await Promise.all([
+    db.prepare(`SELECT id, nome FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('gerente','barbeiro')${filtro ? " AND id = ?" : ""}`)
+      .bind(ctx.barbeariaId, ...(filtro ? [filtro] : [])).all(),
+    db.prepare(`SELECT barbeiro_id, data, inicio, fim FROM agendamentos WHERE barbearia_id = ? AND situacao IN ('agendado','finalizado') AND data BETWEEN ? AND ?`)
+      .bind(ctx.barbeariaId, ini, fim).all(),
+    db.prepare(`SELECT barbeiro_id, inicio, fim FROM bloqueios WHERE barbearia_id = ? AND ativo = 1 AND inicio < ? AND fim > ?`)
+      .bind(ctx.barbeariaId, `${somarDias(fim, 1)}T00:00`, `${ini}T00:00`).all(),
+    db.prepare("SELECT MIN(duracao_min) AS m FROM servicos WHERE barbearia_id = ? AND ativo = 1").bind(ctx.barbeariaId).first(),
+    carregarRegras(db, ctx.barbeariaId, ini, fim)
+  ]);
+  const profs = profsR.results;
+  const duracaoMinima = Number(minDur?.m || 30);
+  const minDoDia = (m, data) => (m.slice(0, 10) < data ? 0 : m.slice(0, 10) > data ? 1440 : horaParaMin(m.slice(11)));
+  const agsPor = {};
+  for (const a of ags.results) (agsPor[`${a.barbeiro_id}|${a.data}`] ||= []).push(a);
+  const hoje = hojeBrasil();
+  const dias = [];
+  for (let d = ini; d <= fim; d = somarDias(d, 1)) {
+    let total = 0, livre = 0, maior = 0, agendados = 0, trabalham = 0;
+    for (const p of profs) {
+      const janela = janelaDoDia(regras(d, p.id));
+      const doDia = agsPor[`${p.id}|${d}`] || [];
+      agendados += doDia.length;
+      if (!janela) continue;
+      trabalham++;
+      const ocup = [
+        ...doDia.map(a => [horaParaMin(a.inicio.slice(11)), horaParaMin(a.fim.slice(11))]),
+        ...blqs.results.filter(b => b.barbeiro_id === p.id && b.inicio.slice(0, 10) <= d && b.fim.slice(0, 10) >= d).map(b => [minDoDia(b.inicio, d), minDoDia(b.fim, d)])
+      ];
+      const l = livreNaJanela(janela, ocup);
+      total += l.totalMin; livre += l.livreMin; maior = Math.max(maior, l.maiorLivreMin);
+    }
+    const status = !trabalham ? "fechado" : maior < duracaoMinima ? "cheio" : livre / Math.max(total, 1) < 0.34 ? "poucos" : "livre";
+    dias.push({ data: d, status, passado: d < hoje, livreMin: livre, totalMin: total, agendados, horariosLivres: Math.floor(livre / duracaoMinima) });
+  }
+  return json({ inicio: ini, fim, duracaoMinima, profissionais: profs.map(p => ({ id: p.id, nome: p.nome })), dias });
+}
+
+// ---------- ATENDIMENTO SEM HORÁRIO (lançado no caixa): registra e já finaliza ----------
+export async function atendimentoAvulso(ctx) {
+  const { db, user, request } = ctx;
+  const input = await readJson(request);
+  if (!validId(input.barbeiroId)) erro("Escolha o profissional que atendeu.");
+  const prof = await db.prepare("SELECT id, nome, perfil, ativo FROM usuarios WHERE id = ? AND barbearia_id = ?").bind(input.barbeiroId, ctx.barbeariaId).first();
+  if (!prof) erro("Profissional não encontrado.", 404);
+  if (!atende(prof.perfil) || !prof.ativo) erro("Escolha um gerente ou barbeiro ativo.");
+  const itens = Array.isArray(input.itens) ? input.itens : erro("Escolha os serviços.");
+  const servs = await servicosEscolhidos(ctx, itens.map(i => i?.servicoId));
+  const total = itens.reduce((t, i) => t + (validCentavos(i.precoCobradoCentavos) ? i.precoCobradoCentavos : erro("Valor cobrado inválido.")), 0);
+  lerPagamentos(input.pagamentos, total);   // confere antes de gravar
+  const caixa = await caixaDeHoje(ctx);
+  if (!caixa || caixa.situacao !== "aberto") erro("O caixa de hoje não está aberto.", 409);
+  // horário = agora (Brasília), arredondado para 5 min
+  const agora = new Date(Date.now() - 3 * 3600000);
+  const dur = servs.reduce((t, x) => t + x.duracao_min, 0);
+  let ini = Math.floor((agora.getUTCHours() * 60 + agora.getUTCMinutes()) / 5) * 5;
+  if (ini + dur > 1440) ini = 1440 - dur;
+  const data = hojeBrasil();
+  const comandos = [];
+  const cliente = await clienteDaMarcacao(ctx, input.cliente, comandos, "caixa");
+  const id = crypto.randomUUID();
+  comandos.push(
+    db.prepare(`INSERT INTO agendamentos (id, barbearia_id, barbeiro_id, cliente_id, data, inicio, fim, observacao, criado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, ctx.barbeariaId, prof.id, cliente.id, data, momento(data, ini), momento(data, ini + dur), "Atendimento sem horário marcado (lançado no caixa)", user.id),
+    ...servs.map(sv => db.prepare("INSERT INTO agendamento_servicos (id, barbearia_id, agendamento_id, servico_id, nome, duracao_min) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(crypto.randomUUID(), ctx.barbeariaId, id, sv.id, sv.nome, sv.duracao_min)),
+    auditoria(ctx, "atendimento_sem_horario", id, { barbeiro: prof.id, cliente: cliente.id, servicos: servs.map(x => x.nome) })
+  );
+  await db.batch(comandos);
+  try {
+    return await finalizarDados(ctx, { id, itens, pagamentos: input.pagamentos });
+  } catch (e) {
+    // não deixa um "agendado" solto se a cobrança falhar
+    await db.prepare("UPDATE agendamentos SET situacao = 'cancelado', motivo = ? WHERE id = ? AND situacao = 'agendado'").bind("Cobrança não concluída no caixa", id).run();
+    throw e;
+  }
+}
+
 export async function rotasAgenda(ctx, path, method) {
   if (path !== "/agenda" && !path.startsWith("/agenda/")) return null;
   exigirAgenda(ctx);
   if (path === "/agenda" && method === "GET") return listarAgenda(ctx);
+  if (path === "/agenda/ocupacao" && method === "GET") return ocupacao(ctx);
   if (path === "/agenda" && method === "POST") return marcar(ctx);
   if (path === "/agenda/cliente" && method === "GET") return clientePorTelefone(ctx);
   if (path === "/agenda/finalizar" && method === "POST") return finalizar(ctx);

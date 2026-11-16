@@ -60,6 +60,11 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - Contador: entradas por forma (serviços × produtos), saídas (contas por categoria, compras de mercadoria, sangrias avulsas), comissões/vales/pago, resultado, cota-parte (barbearia = bruto − comissões; profissionais = comissões — o contador confirma se usa a Lei 13.352), estoque no fim (saldo × custo médio atual), diferenças de caixa e lista detalhada. Aviso de alteração: compara a impressão digital (recalcula até 2 períodos por consulta).
   - Regras que decidi (confirmar): vale não sai do caixa (só registro) — a comissão paga pode sair; ranking por faturamento em atendimentos; extrato do barbeiro mostra só o primeiro nome do cliente.
   - Testes: `npm test` (78, inclui a semana simulada conferida à mão) + navegador E1–E4. `npm run demo` sobe com a demonstração e com a semana simulada (`*.semana`, senha `Senha-Semana-2026`).
+- 16/11/2026: **Melhorias de layout** na ramificação `melhorias-layout` (a partir da `e4-gestao`), pedidas pelo responsável (ver ESPECIFICACAO.md seção 10).
+  - Banco: `migrations/0005_recorrencia.sql` (agendamento_series, agendamento_serie_itens).
+  - API: `marcar` aceita `repetir {intervaloSemanas, ate}`; cancelar com `serie: true`; `GET /agenda/ocupacao` (livre/poucos/cheio/fechado por dia); caixa: `GET /caixa/atendimentos`, `POST /caixa/cobrar`, `POST /caixa/atendimento-avulso`.
+  - Tela: menu lateral por categorias (`montarMenu`), agenda Mês/Ano, PDV do caixa (abas Cobrar/Vender/Lançamentos), CSS refeito e compacto. `body[data-carregando]` marca tela sendo montada (usado pelos testes); `test/navegacao.mjs` (`ir`) navega pelo menu.
+  - Testes: `npm test` (85) + `npm run teste-navegador` (E1–E4 + `test/navegador-melhorias.mjs`; prints em `docs/prints/melhorias/`).
 
 ## Versão de teste publicada (Cloudflare)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.

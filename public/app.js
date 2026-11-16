@@ -192,7 +192,7 @@ function botao(texto, onclick, classe = "") {
   return el("button", { type: "button", class: `botao ${classe}`.trim(), onclick, text: texto });
 }
 
-function cabecalho(titulo, subtitulo = null, voltar = "#/inicio") {
+function cabecalho(titulo, subtitulo = null, voltar = null) {
   return el("div", { class: "cabecalho" },
     voltar ? el("a", { class: "voltar", href: voltar, text: "‹ Voltar" }) : null,
     el("h2", { text: titulo }),
@@ -320,14 +320,18 @@ function telaTrocarSenha(senhaAtual = "") {
 function atualizarTopo() {
   const sub = document.getElementById("topo-sub");
   const acoes = document.getElementById("topo-acoes");
-  if (usuario && !usuario.trocaObrigatoria) {
+  const logado = Boolean(usuario && !usuario.trocaObrigatoria);
+  if (logado) {
     sub.textContent = usuario.barbearia ? `${usuario.barbearia.nome} · ${usuario.nome}` : `Plataforma · ${usuario.nome}`;
-    acoes.hidden = false;
-    document.getElementById("btn-inicio").hidden = usuario.perfil === "plataforma";
+    montarMenu();
   } else {
     sub.textContent = "Gestão para barbearias";
-    acoes.hidden = true;
+    menuEl().hidden = true;
+    fecharMenu();
   }
+  acoes.hidden = !logado;
+  document.getElementById("btn-menu").hidden = !logado;
+  document.body.classList.toggle("com-menu", logado);
 }
 
 function irParaInicial() {
@@ -422,36 +426,6 @@ function janelaPlano(b) {
 // ---------- INÍCIO (menu por perfil) ----------
 const gestao = () => usuario.perfil === "proprietario" || usuario.perfil === "gerente";
 
-function telaInicio() {
-  const itens = gestao()
-    ? [
-      ["#/painel", "Painel", "Faturamento, lucro e avisos"],
-      ["#/agenda", "Agenda", "Todos os profissionais"],
-      ["#/caixa", "Caixa", "Entradas, vendas e fechamento"],
-      ["#/equipe", "Equipe", "Usuários, comissões e horários"],
-      ["#/servicos", "Serviços", "Preços e duração"],
-      ["#/estoque", "Estoque", "Entradas, ajustes e inventário"],
-      ["#/produtos", "Produtos", "Cadastro, preço e validade"],
-      ["#/clientes", "Clientes", "Cadastro com aceite LGPD"],
-      ["#/comissoes", "Comissões e vales", "Fechamento por período"],
-      ["#/contas", "Contas a pagar", "Vencimentos e pagamentos"],
-      ["#/contador", "Contador e dados", "Relatório e cópia dos dados"],
-      ...(usuario.perfil === "gerente" ? [["#/desempenho", "Meu desempenho", "Minha comissão e extrato"]] : []),
-      ["#/funcionamento", "Funcionamento", "Dias, horários e datas fechadas"],
-      ["#/mensagens", "Mensagens", "Modelos para o WhatsApp"]
-    ]
-    : [
-      ["#/agenda", "Minha agenda", "Marcar, avisar e finalizar"],
-      ["#/desempenho", "Meu desempenho", "Comissão, vales e extrato"],
-      ["#/servicos", "Serviços", "Preços da barbearia"],
-      ["#/produtos", "Produtos", "Preço e disponível"]
-    ];
-  mostrar(
-    cabecalho(`Olá, ${usuario.nome.split(" ")[0]}!`, `${NOME_PERFIL[usuario.perfil]} · Plano ${NOME_PLANO[usuario.barbearia.plano]}`, null),
-    el("nav", { class: "menu" }, itens.map(([href, t, s]) => el("a", { class: "menu-item", href },
-      el("span", { class: "menu-letra", "aria-hidden": "true", text: t[0] }),
-      el("span", { class: "menu-textos" }, el("strong", { text: t }), el("span", { class: "suave", text: s }))))));
-}
 
 // ---------- datas e horas ----------
 const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -467,24 +441,35 @@ const NOME_SITUACAO = { agendado: "Agendado", finalizado: "Finalizado", faltou: 
 const COR_SITUACAO = { agendado: "", finalizado: "verde", faltou: "amarela", cancelado: "vermelha" };
 
 // ---------- AGENDA ----------
-const estadoAgenda = { data: null, dias: 1, barbeiroId: "" };
+const estadoAgenda = { data: null, visao: "dia", barbeiroId: "" };
 let servicosCache = null;
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const NOME_STATUS = { livre: "livre", poucos: "poucos horários", cheio: "agenda cheia", fechado: "fechado" };
 
 async function carregarServicos() {
   servicosCache = (await api("/servicos")).servicos.filter(s => s.ativo);
   return servicosCache;
 }
+const ultimoDiaMes = ym => somaDias(`${somaMes(ym, 1)}-01`, -1);
+function somaMes(ym, n) { const [a, m] = ym.split("-").map(Number); const d = new Date(Date.UTC(a, m - 1 + n, 1)); return d.toISOString().slice(0, 7); }
 
 async function telaAgenda() {
   estadoAgenda.data ||= hojeLocal();
-  const q = new URLSearchParams({ data: estadoAgenda.data, dias: String(estadoAgenda.dias) });
+  const v = estadoAgenda.visao;
+  const d0 = estadoAgenda.data;
+  const q = new URLSearchParams({ data: d0, dias: v === "semana" ? "7" : "1" });
   if (gestao() && estadoAgenda.barbeiroId) q.set("barbeiroId", estadoAgenda.barbeiroId);
-  const [ag] = await Promise.all([api(`/agenda?${q}`), carregarServicos()]);
+  // Mês e Ano usam o cálculo de ocupação (livre / poucos / cheio / fechado) por dia.
+  const periodo = v === "mes" ? [`${d0.slice(0, 7)}-01`, ultimoDiaMes(d0.slice(0, 7))] : v === "ano" ? [`${d0.slice(0, 4)}-01-01`, `${d0.slice(0, 4)}-12-31`] : null;
+  const qo = periodo ? new URLSearchParams({ inicio: periodo[0], fim: periodo[1], ...(gestao() && estadoAgenda.barbeiroId ? { barbeiroId: estadoAgenda.barbeiroId } : {}) }) : null;
+  const [ag, oc] = await Promise.all([api(`/agenda?${q}`), qo ? api(`/agenda/ocupacao?${qo}`) : null, carregarServicos()]);
 
-  const irPara = d => { estadoAgenda.data = d; telaAgenda(); };
-  const passo = estadoAgenda.dias === 7 ? 7 : 1;
-  const dataInput = el("input", { type: "date", value: estadoAgenda.data, "aria-label": "Data", class: "data-agenda" });
+  const irPara = (d, visao = v) => { estadoAgenda.data = d; estadoAgenda.visao = visao; telaAgenda(); };
+  const mover = n => irPara(v === "mes" ? `${somaMes(d0.slice(0, 7), n)}-01` : v === "ano" ? `${Number(d0.slice(0, 4)) + n}-01-01` : somaDias(d0, n * (v === "semana" ? 7 : 1)));
+  const dataInput = el("input", { type: "date", value: d0, "aria-label": "Data", class: "data-agenda" });
   dataInput.addEventListener("change", () => dataInput.value && irPara(dataInput.value));
+  const rotuloPeriodo = v === "mes" ? el("strong", { class: "rotulo-periodo", text: `${MESES[Number(d0.slice(5, 7)) - 1]} ${d0.slice(0, 4)}` })
+    : v === "ano" ? el("strong", { class: "rotulo-periodo", text: d0.slice(0, 4) }) : dataInput;
   const filtro = gestao()
     ? el("select", { "aria-label": "Profissional", class: "filtro-prof" },
       el("option", { value: "", text: "Todos os profissionais", selected: !estadoAgenda.barbeiroId || null }),
@@ -493,45 +478,93 @@ async function telaAgenda() {
   filtro?.addEventListener("change", () => { estadoAgenda.barbeiroId = filtro.value; telaAgenda(); });
 
   const barra = el("div", { class: "barra-agenda" },
+    el("div", { class: "alterna", role: "group", "aria-label": "Visão da agenda" },
+      [["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"], ["ano", "Ano"]].map(([k, t]) =>
+        botao(t, () => irPara(d0, k), `pequeno ${v === k ? "ativo" : ""}`))),
     el("div", { class: "navega-data" },
-      botao("‹", () => irPara(somaDias(estadoAgenda.data, -passo)), "pequeno seta"),
-      dataInput,
-      botao("›", () => irPara(somaDias(estadoAgenda.data, passo)), "pequeno seta"),
+      botao("‹", () => mover(-1), "pequeno seta"), rotuloPeriodo, botao("›", () => mover(1), "pequeno seta"),
       botao("Hoje", () => irPara(hojeLocal()), "pequeno")),
-    el("div", { class: "alterna" },
-      botao("Dia", () => { estadoAgenda.dias = 1; telaAgenda(); }, `pequeno ${estadoAgenda.dias === 1 ? "ativo" : ""}`),
-      botao("Semana", () => { estadoAgenda.dias = 7; telaAgenda(); }, `pequeno ${estadoAgenda.dias === 7 ? "ativo" : ""}`)),
     filtro,
     el("div", { class: "acoes-agenda" },
       botao("+ Novo horário", () => janelaMarcar(ag), "principal pequeno"),
-      botao("Bloquear horário", () => janelaBloquear(ag), "pequeno")));
+      botao("Bloquear", () => janelaBloquear(ag), "pequeno")));
 
   const profs = ag.profissionais.filter(p => !estadoAgenda.barbeiroId || p.id === estadoAgenda.barbeiroId);
   let corpo;
-  if (estadoAgenda.dias === 1) {
+  if (v === "dia") {
     // Dia: um profissional por coluna (gerente vê todos lado a lado).
     corpo = el("div", { class: `agenda-colunas ${profs.length > 1 ? "varias" : ""}` }, profs.map(p => {
-      const itens = itensDoDia(ag, estadoAgenda.data, p.id);
+      const itens = itensDoDia(ag, d0, p.id);
       return el("section", { class: "coluna-prof", "data-prof": p.nome },
         el("h3", { text: p.nome }),
         itens.length ? itens : el("p", { class: "vazio", text: "Nenhum horário." }));
     }));
-  } else {
+  } else if (v === "semana") {
     corpo = el("div", { class: "agenda-semana" }, [0, 1, 2, 3, 4, 5, 6].map(i => {
-      const d = somaDias(estadoAgenda.data, i);
+      const d = somaDias(d0, i);
       const itens = profs.flatMap(p => itensDoDia(ag, d, p.id, profs.length > 1));
       return el("section", { class: "dia-semana" },
         el("h3", { text: `${DIAS[diaDaSemana(d)]} ${dataBR(d).slice(0, 5)}${d === ag.hoje ? " (hoje)" : ""}` }),
         itens.length ? itens : el("p", { class: "suave", text: "Sem horários." }));
     }));
+  } else {
+    const legenda = el("p", { class: "legenda" },
+      el("span", { class: "l-livre", text: "Horários livres" }), el("span", { class: "l-poucos", text: "Poucos horários" }),
+      el("span", { class: "l-cheio", text: "Agenda cheia" }), el("span", { class: "l-fechado", text: "Fechado / folga" }));
+    corpo = el("div", {}, legenda, v === "mes" ? calendarioMes(oc, d0.slice(0, 7), irPara) : calendarioAno(oc, d0.slice(0, 4), irPara));
   }
 
+  const subtitulo = v === "dia" ? `${DIAS[diaDaSemana(d0)]}, ${dataBR(d0)}` : v === "semana" ? `Semana de ${dataBR(ag.data)} a ${dataBR(ag.ate)}`
+    : v === "mes" ? "Toque num dia para ver os horários" : "Toque num mês para ver o calendário";
   mostrar(
-    cabecalho(gestao() ? "Agenda" : "Minha agenda",
-      estadoAgenda.dias === 1 ? `${DIAS[diaDaSemana(estadoAgenda.data)]}, ${dataBR(estadoAgenda.data)}` : `Semana de ${dataBR(ag.data)} a ${dataBR(ag.ate)}`),
+    cabecalho(gestao() ? "Agenda" : "Minha agenda", subtitulo),
     barra,
-    !ag.caixaAberto ? el("p", { class: "info", text: "O caixa de hoje ainda não foi aberto: para finalizar atendimentos, peça para abrir o caixa." }) : null,
+    !ag.caixaAberto && (v === "dia" || v === "semana") ? el("p", { class: "info", text: "O caixa de hoje ainda não foi aberto: para finalizar atendimentos, peça para abrir o caixa." }) : null,
     corpo);
+}
+
+// Calendário do mês: cada dia com a cor da ocupação e quantos horários livres.
+function calendarioMes(oc, ym, irPara) {
+  const porData = Object.fromEntries(oc.dias.map(d => [d.data, d]));
+  const primeiro = `${ym}-01`;
+  const vazios = diaDaSemana(primeiro);
+  const ultimo = Number(ultimoDiaMes(ym).slice(8));
+  const hoje = hojeLocal();
+  const celulas = [];
+  for (let i = 0; i < vazios; i++) celulas.push(el("span", { class: "dia-cal vazio-cal", "aria-hidden": "true" }));
+  for (let n = 1; n <= ultimo; n++) {
+    const data = `${ym}-${String(n).padStart(2, "0")}`;
+    const d = porData[data] || { status: "fechado", horariosLivres: 0, agendados: 0 };
+    const texto = { livre: "Livre", poucos: "Poucos", cheio: "Cheio", fechado: "Fechado" }[d.status];
+    const detalhe = d.status === "livre" || d.status === "poucos" ? `${d.horariosLivres} vaga${d.horariosLivres === 1 ? "" : "s"}` : d.agendados ? `${d.agendados} marc.` : null;
+    celulas.push(el("button", {
+      type: "button", class: `dia-cal ${d.status} ${d.passado ? "passado" : ""} ${data === hoje ? "hoje" : ""}`,
+      "data-dia": data, "data-status": d.status, "aria-label": `${dataBR(data)}: ${NOME_STATUS[d.status]}, ${d.agendados} marcado(s)`,
+      onclick: () => irPara(data, "dia")
+    }, el("span", { class: "num", text: String(n) }), el("span", { class: "st", text: texto }),
+      detalhe ? el("span", { class: "det", text: detalhe }) : null));
+  }
+  return el("div", { class: "calendario" }, DIAS_CURTO.map(x => el("span", { class: "cal-semana", text: x })), celulas);
+}
+
+// Ano: 12 mini calendários coloridos; toque abre o mês.
+function calendarioAno(oc, ano, irPara) {
+  const porData = Object.fromEntries(oc.dias.map(d => [d.data, d]));
+  return el("div", { class: "ano-grade" }, MESES.map((nome, i) => {
+    const ym = `${ano}-${String(i + 1).padStart(2, "0")}`;
+    const pts = [];
+    for (let k = 0; k < diaDaSemana(`${ym}-01`); k++) pts.push(el("span", { class: "pt nada" }));
+    const ultimo = Number(ultimoDiaMes(ym).slice(8));
+    let cheios = 0;
+    for (let n = 1; n <= ultimo; n++) {
+      const d = porData[`${ym}-${String(n).padStart(2, "0")}`];
+      if (d?.status === "cheio") cheios++;
+      pts.push(el("span", { class: `pt ${d?.status || "fechado"} ${d?.passado ? "passado" : ""}`, title: d ? `${n}/${i + 1}: ${NOME_STATUS[d.status]}` : null }));
+    }
+    return el("button", { type: "button", class: "mes-mini", "data-mes": ym, onclick: () => irPara(`${ym}-01`, "mes") },
+      el("strong", { text: nome }), el("div", { class: "mini-cal" }, pts),
+      cheios ? el("span", { class: "suave", text: `${cheios} dia(s) cheio(s)` }) : null);
+  }));
 }
 
 // Horários e bloqueios de um profissional num dia, em ordem.
@@ -584,6 +617,7 @@ function cartaoAgendamento(a, mostrarNome) {
     el("div", { class: "slot-topo" },
       el("strong", { class: "slot-hora", text: `${a.inicio}–${a.fim}` }),
       el("span", { class: `etiqueta ${COR_SITUACAO[a.situacao]}`, text: NOME_SITUACAO[a.situacao] }),
+      a.serie ? el("span", { class: "etiqueta fixo", text: a.serie.intervaloSemanas === 1 ? "Fixo semanal" : `Fixo a cada ${a.serie.intervaloSemanas} sem.` }) : null,
       destaque ? el("span", { class: "etiqueta laranja", text: "Valor alterado" }) : null),
     el("p", { class: "slot-cliente" }, el("strong", { text: a.cliente.nome }), ` · ${fone(a.cliente.telefone)}`),
     el("p", { class: "suave", text: [mostrarNome ? a.barbeiroNome : null, a.servicos.map(s => s.nome).join(" + ")].filter(Boolean).join(" · ") }),
@@ -610,10 +644,17 @@ function cartaoAgendamento(a, mostrarNome) {
             avisar("Falta registrada."); telaAgenda();
           }
         }), "pequeno"),
-        botao("Cancelar", () => pedirMotivo(`Cancelar horário de ${a.cliente.nome}`, "O horário fica livre. Nada é apagado.", async motivo => {
-          await api("/agenda/situacao", { metodo: "POST", corpo: { id: a.id, situacao: "cancelado", motivo } });
-          avisar("Horário cancelado."); telaAgenda();
-        }, "Cancelar horário"), "pequeno perigo")
+        botao("Cancelar", () => abrirJanela(`Cancelar horário de ${a.cliente.nome}`, [
+          el("p", { text: "O horário fica livre. Nada é apagado." }),
+          campo("Motivo", { name: "motivo", required: true, minlength: "3", maxlength: "300", autocomplete: "off" }),
+          a.serie ? caixaMarcar("Cancelar também os próximos deste horário fixo (encerra a repetição)", { name: "serie" }) : null
+        ], {
+          ok: "Cancelar horário", perigo: true,
+          aoConfirmar: async f => {
+            const r = await api("/agenda/situacao", { metodo: "POST", corpo: { id: a.id, situacao: "cancelado", motivo: f.motivo.value.trim(), ...(f.serie?.checked ? { serie: true } : {}) } });
+            avisar(r.mensagem || "Horário cancelado."); telaAgenda();
+          }
+        }), "pequeno perigo")
       ] : null,
       a.situacao === "finalizado" || a.situacao === "agendado"
         ? botao("Vender produto", () => janelaVenda({ agendamento: a, aoTerminar: telaAgenda }), "pequeno") : null,
@@ -650,6 +691,16 @@ function janelaMarcar(ag) {
   tel.querySelector("input").addEventListener("change", buscar);
   tel.querySelector("input").addEventListener("input", () => { if (tel.querySelector("input").value.replace(/\D/g, "").length >= 10) buscar(); });
 
+  setTimeout(() => {
+    const f = janela.querySelector("form");
+    if (!f?.repetir) return;
+    const atualizarRep = () => {
+      const campoAte = f.repAte.closest(".campo");
+      campoAte.hidden = !f.repetir.value;
+      if (f.repetir.value && !f.repAte.value) f.repAte.value = somaDias(f.data.value || hojeLocal(), 56);
+    };
+    f.repetir.addEventListener("change", atualizarRep);
+  });
   return abrirJanela("Novo horário", [
     campoProfissional(ag),
     el("div", { class: "lado-a-lado" },
@@ -659,23 +710,37 @@ function janelaMarcar(ag) {
       servicos.length ? servicos.map(s => caixaMarcar(`${s.nome} · ${reais(s.precoCentavos)} · ${s.duracaoMin} min`, { name: "serv", value: s.id, id: `serv-${s.id}` }))
         : el("p", { class: "suave", text: "Nenhum serviço cadastrado." })),
     tel, achado, blocoNovo,
-    campo("Observação (opcional)", { name: "obs", maxlength: "300", autocomplete: "off" })
+    campo("Observação (opcional)", { name: "obs", maxlength: "300", autocomplete: "off" }),
+    el("div", { class: "lado-a-lado" },
+      campo("Repetir (horário fixo)", { tag: "select", name: "repetir", opcoes: [["", "Não repete"], ["1", "Toda semana"], ["2", "A cada 2 semanas"], ["3", "A cada 3 semanas"], ["4", "A cada 4 semanas"]] }),
+      Object.assign(campo("Repetir até", { name: "repAte", type: "date" }), { hidden: true }))
   ], {
     ok: "Marcar",
     aoConfirmar: async f => {
       const servicoIds = [...f.querySelectorAll("input[name=serv]:checked")].map(i => i.value);
       if (!servicoIds.length) throw new Error("Escolha pelo menos um serviço.");
-      await api("/agenda", {
+      const r = await api("/agenda", {
         metodo: "POST",
         corpo: {
           barbeiroId: f.prof?.value, data: f.data.value, hora: f.hora.value, servicoIds,
           observacao: f.obs.value || null,
-          cliente: { telefone: f.cliTel.value, nome: f.cliNome.value || undefined, aceiteLgpd: f.cliLgpd.checked }
+          cliente: { telefone: f.cliTel.value, nome: f.cliNome.value || undefined, aceiteLgpd: f.cliLgpd.checked },
+          ...(f.repetir.value ? { repetir: { intervaloSemanas: Number(f.repetir.value), ate: f.repAte.value } } : {})
         }
       });
       estadoAgenda.data = f.data.value;
-      avisar("Horário marcado.");
       telaAgenda();
+      if (r.serie) {
+        const sr = r.serie;
+        const cada = sr.intervaloSemanas === 1 ? `toda ${sr.diaSemana}` : `a cada ${sr.intervaloSemanas} semanas (${sr.diaSemana})`;
+        return abrirJanela("Horário fixo criado", [
+          el("p", { text: `${sr.criados} horário(s) marcado(s), ${cada} às ${sr.hora}.` }),
+          sr.pulados.length ? el("div", { class: "info" },
+            el("strong", { text: "Datas que ficaram de fora:" }),
+            el("ul", { class: "lista-pulados" }, sr.pulados.map(x => el("li", { text: `${dataBR(x.data)} — ${x.motivo}` })))) : null
+        ], { ok: "Pronto", semCancelar: true, aoConfirmar: () => true });
+      }
+      avisar("Horário marcado.");
     }
   });
 }
@@ -705,7 +770,7 @@ function janelaBloquear(ag) {
 }
 
 // Finalizar: serviços com valor de tabela (alterável), até 2 formas de pagamento com soma conferida.
-function janelaFinalizar(a) {
+function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaAgenda, titulo = "Finalizar atendimento" } = {}) {
   const doHorario = new Set(a.servicos.map(s => s.id));
   const lista = [...(servicosCache || [])];
   for (const s of a.servicos) if (!lista.some(x => x.id === s.id)) lista.push({ id: s.id, nome: s.nome, precoCentavos: 0, duracaoMin: s.duracaoMin });
@@ -743,7 +808,7 @@ function janelaFinalizar(a) {
     el("div", { class: "lista-servicos" }, linhas.map(l => l.linha)),
     totalEl, forma1, dividir, valor1, segunda
   ];
-  const promessa = abrirJanela("Finalizar atendimento", conteudo, {
+  const promessa = abrirJanela(titulo, conteudo, {
     ok: "Confirmar",
     aoConfirmar: async f => {
       const itens = [];
@@ -760,9 +825,9 @@ function janelaFinalizar(a) {
         if (v1 === null || v1 <= 0 || v1 >= t) throw new Error("Valor da 1ª forma inválido: precisa ser maior que zero e menor que o total.");
         pagamentos = [{ forma: f.forma1.value, valorCentavos: v1 }, { forma: f.forma2.value, valorCentavos: t - v1 }];
       }
-      await api("/agenda/finalizar", { metodo: "POST", corpo: { id: a.id, itens, pagamentos } });
+      await api(endpoint, { metodo: "POST", corpo: { id: a.id, itens, pagamentos } });
       avisar("Atendimento finalizado. Entrada lançada no caixa.");
-      telaAgenda();
+      aoTerminar();
     }
   });
   janela.querySelector("form").addEventListener("input", atualizar);
@@ -1078,11 +1143,14 @@ function blocoFechamento(c) {
     el("p", { class: "suave", text: `Fechado por ${f.fechadoPor} às ${horaLocal(f.fechadoEm)}` }));
 }
 
+// ---------- CAIXA (PDV): cobrar atendimento, vender produto, lançamentos ----------
+const estadoCaixa = { aba: "cobrar", carrinho: new Map() };
+
 async function telaCaixa(dataHistorico = null) {
   clearTimeout(timerCaixa);
   const c = dataHistorico ? await api(`/caixa/dia?data=${dataHistorico}`) : await api("/caixa/hoje");
   const recarregar = () => telaCaixa(dataHistorico);
-  const voltar = dataHistorico ? "#/caixa-historico" : gestao() ? "#/inicio" : null;
+  const voltar = dataHistorico ? "#/caixa-historico" : null;
   const linkHistorico = gestao() && !dataHistorico ? el("a", { class: "botao pequeno", href: "#/caixa-historico", text: "Caixas de outros dias" }) : null;
 
   if (!c.caixa) {
@@ -1107,29 +1175,178 @@ async function telaCaixa(dataHistorico = null) {
     return;
   }
 
+  const t = c.totais;
   const aberto = c.caixa.situacao === "aberto";
   const ehHoje = !dataHistorico || dataHistorico === hojeLocal();
-  mostrar(
-    cabecalho(dataHistorico ? `Caixa de ${dataBR(dataHistorico)}` : "Caixa", `${dataBR(c.data)} · aberto por ${c.caixa.abertoPor}`, voltar),
-    el("div", { "data-tela": "caixa" }, resumoTotais(c)),
-    aberto
-      ? el("div", { class: "acoes-caixa" },
-        ehHoje ? botao("Vender produto", () => janelaVenda({ aoTerminar: recarregar }), "principal pequeno") : null,
-        ehHoje ? botao("Sangria", () => janelaMovimento("sangria", recarregar), "pequeno") : null,
-        ehHoje ? botao("Suprimento", () => janelaMovimento("suprimento", recarregar), "pequeno") : null,
-        botao("Fechar caixa", () => janelaFechar(c, recarregar, dataHistorico), "pequeno perigo"))
-      : el("div", {}, blocoFechamento(c),
-        gestao() ? botao("Reabrir caixa", () => pedirMotivo("Reabrir o caixa", "Permite corrigir lançamentos deste dia. Depois, feche de novo.", async motivo => {
-          await api("/caixa/reabrir", { metodo: "POST", corpo: { data: c.data, motivo } });
-          avisar("Caixa reaberto."); recarregar();
-        }, "Reabrir"), "pequeno") : null),
-    c.reaberturas?.length ? el("p", { class: "suave", text: `Reaberto ${c.reaberturas.length}x (último motivo: ${c.reaberturas[0].motivo})` }) : null,
-    el("h3", { text: "Lançamentos do dia" }),
-    listaCaixa(c, recarregar),
-    el("div", { class: "acoes-caixa" }, botao("Atualizar", recarregar, "pequeno"), linkHistorico));
-  if (aberto && !dataHistorico) {
-    timerCaixa = setTimeout(() => { if (location.hash === "#/caixa" && !janela.open) telaCaixa().catch(() => {}); }, 20000);
+  const topo = [
+    el("div", { class: "pdv-topo", "data-tela": "caixa" },
+      el("div", { class: "pdv-num" }, el("span", { text: "Troco inicial" }), el("strong", { text: reais(c.caixa.trocoCentavos) })),
+      el("div", { class: "pdv-num" }, el("span", { text: "Entradas (bruto)" }), el("strong", { "data-teste": "entradas", text: reais(t.entradasCentavos) })),
+      el("div", { class: "pdv-num ouro" }, el("span", { text: "Dinheiro na gaveta" }), el("strong", { "data-teste": "esperado", text: reais(t.dinheiroEsperadoCentavos) }))),
+    el("div", { class: "formas" },
+      Object.entries(t.porForma).map(([f, v]) => el("span", { class: "etiqueta", text: `${NOME_FORMA[f]}: ${reais(v)}` })),
+      el("span", { class: "etiqueta", text: `Atendimentos: ${reais(t.atendimentosCentavos)}` }),
+      el("span", { class: "etiqueta", text: `Vendas: ${reais(t.vendasCentavos)}` }),
+      t.sangriasCentavos ? el("span", { class: "etiqueta vermelha", text: `Sangrias: ${reais(t.sangriasCentavos)}` }) : null,
+      t.suprimentosCentavos ? el("span", { class: "etiqueta verde", text: `Suprimentos: ${reais(t.suprimentosCentavos)}` }) : null)
+  ];
+
+  if (!aberto || !ehHoje) {
+    mostrar(
+      cabecalho(dataHistorico ? `Caixa de ${dataBR(dataHistorico)}` : "Caixa", `${dataBR(c.data)} · aberto por ${c.caixa.abertoPor}`, voltar),
+      topo,
+      aberto ? el("div", { class: "pdv-barra" }, el("div", { class: "pdv-acoes" }, botao("Fechar caixa", () => janelaFechar(c, recarregar, dataHistorico), "pequeno perigo")))
+        : el("div", {}, blocoFechamento(c),
+          gestao() ? botao("Reabrir caixa", () => pedirMotivo("Reabrir o caixa", "Permite corrigir lançamentos deste dia. Depois, feche de novo.", async motivo => {
+            await api("/caixa/reabrir", { metodo: "POST", corpo: { data: c.data, motivo } });
+            avisar("Caixa reaberto."); recarregar();
+          }, "Reabrir"), "pequeno") : null),
+      c.reaberturas?.length ? el("p", { class: "suave", text: `Reaberto ${c.reaberturas.length}x (último motivo: ${c.reaberturas[0].motivo})` }) : null,
+      el("h3", { text: "Lançamentos do dia" }), listaCaixa(c, recarregar), linkHistorico);
+    return;
   }
+
+  // Caixa de hoje aberto: PDV
+  const aba = estadoCaixa.aba;
+  const trocarAba = nova => { estadoCaixa.aba = nova; recarregar(); };
+  let conteudo;
+  if (aba === "cobrar") conteudo = await abaCobrar(recarregar);
+  else if (aba === "vender") conteudo = await abaVender(recarregar);
+  else conteudo = listaCaixa(c, recarregar);
+
+  mostrar(
+    cabecalho("Caixa", `${dataBR(c.data)} · aberto por ${c.caixa.abertoPor}`),
+    topo,
+    c.reaberturas?.length ? el("p", { class: "suave", text: `Reaberto ${c.reaberturas.length}x (último motivo: ${c.reaberturas[0].motivo})` }) : null,
+    el("div", { class: "pdv-barra" },
+      el("div", { class: "alterna", role: "tablist" },
+        [["cobrar", "Cobrar"], ["vender", "Vender"], ["lancamentos", "Lançamentos"]].map(([k, txt]) =>
+          botao(txt, () => trocarAba(k), `pequeno ${aba === k ? "ativo" : ""}`))),
+      el("div", { class: "pdv-acoes" },
+        botao("Sangria", () => janelaMovimento("sangria", recarregar), "pequeno"),
+        botao("Suprimento", () => janelaMovimento("suprimento", recarregar), "pequeno"),
+        botao("Fechar caixa", () => janelaFechar(c, recarregar, dataHistorico), "pequeno perigo"),
+        linkHistorico)),
+    conteudo);
+  timerCaixa = setTimeout(() => { if (location.hash === "#/caixa" && !janela.open && estadoCaixa.aba !== "vender") telaCaixa().catch(() => {}); }, 30000);
+}
+
+// Aba "Cobrar atendimento": fila de hoje + atendimento sem horário.
+async function abaCobrar(recarregar) {
+  const [{ atendimentos, profissionais }] = await Promise.all([api("/caixa/atendimentos"), carregarServicos()]);
+  const aCobrar = atendimentos.filter(a => a.situacao === "agendado");
+  const pagos = atendimentos.filter(a => a.situacao === "finalizado");
+  const tabela = s => s.reduce((t, x) => t + (x.precoCentavos || 0), 0);
+  const ticket = a => el("div", { class: `ticket-at ${a.situacao === "finalizado" ? "pago" : ""}`, "data-cobrar": a.cliente.nome },
+    el("span", { class: "hora", text: a.inicio }),
+    el("div", { class: "dados" }, el("strong", { text: a.cliente.nome }), el("span", { text: `${a.barbeiro} · ${a.servicos.map(x => x.nome).join(" + ")}` })),
+    a.situacao === "finalizado"
+      ? el("span", { class: "etiqueta verde", text: `Pago ${reais(a.totalCentavos)}` })
+      : [el("span", { class: "valor", text: reais(tabela(a.servicos)) }),
+        botao("Cobrar", () => janelaFinalizar(a, { endpoint: "/caixa/cobrar", aoTerminar: recarregar, titulo: `Cobrar ${a.cliente.nome}` }), "pequeno principal")]);
+  return el("div", { class: "pdv-cobrar" },
+    el("div", { class: "pdv-barra" },
+      el("h3", { text: `Aguardando pagamento (${aCobrar.length})` }),
+      el("div", { class: "pdv-acoes" }, botao("+ Atendimento sem horário", () => janelaAvulso(profissionais, recarregar), "pequeno dourado"))),
+    aCobrar.length ? el("div", { class: "fila" }, aCobrar.map(ticket)) : el("p", { class: "vazio", text: "Nenhum atendimento de hoje aguardando pagamento." }),
+    pagos.length ? [el("h3", { class: "titulo-pagos", text: `Pagos hoje (${pagos.length})` }), el("div", { class: "fila" }, pagos.map(ticket))] : null);
+}
+
+// Atendimento sem horário marcado (cliente chegou na hora): registra e já cobra.
+function janelaAvulso(profissionais, recarregar) {
+  const servicos = servicosCache || [];
+  const linhas = servicos.map(s => {
+    const chk = el("input", { type: "checkbox", name: "aserv", value: s.id, id: `av-${s.id}` });
+    const valor = el("input", { type: "text", inputmode: "decimal", value: centavosParaTexto(s.precoCentavos), "aria-label": `Valor cobrado de ${s.nome}` });
+    return { s, chk, valor, el: el("div", { class: "linha-servico" }, el("div", { class: "marcar" }, chk, el("label", { for: `av-${s.id}`, text: s.nome })), valor) };
+  });
+  const totalEl = el("p", { class: "total-final", "data-teste": "total" });
+  const total = () => linhas.filter(l => l.chk.checked).reduce((t, l) => t + (paraCentavos(l.valor.value) ?? 0), 0);
+  const pag = blocoPagamento(total);
+  const promessa = abrirJanela("Atendimento sem horário", [
+    campo("Quem atendeu", { tag: "select", name: "prof", opcoes: profissionais.map(p => [p.id, p.nome]) }),
+    el("div", { class: "lista-servicos" }, linhas.map(l => l.el)),
+    totalEl,
+    campo("Telefone do cliente (WhatsApp)", { name: "aTel", inputmode: "tel", required: true, autocomplete: "off" }),
+    campo("Nome do cliente", { name: "aNome", autocomplete: "off" }, "Obrigatório se for cliente novo."),
+    caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "aLgpd" }),
+    ...pag.elementos
+  ], {
+    ok: "Cobrar",
+    aoConfirmar: async f => {
+      const itens = [];
+      for (const l of linhas.filter(x => x.chk.checked)) {
+        const v = paraCentavos(l.valor.value);
+        if (v === null) throw new Error(`Valor de ${l.s.nome} inválido.`);
+        itens.push({ servicoId: l.s.id, precoCobradoCentavos: v });
+      }
+      if (!itens.length) throw new Error("Marque pelo menos um serviço.");
+      await api("/caixa/atendimento-avulso", {
+        metodo: "POST",
+        corpo: { barbeiroId: f.prof.value, itens, pagamentos: pag.ler(f), cliente: { telefone: f.aTel.value, nome: f.aNome.value || undefined, aceiteLgpd: f.aLgpd.checked } }
+      });
+      avisar(`Atendimento lançado: ${reais(total())}.`);
+      recarregar();
+    }
+  });
+  const atualizar = () => { totalEl.textContent = `Total: ${reais(total())}`; pag.atualizar(); };
+  janela.querySelector("form").addEventListener("input", atualizar);
+  janela.querySelector("form").addEventListener("change", atualizar);
+  atualizar();
+  return promessa;
+}
+
+// Aba "Vender produto": produtos em botões grandes + carrinho com pagamento.
+async function abaVender(recarregar) {
+  const produtos = (await api("/produtos")).produtos.filter(p => p.disponivel ?? p.ativo);
+  const carrinho = estadoCaixa.carrinho;
+  for (const id of [...carrinho.keys()]) if (!produtos.some(p => p.id === id)) carrinho.delete(id);
+  const saldoDe = p => p.saldo ?? 999;
+  const total = () => produtos.reduce((t, p) => t + (carrinho.get(p.id) || 0) * p.precoCentavos, 0);
+  const linhasEl = el("div", { class: "linhas-carrinho" });
+  const totalEl = el("strong", { "data-teste": "total-venda" });
+  const pag = blocoPagamento(total);
+  const form = el("form", { class: "carrinho", "data-teste": "carrinho" },
+    el("h3", {}, el("span", { text: "Venda" }), botao("Limpar", () => { carrinho.clear(); desenhar(); }, "pequeno")),
+    linhasEl,
+    el("div", { class: "total-carrinho" }, el("span", { text: "Total" }), totalEl),
+    ...pag.elementos,
+    el("button", { type: "submit", class: "botao principal", text: "Finalizar venda" }));
+  const tiles = el("div", { class: "produtos-grade" }, produtos.map(p => el("button", {
+    type: "button", class: "produto-tile", "data-produto-pdv": p.nome, disabled: saldoDe(p) < 1 || null,
+    onclick: () => { const q = carrinho.get(p.id) || 0; if (q < saldoDe(p)) { carrinho.set(p.id, q + 1); desenhar(); } else avisar(`Só há ${saldoDe(p)} em estoque.`, "erro"); }
+  }, el("strong", { text: p.nome }), el("span", { class: "preco", text: reais(p.precoCentavos) }),
+    p.saldo !== undefined ? el("span", { class: "suave", text: `Estoque: ${p.saldo}` }) : null)));
+  function desenhar() {
+    const itens = produtos.filter(p => carrinho.get(p.id));
+    linhasEl.replaceChildren(...(itens.length ? itens.map(p => el("div", { class: "linha-carrinho", "data-linha": p.nome },
+      el("span", { text: p.nome }),
+      el("span", { class: "qtd" },
+        el("button", { type: "button", "aria-label": `Menos ${p.nome}`, text: "−", onclick: () => { const q = carrinho.get(p.id) - 1; if (q > 0) carrinho.set(p.id, q); else carrinho.delete(p.id); desenhar(); } }),
+        el("span", { text: String(carrinho.get(p.id)) }),
+        el("button", { type: "button", "aria-label": `Mais ${p.nome}`, text: "+", onclick: () => { const q = carrinho.get(p.id); if (q < saldoDe(p)) { carrinho.set(p.id, q + 1); desenhar(); } } })),
+      el("span", { class: "preco", text: reais(carrinho.get(p.id) * p.precoCentavos) }))) : [el("p", { class: "suave", text: "Toque nos produtos para adicionar." })]));
+    totalEl.textContent = reais(total());
+    pag.atualizar();
+  }
+  form.addEventListener("input", () => pag.atualizar());
+  form.addEventListener("change", () => pag.atualizar());
+  form.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(form, async () => {
+      const itens = [...carrinho.entries()].map(([produtoId, quantidade]) => ({ produtoId, quantidade }));
+      if (!itens.length) throw new Error("Adicione pelo menos um produto.");
+      const valor = total();
+      await api("/vendas", { metodo: "POST", corpo: { itens, pagamentos: pag.ler(form) } });
+      carrinho.clear();
+      avisar(`Venda registrada: ${reais(valor)}.`);
+      recarregar();
+    });
+  });
+  desenhar();
+  return produtos.length
+    ? el("div", { class: "pdv-grade" }, el("section", {}, tiles), form)
+    : el("p", { class: "vazio", text: "Nenhum produto com estoque para vender." });
 }
 
 async function telaHistoricoCaixa() {
@@ -1963,10 +2180,105 @@ async function telaMensagens() {
     el("div", { class: "duas-colunas" }, blocos));
 }
 
+
+// ---------- MENU LATERAL (categorias com sub-opções; ícones em SVG) ----------
+const ICONES = {
+  menu: "M4 6h16M4 12h16M4 18h16",
+  seta: "M9 6l6 6-6 6",
+  painel: "M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-4H4zM14 4v4h6V4z",
+  agenda: "M7 3v3M17 3v3M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM8 12h3M8 16h3M14 12h2",
+  caixa: "M4 7h16v12H4zM4 7l2-3h12l2 3M9 12h6M12 10v4",
+  clientes: "M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM21 19v-1a4 4 0 0 0-3-3.8M16 4.2a3 3 0 0 1 0 5.6",
+  dinheiro: "M3 7h18v10H3zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 10v.01M18 14v.01",
+  comissao: "M19 5L5 19M7.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM16.5 18a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
+  contas: "M7 3h10l3 3v15H4V3zM8 9h8M8 13h8M8 17h5",
+  contador: "M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5M9 13h6M9 17h6",
+  estoque: "M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8",
+  produtos: "M6 2h12l2 6H4zM4 8v13h16V8M9 12h6",
+  servicos: "M6 3l12 18M18 3L6 21M6 3a3 3 0 1 0 0 .01M18 21a3 3 0 1 0 0-.01",
+  equipe: "M17 20v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM21 20v-1a4 4 0 0 0-3-3.87",
+  relogio: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
+  mensagem: "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z",
+  grafico: "M4 20V10M10 20V4M16 20v-7M22 20H2",
+  config: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z",
+  loja: "M3 9l2-5h14l2 5M3 9h18v11H3zM9 20v-6h6v6",
+  usuario: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"
+};
+function icone(nome) {
+  return svg("svg", { viewBox: "0 0 24 24", class: "icone", "aria-hidden": "true" }, svg("path", { d: ICONES[nome] || "" }));
+}
+
+// Categorias de cada perfil. Rota = endereço da tela (#/rota).
+function gruposDoMenu() {
+  const p = usuario.perfil;
+  if (p === "plataforma") return [{ id: "plataforma", titulo: "Plataforma", icone: "loja", itens: [["plataforma", "Barbearias", "loja"]] }];
+  if (p === "caixa") return [
+    { id: "caixa", titulo: "Caixa", icone: "caixa", itens: [["caixa", "Caixa", "caixa"], ["produtos", "Produtos", "produtos"]] }
+  ];
+  if (p === "barbeiro") return [
+    { id: "atendimento", titulo: "Meu trabalho", icone: "agenda", itens: [["agenda", "Minha agenda", "agenda"], ["desempenho", "Meu desempenho", "grafico"]] },
+    { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
+  ];
+  return [
+    { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ...(p === "gerente" ? [["desempenho", "Meu desempenho", "grafico"]] : [])] },
+    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"]] },
+    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["comissoes", "Comissões e vales", "comissao"], ["contas", "Contas a pagar", "contas"], ["contador", "Contador e dados", "contador"]] },
+    { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"], ["estoque", "Estoque", "estoque"]] },
+    { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"], ["mensagens", "Mensagens", "mensagem"]] }
+  ];
+}
+
+const menuEl = () => document.getElementById("menu");
+const gruposAbertos = new Set();
+function rotaAtual() {
+  const r = location.hash.replace(/^#\/?/, "").split("/")[0] || (usuario?.telaInicial ?? "");
+  return r === "inicio" ? (gestao() ? "painel" : "agenda") : r === "caixa-historico" || r === "caixa-dia" ? "caixa" : r;
+}
+function montarMenu() {
+  const aside = menuEl();
+  const atual = rotaAtual();
+  const grupos = gruposDoMenu();
+  for (const g of grupos) if (g.itens.some(([r]) => r === atual)) gruposAbertos.add(g.id);
+  aside.replaceChildren(
+    el("div", { class: "menu-cabecalho" },
+      el("img", { src: "/icons/marca.png", alt: "", width: "40", height: "40" }),
+      el("div", {}, el("strong", { text: usuario.barbearia ? usuario.barbearia.nome : "4blade" }),
+        el("span", { text: `${usuario.nome.split(" ")[0]} · ${NOME_PERFIL[usuario.perfil]}` }))),
+    el("nav", { class: "menu-nav" }, grupos.map(g => {
+      const aberto = gruposAbertos.has(g.id) || grupos.length === 1;
+      const itens = el("div", { class: "grupo-itens", id: `grupo-${g.id}` }, g.itens.map(([rota, titulo, ic]) =>
+        el("a", { class: `nav-item ${rota === atual ? "ativo" : ""}`, href: `#/${rota}`, "data-nav": titulo, "aria-current": rota === atual ? "page" : null,
+          onclick: () => { fecharMenu(); if (location.hash === `#/${rota}`) rotear(); } }, icone(ic), el("span", { text: titulo }))));
+      itens.hidden = !aberto;
+      const titulo = el("button", { type: "button", class: "grupo-titulo", "aria-expanded": aberto ? "true" : "false", "aria-controls": `grupo-${g.id}`,
+        onclick: () => {
+          const abrir = itens.hidden;
+          itens.hidden = !abrir;
+          titulo.setAttribute("aria-expanded", abrir ? "true" : "false");
+          grupo.classList.toggle("aberto", abrir);
+          if (abrir) gruposAbertos.add(g.id); else gruposAbertos.delete(g.id);
+        } }, icone(g.icone), el("span", { text: g.titulo }), svg("svg", { viewBox: "0 0 24 24", class: "icone seta", "aria-hidden": "true" }, svg("path", { d: ICONES.seta })));
+      const grupo = el("div", { class: `grupo ${aberto ? "aberto" : ""}`, "data-grupo": g.id }, titulo, itens);
+      return grupo;
+    })),
+    el("div", { class: "menu-rodape", text: "4blade · gestão para barbearias" }));
+  aside.hidden = false;
+}
+function abrirMenu() {
+  menuEl().classList.add("aberto");
+  document.getElementById("fundo-menu").hidden = false;
+  document.getElementById("btn-menu").setAttribute("aria-expanded", "true");
+}
+function fecharMenu() {
+  menuEl().classList.remove("aberto");
+  document.getElementById("fundo-menu").hidden = true;
+  document.getElementById("btn-menu").setAttribute("aria-expanded", "false");
+}
+
 // ---------- ROTEADOR ----------
 const ROTAS = {
   plataforma: { perfis: ["plataforma"], tela: telaPlataforma },
-  inicio: { perfis: ["proprietario", "gerente", "barbeiro"], tela: telaInicio },
+  inicio: { perfis: ["proprietario", "gerente", "barbeiro"], tela: () => (gestao() ? telaPainel() : telaAgenda()) },
   caixa: { perfis: ["caixa", "proprietario", "gerente"], tela: telaCaixa },
   funcionamento: { perfis: ["proprietario", "gerente"], tela: telaFuncionamento },
   estoque: { perfis: ["proprietario", "gerente"], tela: telaEstoque },
@@ -1996,12 +2308,17 @@ async function rotear() {
     if (nome !== usuario.telaInicial) return irParaInicial();
     return mostrar(el("p", { class: "erro", text: "Tela não disponível para o seu perfil." }));
   }
+  const vez = ++vezRota;
+  document.body.dataset.carregando = "1";   // a tela está sendo montada (usado também pelos testes)
   try {
     await rota.tela(parametro);
   } catch (e) {
     if (e.message !== "Sessão encerrada") mostrar(el("div", { class: "cartao" }, el("p", { class: "erro", text: e.message }), botao("Tentar de novo", rotear)));
+  } finally {
+    if (vez === vezRota) delete document.body.dataset.carregando;
   }
 }
+let vezRota = 0;
 
 async function iniciar() {
   document.getElementById("btn-sair").addEventListener("click", async () => {
@@ -2009,11 +2326,17 @@ async function iniciar() {
     localStorage.removeItem(CHAVE_TOKEN);
     usuario = null;
     document.getElementById("aviso").hidden = true;   // aviso de quem saiu não aparece para o próximo
+    estadoCaixa.aba = "cobrar"; estadoCaixa.carrinho.clear();
+    Object.assign(estadoAgenda, { data: null, visao: "dia", barbeiroId: "" });
     clearTimeout(timerCaixa);
     history.replaceState(null, "", "/");
     telaLogin("Você saiu do sistema.");
   });
-  document.getElementById("btn-inicio").addEventListener("click", () => irParaInicial());
+  const btnMenu = document.getElementById("btn-menu");
+  btnMenu.append(icone("menu"));
+  btnMenu.addEventListener("click", () => (menuEl().classList.contains("aberto") ? fecharMenu() : abrirMenu()));
+  document.getElementById("fundo-menu").addEventListener("click", fecharMenu);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") fecharMenu(); });
   window.addEventListener("hashchange", rotear);
   if (localStorage.getItem(CHAVE_TOKEN)) {
     try {

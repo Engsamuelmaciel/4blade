@@ -5,6 +5,7 @@ import { json, fail, HttpError, readJson, validCentavos, validDate, textoOpciona
 import { isGestao } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
 import { FORMAS, formaEfetiva } from "./agenda-util.js";
+import { finalizarDados, atendimentoAvulso } from "./agenda.js";
 
 const erro = (msg, status = 400) => { throw new HttpError(msg, status); };
 const NOME_FORMA = { dinheiro: "dinheiro", pix: "Pix", debito: "débito", credito: "crédito" };
@@ -157,6 +158,30 @@ export async function rotasCaixa(ctx, path, method) {
   const hoje = hojeBrasil();
 
   if (path === "/caixa/hoje" && method === "GET") return json(await respostaCaixa(ctx, hoje));
+
+  // PDV: atendimentos de hoje para cobrar (sem comissão) + profissionais e serviços para o atendimento sem horário.
+  if (path === "/caixa/atendimentos" && method === "GET") {
+    const [ags, servs, profs] = await Promise.all([
+      db.prepare(`SELECT a.id, a.inicio, a.fim, a.situacao, a.barbeiro_id, u.nome AS barbeiro, c.nome AS cliente, c.telefone,
+                    f.total_centavos
+                  FROM agendamentos a JOIN usuarios u ON u.id = a.barbeiro_id JOIN clientes c ON c.id = a.cliente_id
+                  LEFT JOIN finalizacoes f ON f.agendamento_id = a.id AND f.estornada = 0
+                  WHERE a.barbearia_id = ? AND a.data = ? AND a.situacao IN ('agendado','finalizado') ORDER BY a.inicio`).bind(ctx.barbeariaId, hoje).all(),
+      db.prepare(`SELECT s.agendamento_id, s.servico_id, s.nome, sv.preco_centavos FROM agendamento_servicos s JOIN agendamentos a ON a.id = s.agendamento_id
+                  LEFT JOIN servicos sv ON sv.id = s.servico_id WHERE a.barbearia_id = ? AND a.data = ? ORDER BY s.rowid`).bind(ctx.barbeariaId, hoje).all(),
+      db.prepare(`SELECT id, nome FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('gerente','barbeiro') ORDER BY nome`).bind(ctx.barbeariaId).all()
+    ]);
+    return json({
+      profissionais: profs.results,
+      atendimentos: ags.results.map(a => ({
+        id: a.id, inicio: a.inicio.slice(11), fim: a.fim.slice(11), situacao: a.situacao, barbeiroId: a.barbeiro_id, barbeiro: a.barbeiro,
+        cliente: { nome: a.cliente, telefone: a.telefone }, totalCentavos: a.total_centavos ?? null,
+        servicos: servs.results.filter(s => s.agendamento_id === a.id).map(s => ({ id: s.servico_id, nome: s.nome, precoCentavos: s.preco_centavos ?? 0 }))
+      }))
+    });
+  }
+  if (path === "/caixa/cobrar" && method === "POST") return finalizarDados(ctx, await readJson(request));
+  if (path === "/caixa/atendimento-avulso" && method === "POST") return atendimentoAvulso(ctx);
 
   // Histórico de caixas de outros dias: só gestão.
   if (path === "/caixa/dia" && method === "GET") {

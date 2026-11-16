@@ -10,6 +10,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
+import { ir } from "./navegacao.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright");
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -118,7 +119,7 @@ async function rodar(tela) {
     assert.equal(await page.inputValue("#c-telefone"), "(11) 98765-4321");
     await page.locator("#c-propTel").pressSequentially("1133334444");
     assert.equal(await page.inputValue("#c-propTel"), "(11) 3333-4444");
-    assert.equal(await page.locator("#btn-inicio").isVisible(), false, "plataforma não tem botão Início");
+    assert.equal(await page.locator("#menu [data-nav]").count(), 1, "plataforma: só a tela de barbearias");
     assert.match(await page.textContent("[data-teste=explicacao-plataforma]"), /entre com o usuário do proprietário/);
     await page.click("button:has-text('Criar barbearia')");
     const senhaProp = await lerSenhaDaJanela();
@@ -132,9 +133,9 @@ async function rodar(tela) {
     // ---------- PROPRIETÁRIO ----------
     passo("proprietário troca a senha e cria gerente, barbeiro e caixa");
     await primeiroAcesso("carlos.navalha", senhaProp, "Senha-Carlos-2026", true);
-    await page.waitForSelector("text=Olá, Carlos!");
+    await page.waitForSelector("[data-cartao=bruto]");   // gestão abre direto no painel
     await print("proprietario-inicio");
-    await page.click("a.menu-item:has-text('Equipe')");
+    await ir(page, "Equipe");
     await page.waitForSelector("text=Nova pessoa");
     const senhaGer = await criarPessoa("gerente", "Gabriel Gerente", "gabriel.navalha", "40", "10");
     const senhaBarb = await criarPessoa("barbeiro", "Bruno Barbeiro", "bruno.navalha", "50", "10", true);
@@ -151,8 +152,8 @@ async function rodar(tela) {
     // ---------- GERENTE ----------
     passo("gerente cadastra 2 serviços, 2 produtos e 1 cliente");
     await primeiroAcesso("gabriel.navalha", senhaGer, "Senha-Gabriel-2026");
-    await page.waitForSelector("text=Olá, Gabriel!");
-    await page.click("a.menu-item:has-text('Serviços')");
+    await page.waitForSelector("[data-cartao=bruto]");
+    await ir(page, "Serviços");
     // formatação de dinheiro: ponto vira vírgula, milhar com ponto, no máximo 2 casas, letras ignoradas
     for (const [digitado, esperado] of [["38.5", "38,50"], ["1234,5", "1.234,50"], ["12,345", "12,34"], ["4a0", "40,00"]]) {
       await page.fill("#c-preco", "");
@@ -171,8 +172,7 @@ async function rodar(tela) {
     assert.match(await page.textContent('[data-servico="Corte masculino"]'), /R\$\s?40,00/);
     await print("gerente-servicos");
 
-    await page.click("text=‹ Voltar");
-    await page.click("a.menu-item:has-text('Produtos')");
+    await ir(page, "Produtos");
     for (const [nome, preco, cod] of [["Pomada modeladora", "45,00", "7890000000011"], ["Óleo para barba", "38,50", ""]]) {
       await page.fill("#c-nome", nome);
       await page.fill("#c-preco", preco);
@@ -186,8 +186,7 @@ async function rodar(tela) {
     assert.match(await page.textContent('[data-produto="Pomada modeladora"]'), /Custo médio/);
     await print("gerente-produtos-com-custo-e-margem");
 
-    await page.click("text=‹ Voltar");
-    await page.click("a.menu-item:has-text('Clientes')");
+    await ir(page, "Clientes");
     await page.fill("#c-nome", "Diego Cliente Fictício");
     await page.locator("#c-telefone").pressSequentially("11900001234");
     assert.equal(await page.inputValue("#c-telefone"), "(11) 90000-1234");
@@ -200,8 +199,7 @@ async function rodar(tela) {
     assert.match(await page.textContent('[data-cliente="Diego Cliente Fictício"]'), /\(11\) 90000-1234/);
     await print("gerente-clientes");
 
-    await page.click("text=‹ Voltar");
-    await page.click("a.menu-item:has-text('Mensagens')");
+    await ir(page, "Mensagens");
     await page.waitForSelector("#texto-lembrete");
     await print("gerente-modelos-de-mensagem");
     await sair();
@@ -209,10 +207,10 @@ async function rodar(tela) {
     // ---------- BARBEIRO ----------
     passo("barbeiro entra e não vê custo/margem");
     await primeiroAcesso("bruno.navalha", senhaBarb, "Senha-Bruno-2026");
-    await page.waitForSelector("text=Olá, Bruno!");
-    assert.equal(await page.locator("a.menu-item:has-text('Equipe')").count(), 0, "barbeiro não tem Equipe");
+    await page.waitForSelector("h2:has-text('Minha agenda')");   // barbeiro abre direto na própria agenda
+    assert.equal(await page.locator("#menu [data-nav='Equipe']").count(), 0, "barbeiro não tem Equipe");
     await print("barbeiro-inicio");
-    await page.click("a.menu-item:has-text('Produtos')");
+    await ir(page, "Produtos");
     await page.waitForSelector('[data-produto="Pomada modeladora"]');
     const textoBarbeiro = await page.locator("main").innerText();
     assert.ok(!/custo|margem/i.test(textoBarbeiro), "barbeiro viu custo/margem!");
@@ -220,7 +218,7 @@ async function rodar(tela) {
     await print("barbeiro-produtos-sem-custo");
     // tentar abrir a tela da equipe pelo endereço leva de volta ao início
     await page.goto(`${base}/#/equipe`);
-    await page.waitForSelector("text=Olá, Bruno!");
+    await page.waitForSelector("h2:has-text('Minha agenda')");
     await sair();
 
     // ---------- CAIXA ----------

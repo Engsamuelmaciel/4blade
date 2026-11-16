@@ -46,6 +46,52 @@ export async function regrasDoDia(db, barbeariaId, barbeiroId, data) {
   return { dia, func, trab, fechada };
 }
 
+// Carrega de uma vez as regras de um PERÍODO (poucas consultas, mesmo para meses/anos) e devolve regras(data, barbeiroId).
+export async function carregarRegras(db, barbeariaId, ini, fim) {
+  const [func, trab, fechadas] = await Promise.all([
+    db.prepare("SELECT * FROM funcionamento WHERE barbearia_id = ?").bind(barbeariaId).all(),
+    db.prepare("SELECT * FROM horario_trabalho WHERE barbearia_id = ?").bind(barbeariaId).all(),
+    db.prepare("SELECT data_ini, data_fim, motivo FROM datas_fechadas WHERE barbearia_id = ? AND ativo = 1 AND data_ini <= ? AND data_fim >= ?")
+      .bind(barbeariaId, fim, ini).all()
+  ]);
+  const funcPor = Object.fromEntries(func.results.map(f => [f.dia_semana, f]));
+  const trabPor = {};
+  for (const t of trab.results) (trabPor[t.usuario_id] ||= {})[t.dia_semana] = t;
+  return (data, barbeiroId) => {
+    const dia = diaSemana(data);
+    return {
+      dia,
+      func: funcPor[dia] || null,
+      trab: trabPor[barbeiroId]?.[dia] || null,
+      fechada: fechadas.results.find(f => f.data_ini <= data && f.data_fim >= data) || null
+    };
+  };
+}
+
+// Janela de trabalho de um profissional num dia (minutos), sem o intervalo. null = não trabalha/fechado.
+export function janelaDoDia(regras) {
+  const { func, trab, fechada } = regras;
+  if (fechada || !func || !func.aberto) return null;
+  if (trab && !trab.trabalha) return null;
+  const ini = trab ? trab.ini_min : func.abre_min;
+  const fim = trab ? trab.fim_min : func.fecha_min;
+  return { ini, fim, intervalo: func.intervalo_ini_min !== null && func.intervalo_ini_min !== undefined ? [func.intervalo_ini_min, func.intervalo_fim_min] : null };
+}
+
+// Minutos livres e maior intervalo livre dentro da janela, descontando ocupações [ini, fim).
+export function livreNaJanela(janela, ocupados) {
+  const ocup = [...ocupados];
+  if (janela.intervalo) ocup.push(janela.intervalo);
+  const recortes = ocup.map(([a, b]) => [Math.max(a, janela.ini), Math.min(b, janela.fim)]).filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+  let cursor = janela.ini, livre = 0, maior = 0;
+  for (const [a, b] of recortes) {
+    if (a > cursor) { livre += a - cursor; maior = Math.max(maior, a - cursor); }
+    cursor = Math.max(cursor, b);
+  }
+  if (janela.fim > cursor) { livre += janela.fim - cursor; maior = Math.max(maior, janela.fim - cursor); }
+  return { totalMin: janela.fim - janela.ini - (janela.intervalo ? Math.max(0, Math.min(janela.intervalo[1], janela.fim) - Math.max(janela.intervalo[0], janela.ini)) : 0), livreMin: livre, maiorLivreMin: maior };
+}
+
 // Confere se [ini, fim) (minutos) cabe no dia. Lança erro com mensagem simples.
 export function conferirHorario(regras, ini, fim) {
   const { func, trab, fechada, dia } = regras;

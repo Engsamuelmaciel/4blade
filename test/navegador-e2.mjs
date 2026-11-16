@@ -9,6 +9,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
+import { ir } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -110,7 +111,7 @@ async function rodar(tela) {
     // ---------- GERENTE: funcionamento ----------
     passo("gerente cadastra o funcionamento");
     await entrar("gabriel.navalha", "Senha-Gabriel-2026");
-    await page.click("a.menu-item:has-text('Funcionamento')");
+    await ir(page, "Funcionamento");
     await page.waitForSelector("text=Dias e horários da semana");
     for (let d = 0; d < 7; d++) {
       if (d === 0) { await page.uncheck("#d0-aberto"); continue; }   // domingo fechado
@@ -143,13 +144,13 @@ async function rodar(tela) {
     await page.fill("#c-troco", "100,00");
     await print("caixa-abrir");
     await page.click("button:has-text('Abrir caixa')");
-    await page.waitForSelector("text=Nenhum lançamento ainda");
+    await page.waitForSelector(".pdv-topo");   // caixa aberto: tela de PDV
     await sair();
 
     // ---------- BARBEIRO: marca, bloqueia, envia lembrete, finaliza com valor alterado ----------
     passo("barbeiro marca horário com cliente novo pelo telefone");
     await entrar("bruno.navalha", "Senha-Bruno-2026");
-    await page.click("a.menu-item:has-text('Minha agenda')");
+    await ir(page, "Minha agenda");
     await page.waitForSelector("text=+ Novo horário");
     await page.click("text=+ Novo horário");
     await page.fill("dialog[open] [name=hora]", "10:00");
@@ -174,7 +175,7 @@ async function rodar(tela) {
     await page.click("dialog[open] button:has-text('Cancelar')");
 
     passo("barbeiro bloqueia um horário");
-    await page.click("text=Bloquear horário");
+    await page.click(".acoes-agenda button:has-text('Bloquear')");
     await page.fill("[name=hIni]", "15:00");
     await page.fill("[name=hFim]", "16:00");
     await page.fill("#c-motivoBloq", "Dentista");
@@ -215,6 +216,8 @@ async function rodar(tela) {
     // ---------- CAIXA: vê o valor bruto, sem comissão ----------
     passo("caixa vê a entrada com valor bruto e sem comissão");
     await entrar("camila.navalha", "Senha-Camila-2026");
+    await page.waitForSelector('[data-cobrar="Diego Cliente Fictício"] >> text=Pago');   // aba Cobrar: já pago
+    await page.click(".pdv-barra .alterna button:has-text('Lançamentos')");
     await page.waitForSelector('[data-lancamento="Diego Cliente Fictício"]');
     const textoCaixa = await page.locator("main").innerText();
     assert.match(await page.textContent("[data-teste=entradas]"), /R\$\s?65,00/);
@@ -227,7 +230,7 @@ async function rodar(tela) {
     // ---------- GERENTE: vê a alteração destacada; fecha amanhã e recebe a lista para remarcar ----------
     passo("gerente vê o valor alterado destacado");
     await entrar("gabriel.navalha", "Senha-Gabriel-2026");
-    await page.click("a.menu-item:has-text('Agenda')");
+    await ir(page, "Agenda");
     await page.waitForSelector('[data-agendamento="Diego Cliente Fictício"].destaque');
     const cg = await page.textContent('[data-agendamento="Diego Cliente Fictício"]');
     assert.match(cg, /Valor alterado/);
@@ -239,8 +242,7 @@ async function rodar(tela) {
     await print("gerente-agenda-semana");
 
     passo("gerente fecha amanhã e recebe a lista para remarcar");
-    await page.click("#btn-inicio");
-    await page.click("a.menu-item:has-text('Funcionamento')");
+    await ir(page, "Funcionamento");
     await page.fill("#c-fIni", AMANHA);
     await page.fill("#c-fMotivo", "Feriado municipal (fictício)");
     await page.click("button:has-text('Fechar agenda')");
