@@ -69,8 +69,8 @@ let logado = null;
 async function entrar(login, senha) {
   if (logado === login) return;
   await page.evaluate(() => localStorage.clear());
-  await page.goto(`${BASE}/#/`);
-  await page.reload();
+  await page.goto("about:blank");
+  await page.goto(`${BASE}/#/entrar`);
   await page.waitForSelector("#c-login");
   await page.fill("#c-login", login);
   await page.fill("#c-senha", senha);
@@ -94,7 +94,7 @@ async function foto(id, { janela = false } = {}) {
 try {
   // 1º acesso (barbeiro novo com senha provisória)
   logado = null;
-  await page.goto(`${BASE}/#/`);
+  await page.goto(`${BASE}/#/entrar`);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.fill("#c-login", "joao.nova");

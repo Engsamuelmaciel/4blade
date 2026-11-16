@@ -8,11 +8,9 @@ export const PERFIS_EQUIPE = ["gerente", "barbeiro", "caixa"];   // criados dent
 export const SEM_LIMITE = 1_000_000;
 export const PLANOS = {
   basico: { nome: "Básico", barbeiros: 2, mensalCentavos: 7900, site: null },
-  standard: { nome: "Standard", barbeiros: 4, mensalCentavos: 11900, site: "horarios_opcional" },
-  pro: { nome: "Pro", barbeiros: 10, mensalCentavos: 17900, site: "completo" }
+  standard: { nome: "Standard", barbeiros: 4, mensalCentavos: 10990, site: "visual" },     // site só para ver horários (fase 2)
+  pro: { nome: "Pro", barbeiros: 10, mensalCentavos: 14990, site: "completo" }            // site completo integrado (fase 2)
 };
-// Adicional do Standard: site só para o cliente ver os horários livres (valor a confirmar com o responsável).
-export const SITE_STANDARD_MENSAL_CENTAVOS = 2000;
 // O site (fase 2) ainda não está no ar: enquanto for false, o adicional não pode ser contratado.
 export const SITE_DISPONIVEL = false;
 export const MESES_DO_ANUAL = 10;
@@ -20,11 +18,11 @@ export const MESES_DO_ANUAL = 10;
 // Plano antigo (coluna barbearias.plano) → novo.
 export const planoDaColunaAntiga = p => (p === "profissional" ? "pro" : "basico");
 
-export function valorDoPlano(plano, ciclo = "mensal", siteHorarios = false) {
+// Sem adicionais: o site (fase 2) já vem no plano (Standard = só visual; Pro = completo).
+export function valorDoPlano(plano, ciclo = "mensal") {
   const p = PLANOS[plano];
   if (!p) return null;
-  const mensal = p.mensalCentavos + (plano === "standard" && siteHorarios ? SITE_STANDARD_MENSAL_CENTAVOS : 0);
-  return ciclo === "anual" ? mensal * MESES_DO_ANUAL : mensal;
+  return ciclo === "anual" ? p.mensalCentavos * MESES_DO_ANUAL : p.mensalCentavos;
 }
 
 // barbearia = { plano, barbeiros_adicionais } (plano já no formato novo).

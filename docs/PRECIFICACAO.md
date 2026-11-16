@@ -51,10 +51,10 @@ Barbearia com 4 barbeiros faturando R$ 25 mil/mês:
 > | Plano | Barbeiros | Mensal | Anual (paga 10 meses) |
 > |---|---|---|---|
 > | **Básico** | até 2 | **R$ 79** | R$ 790 |
-> | **Standard** | até 4 | **R$ 119** | R$ 1.190 |
-> | **Pro** | até 10 (+ adicionais) | **R$ 179** | R$ 1.790 |
+> | **Standard** | até 4 | **R$ 109,90** | R$ 1.099 |
+> | **Pro** | até 10 (+ adicionais) | **R$ 149,90** | R$ 1.499 |
 >
-> Standard: site só para o cliente ver os horários livres, **opcional e pago à parte** (valor provisório no sistema: + R$ 20/mês, a confirmar). Pro: site completo integrado (fase 2). Enquanto o site não estiver pronto, aparece como "em breve" e não pode ser contratado.
+> Standard: site só visual (o cliente vê os horários livres), incluso. Pro: site funcional integrado à agenda, com lista de produtos e compra iniciada pelo site (fase 2). Enquanto o site não estiver pronto, aparece como "em breve". (Atualizado 16/11/2026: antes eram R$ 119 / R$ 179 e adicional de site R$ 20.)
 >
 > A tabela abaixo é a proposta ANTIGA (2 planos), guardada só como histórico.
 

@@ -8,7 +8,7 @@ import {
   hashPassword, auditoria, safeEqual, hojeBrasil, HttpError
 } from "./util.js";
 import {
-  PLANOS, SITE_STANDARD_MENSAL_CENTAVOS, SITE_DISPONIVEL, MESES_DO_ANUAL, valorDoPlano, planoDaColunaAntiga
+  PLANOS, SITE_DISPONIVEL, MESES_DO_ANUAL, valorDoPlano, planoDaColunaAntiga
 } from "./perfis.js";
 import { clienteAsaas, asaasConfigurado } from "./asaas.js";
 import { MODELOS_PADRAO } from "./cadastros.js";
@@ -94,7 +94,6 @@ export function planosPublicos() {
       id, nome: p.nome, barbeiros: p.barbeiros, site: p.site,
       mensalCentavos: p.mensalCentavos, anualCentavos: p.mensalCentavos * MESES_DO_ANUAL
     })),
-    siteStandardMensalCentavos: SITE_STANDARD_MENSAL_CENTAVOS,
     siteDisponivel: SITE_DISPONIVEL,
     mesesDoAnual: MESES_DO_ANUAL,
     testeDias: TESTE_DIAS,
@@ -104,8 +103,8 @@ export function planosPublicos() {
   };
 }
 
-const descricaoAssinatura = (plano, ciclo, site) =>
-  `4blade — Plano ${PLANOS[plano].nome}${site ? " + site de horários" : ""} (${ciclo === "anual" ? "anual" : "mensal"})`;
+const descricaoAssinatura = (plano, ciclo) =>
+  `4blade — Plano ${PLANOS[plano].nome} (${ciclo === "anual" ? "anual" : "mensal"})`;
 
 // ---------- rotas SEM sessão ----------
 export async function rotasPublicasAssinatura({ db, request, env, ipHash, limitar }, path, method) {
@@ -121,9 +120,6 @@ export async function rotasPublicasAssinatura({ db, request, env, ipHash, limita
     if (!PLANOS[plano]) return fail("Escolha um plano.");
     const ciclo = input.ciclo === "anual" ? "anual" : input.ciclo === "mensal" || input.ciclo === undefined ? "mensal" : null;
     if (!ciclo) return fail("Escolha mensal ou anual.");
-    const siteHorarios = input.siteHorarios === true;
-    if (siteHorarios && plano !== "standard") return fail("O site de horários é um adicional só do Plano Standard.");
-    if (siteHorarios && !SITE_DISPONIVEL) return fail("O site de horários ainda não está disponível.");
 
     const nome = textoLimpo(input.barbearia, 2, 80);
     if (!nome) return fail("Informe o nome da barbearia (2 a 80 letras).");
@@ -156,13 +152,13 @@ export async function rotasPublicasAssinatura({ db, request, env, ipHash, limita
     const hoje = hojeBrasil();
     const testeAte = somaDias(hoje, TESTE_DIAS - 1);
     const primeiroVenc = somaDias(hoje, TESTE_DIAS);
-    const valor = valorDoPlano(plano, ciclo, siteHorarios);
+    const valor = valorDoPlano(plano, ciclo);
 
     // 1) Asaas: cliente + assinatura (1ª cobrança vence no dia seguinte ao fim do teste).
     const cliente = await asaas.criarCliente({ nome: donoNome, documento, email, telefone, barbeariaId });
     const assin = await asaas.criarAssinatura({
       clienteId: cliente.id, valorCentavos: valor, primeiroVencimento: primeiroVenc, ciclo,
-      descricao: descricaoAssinatura(plano, ciclo, siteHorarios), barbeariaId
+      descricao: descricaoAssinatura(plano, ciclo), barbeariaId
     });
 
     // 2) Banco: tudo junto. Se falhar (ex.: alguém pegou o mesmo usuário no mesmo segundo), desfaz a assinatura no Asaas.
@@ -183,10 +179,10 @@ export async function rotasPublicasAssinatura({ db, request, env, ipHash, limita
             asaas_cliente_id, asaas_assinatura_id, teste_ate, pago_ate, proximo_vencimento,
             termos_versao, termos_aceitos_em, termos_ip_hash)
           VALUES (?, ?, ?, ?, ?, 'asaas', ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
-        `).bind(barbeariaId, plano, ciclo, siteHorarios ? 1 : 0, valor, documento, email,
+        `).bind(barbeariaId, plano, ciclo, 0, valor, documento, email,
           cliente.id, assin.id, testeAte, testeAte, primeiroVenc, TERMOS_VERSAO, ipHash),
         auditoria(actx, "barbearia_assinou", barbeariaId, {
-          depois: { nome, plano, ciclo, siteHorarios, valor, proprietario: login, testeAte, termos: TERMOS_VERSAO }
+          depois: { nome, plano, ciclo, valor, proprietario: login, testeAte, termos: TERMOS_VERSAO }
         })
       ]);
     } catch (e) {
@@ -368,11 +364,11 @@ export async function alterarPlanoAssinatura(ctx, barbeariaId, atual, novoPlano)
   const { db, env } = ctx;
   const a = await db.prepare("SELECT * FROM assinaturas WHERE barbearia_id = ?").bind(barbeariaId).first();
   const ciclo = a?.ciclo || "mensal";
-  const site = novoPlano === "standard" && Boolean(a?.site_horarios);
-  const valor = valorDoPlano(novoPlano, ciclo, site);
+  const site = false;
+  const valor = valorDoPlano(novoPlano, ciclo);
   if (a?.origem === "asaas" && a.asaas_assinatura_id && !Number(a.cancelada)) {
     await clienteAsaas(env).alterarAssinatura(a.asaas_assinatura_id, {
-      valorCentavos: valor, ciclo, descricao: descricaoAssinatura(novoPlano, ciclo, site)
+      valorCentavos: valor, ciclo, descricao: descricaoAssinatura(novoPlano, ciclo)
     });
   }
   return db.prepare(`

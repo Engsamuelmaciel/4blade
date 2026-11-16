@@ -50,11 +50,9 @@ const pagoAte = (amb, barbeariaId, data, extra = "") =>
 describe("planos e regras de data", () => {
   test("preços, limites e situação", () => {
     assert.equal(valorDoPlano("basico"), 7900);
-    assert.equal(valorDoPlano("standard"), 11900);
-    assert.equal(valorDoPlano("pro"), 17900);
-    assert.equal(valorDoPlano("standard", "anual"), 119000);
-    assert.equal(valorDoPlano("standard", "mensal", true), 13900);
-    assert.equal(valorDoPlano("basico", "mensal", true), 7900, "adicional só no Standard");
+    assert.equal(valorDoPlano("standard"), 10990);
+    assert.equal(valorDoPlano("pro"), 14990);
+    assert.equal(valorDoPlano("standard", "anual"), 109900);
     assert.equal(limiteDoPerfil({ plano: "basico" }, "barbeiro"), 2);
     assert.equal(limiteDoPerfil({ plano: "standard" }, "barbeiro"), 4);
     assert.equal(limiteDoPerfil({ plano: "pro", barbeiros_adicionais: 3 }, "barbeiro"), 13);
@@ -89,7 +87,7 @@ describe("página de planos e Assinar (sem login)", () => {
     const r = await amb.get("/api/planos");
     assert.equal(r.status, 200);
     assert.deepEqual(r.dados.planos.map(p => [p.id, p.barbeiros, p.mensalCentavos, p.anualCentavos]),
-      [["basico", 2, 7900, 79000], ["standard", 4, 11900, 119000], ["pro", 10, 17900, 179000]]);
+      [["basico", 2, 7900, 79000], ["standard", 4, 10990, 109900], ["pro", 10, 14990, 149900]]);
     assert.equal(r.dados.testeDias, 14);
     assert.equal(r.dados.assinaturaDisponivel, true);
   });
@@ -103,8 +101,6 @@ describe("página de planos e Assinar (sem login)", () => {
     assert.match((await tenta({ senha: "curta" }, "10.2.0.2")).dados.erro, /senha/);
     assert.match((await tenta({ email: "sem-arroba" }, "10.2.0.2")).dados.erro, /E-mail/);
     assert.match((await tenta({ telefone: "123" }, "10.2.0.3")).dados.erro, /WhatsApp/);
-    assert.match((await tenta({ siteHorarios: true, plano: "basico" }, "10.2.0.3")).dados.erro, /só do Plano Standard/);
-    assert.match((await tenta({ siteHorarios: true }, "10.2.0.3")).dados.erro, /ainda não está disponível/);
     assert.equal(amb.asaas.estado.chamadas.length, 0, "nada foi enviado ao Asaas");
     const n = await amb.env.DB.prepare("SELECT COUNT(*) AS n FROM barbearias").first();
     assert.equal(Number(n.n), 0);
@@ -122,7 +118,7 @@ describe("página de planos e Assinar (sem login)", () => {
     const hoje = hojeBrasil();
     assert.equal(r.testeAte, somaDias(hoje, 13));
     assert.equal(r.primeiroVencimento, somaDias(hoje, 14));
-    assert.equal(r.valorCentavos, 11900);
+    assert.equal(r.valorCentavos, 10990);
     assert.match(r.linkPagamento, /^https:\/\/sandbox\.asaas\.com\/i\//);
 
     assert.equal(usuario.trocaObrigatoria, false, "a senha foi escolhida por ele");
@@ -134,7 +130,7 @@ describe("página de planos e Assinar (sem login)", () => {
     const cli = [...amb.asaas.estado.clientes.values()][0];
     assert.equal(cli.cpfCnpj, CPF_A);
     assert.equal(cli.mobilePhone, "11900000001");
-    assert.equal(sub.value, 119);
+    assert.equal(sub.value, 109.9);
     assert.equal(sub.cycle, "MONTHLY");
     assert.equal(sub.billingType, "UNDEFINED");
     assert.equal(sub.nextDueDate, somaDias(hoje, 14));
@@ -162,8 +158,8 @@ describe("página de planos e Assinar (sem login)", () => {
   test("anual, CNPJ e plano Pro", async () => {
     const amb = ambiente();
     const { r, sub } = await assinar(amb, { plano: "pro", ciclo: "anual", documento: CNPJ, login: "dono.pro" });
-    assert.equal(r.valorCentavos, 179000);
-    assert.equal(sub.value, 1790);
+    assert.equal(r.valorCentavos, 149900);
+    assert.equal(sub.value, 1499);
     assert.equal(sub.cycle, "YEARLY");
   });
 
@@ -211,7 +207,7 @@ describe("avisos do Asaas (webhook)", () => {
     assert.equal(a.assinatura.situacao, "em_dia");
     assert.equal(a.assinatura.pagoAte, ate);
     assert.equal(a.pagamentos.length, 1);
-    assert.equal(a.pagamentos[0].valorCentavos, 11900);
+    assert.equal(a.pagamentos[0].valorCentavos, 10990);
 
     const rep = await amb.webhook(ev.pago);
     assert.equal(rep.dados.repetido, true);
@@ -340,8 +336,8 @@ describe("plataforma e isolamento", () => {
     const up = await amb.post("/api/plataforma/barbearias/alterar", p, { id: r.barbearia.id, plano: "pro", motivo: "Pediu o Pro" });
     assert.equal(up.status, 200, JSON.stringify(up.dados));
     assert.equal(up.dados.barbearia.plano, "pro");
-    assert.equal(up.dados.barbearia.assinatura.valorCentavos, 17900);
-    assert.equal(amb.asaas.estado.assinaturas.get(sub.id).value, 179);
+    assert.equal(up.dados.barbearia.assinatura.valorCentavos, 14990);
+    assert.equal(amb.asaas.estado.assinaturas.get(sub.id).value, 149.9);
     assert.equal(up.dados.barbearia.assinatura.origem, "asaas", "continua cobrada pelo Asaas");
   });
 

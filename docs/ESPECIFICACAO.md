@@ -185,7 +185,7 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 
 
 ## 11. Planos e assinatura on-line (16/11/2026, pedido do responsável)
-- **Planos:** Básico (até 2 barbeiros, R$ 79/mês), Standard (até 4, R$ 119/mês), Pro (até 10 + adicionais, R$ 179/mês). Anual = 10 mensalidades. Gerentes e caixas **sem limite** em todos. Standard: site "só ver horários" **adicional pago à parte** (valor provisório R$ 20/mês, a confirmar). Pro: site completo (seção 4.12). O site é da fase 2: até lá aparece "em breve" e o adicional não pode ser contratado.
+- **Planos (atualizado 16/11/2026):** Básico (até 2 barbeiros, R$ 79/mês), Standard (até 4, R$ 109,90/mês, site só visual: o cliente vê os horários livres), Pro (até 10 + adicionais, R$ 149,90/mês, site funcional integrado à agenda, com lista de produtos e compra iniciada pelo site). Anual = 10 mensalidades. Gerentes e caixas **sem limite** em todos. Sem adicional pago de site. O site é da fase 2: até lá aparece "em breve". (Valores antigos R$ 119 / R$ 179 / adicional R$ 20: só histórico.)
 - **Página de planos** (`#/planos`, sem login; link na tela de entrada) → **Assinar** (`#/assinar/<plano>`): plano, mensal/anual, nome da barbearia, nome, CPF ou CNPJ, WhatsApp, e-mail, usuário e senha escolhidos pela pessoa, aceite dos termos de uso e da política de privacidade (versão e data guardadas).
 - **14 dias grátis**, sem cartão: a barbearia é criada na hora e o dono já entra. No mesmo momento o 4blade cria o cliente e a assinatura no **Asaas** (Pix, boleto ou cartão; 1ª cobrança no dia seguinte ao fim do teste).
 - **Avisos do Asaas (webhook):** pagamento confirmado → acesso liberado até o fim do período pago (o 4blade confere o pagamento no próprio Asaas antes de liberar; aviso repetido não conta 2 vezes). Cobrança nova → vira o link "Pagar" em Minha assinatura. Assinatura apagada no Asaas → cancelada.
@@ -193,7 +193,7 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - **Cancelar:** só o proprietário, com motivo, em Minha assinatura; o sistema funciona até o fim do período pago (sem tolerância depois).
 - **Um cadastro por CPF/CNPJ** (evita teste grátis repetido); outra filial: pelo suporte. Mudança de plano: pelo suporte (plataforma); se a cobrança é pelo Asaas, o valor lá muda junto.
 - Barbearias criadas pela plataforma continuam com cobrança "combinada com o suporte" (nunca bloqueiam sozinhas).
-- Regras que decidi (confirmar): valor do adicional do Standard (R$ 20); limite de 5 cadastros por hora por aparelho; textos de termos/privacidade são RASCUNHO (`public/legal.js`, campos [ ] a preencher; revisar com advogado).
+- Regras que decidi (confirmar): limite de 5 cadastros por hora por aparelho; textos de termos/privacidade são RASCUNHO (`public/legal.js`, campos [ ] a preencher; revisar com advogado).
 
 ## 12. Ajuda e suporte (16/11/2026, pedido do responsável)
 - **Menu Ajuda** (todos os perfis): **Dúvidas frequentes** (28 perguntas por assunto, com busca; também aberta sem login, a partir da página de planos) e **Tutoriais** (23, um por tela/tarefa: onde acessar, passo a passo, exemplo, dica e print com dados fictícios). Cada perfil vê só os tutoriais do que pode fazer.

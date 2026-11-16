@@ -83,11 +83,11 @@ async function rodar(tela) {
     await page.waitForSelector('[data-plano="pro"]');
     await pronto();
     assert.match(await page.locator('[data-plano="basico"]').innerText(), /Até 2 barbeiros[\s\S]*R\$\s79/);
-    assert.match(await page.locator('[data-plano="standard"]').innerText(), /Até 4 barbeiros[\s\S]*R\$\s119[\s\S]*site para o seu cliente ver os horários/);
-    assert.match(await page.locator('[data-plano="pro"]').innerText(), /Até 10 barbeiros[\s\S]*R\$\s179[\s\S]*Site completo/);
+    assert.match(await page.locator('[data-plano="standard"]').innerText(), /Até 4 barbeiros[\s\S]*R\$\s109,90[\s\S]*ver os horários livres \(só consulta\)/);
+    assert.match(await page.locator('[data-plano="pro"]').innerText(), /Até 10 barbeiros[\s\S]*R\$\s149,90[\s\S]*Site completo, integrado à agenda[\s\S]*lista de produtos/);
     await print("planos-mensal");
     await page.click('[data-ciclo="anual"]');
-    await page.waitForSelector('[data-plano="standard"] >> text=/R\\$\\s1\\.190/');
+    await page.waitForSelector('[data-plano="standard"] >> text=/R\\$\\s1\\.099/');
     await print("planos-anual");
     passo("página de planos: 3 planos, mensal e anual");
 
@@ -97,9 +97,9 @@ async function rodar(tela) {
     assert.equal(await page.inputValue("#c-plano"), "standard");
     assert.equal(await page.inputValue("#c-ciclo"), "anual", "lembra a escolha da página de planos");
     await page.selectOption("#c-ciclo", "mensal");
-    await page.waitForSelector('[data-teste=resumo-assinatura] >> text=/R\\$\\s119,00 por mês/');
+    await page.waitForSelector('[data-teste=resumo-assinatura] >> text=/R\\$\\s109,90 por mês/');
     assert.match(await page.locator("[data-teste=resumo-assinatura]").innerText(), new RegExp(`Grátis até ${dataBR(somaDias(HOJE, 13))}`));
-    assert.equal(await page.locator("#c-site").isDisabled(), true, "site do Standard: em breve");
+    assert.equal(await page.locator("#c-site").count(), 0, "sem adicional de site");
     await print("assinar-vazio");
     await page.click('[data-legal="termos"]');
     await page.waitForSelector("dialog[open] .texto-legal");

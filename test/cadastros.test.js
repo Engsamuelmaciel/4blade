@@ -178,7 +178,7 @@ describe("painel da plataforma", () => {
     assert.equal((await post("/api/plataforma/barbearias/alterar", p, { id: a.id, plano: "profissional", motivo: "plano antigo" })).status, 400);
     const sobe = await post("/api/plataforma/barbearias/alterar", p, { id: a.id, plano: "pro", motivo: "Contratou o Pro" });
     assert.equal(sobe.dados.barbearia.plano, "pro");
-    assert.equal(sobe.dados.barbearia.assinatura.valorCentavos, 17900);
+    assert.equal(sobe.dados.barbearia.assinatura.valorCentavos, 14990);
     assert.equal(sobe.dados.barbearia.assinatura.situacao, "manual");
     assert.equal((await post("/api/plataforma/barbearias/alterar", p, { id: a.id, plano: "pro", motivo: "de novo" })).status, 400);
 

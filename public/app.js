@@ -406,8 +406,8 @@ const reaisInteiro = c => reais(c).replace(/,00$/, "");
 function cartaoPlano(p, info, ciclo) {
   const extras = {
     basico: [],
-    standard: [`Opcional: site para o seu cliente ver os horários livres (+ ${reaisInteiro(info.siteStandardMensalCentavos)}/mês)${info.siteDisponivel ? "" : " — em breve"}`],
-    pro: [`Site completo da barbearia: horários, pedido de agendamento pelo WhatsApp, serviços, produtos e domínio próprio${info.siteDisponivel ? "" : " — em breve"}`]
+    standard: [`Site da barbearia para o cliente ver os horários livres (só consulta)${info.siteDisponivel ? "" : " — em breve"}`],
+    pro: [`Site completo, integrado à agenda: o cliente escolhe o horário, vê a lista de produtos e já inicia a compra pelo site${info.siteDisponivel ? "" : " — em breve"}`]
   }[p.id] || [];
   const valor = precoPlano(p, ciclo);
   return el("article", { class: `plano ${p.id === "pro" ? "destaque" : ""}`, "data-plano": p.id },
@@ -480,12 +480,10 @@ async function telaAssinar(planoInicial) {
   const planos = Object.fromEntries(info.planos.map(p => [p.id, p]));
   const plano = planos[planoInicial] ? planoInicial : "standard";
   const resumo = el("div", { class: "resumo-assinatura", "data-teste": "resumo-assinatura", "aria-live": "polite" });
-  const blocoSite = el("div", { class: "bloco-site" });
   const form = el("form", { class: "cartao form-assinar", autocomplete: "on" },
     el("h3", { text: "1. Plano" }),
     campo("Plano", { tag: "select", name: "plano", valor: plano, opcoes: info.planos.map(p => [p.id, `${p.nome} — até ${p.barbeiros} barbeiros`]) }),
     campo("Pagamento", { tag: "select", name: "ciclo", valor: cicloPlanos, opcoes: [["mensal", "Mensal"], ["anual", `Anual (paga ${info.mesesDoAnual} meses)`]] }),
-    blocoSite,
     el("h3", { text: "2. Sua barbearia e seus dados" }),
     campo("Nome da barbearia", { name: "barbearia", required: true, maxlength: "80", autocomplete: "organization" }),
     campo("Seu nome completo", { name: "nome", required: true, maxlength: "100", autocomplete: "name" }),
@@ -511,26 +509,16 @@ async function telaAssinar(planoInicial) {
   const atualizar = () => {
     const p = planos[form.plano.value];
     const ciclo = form.ciclo.value;
-    const comSite = p.id === "standard" && form.site?.checked;
-    const valor = precoPlano(p, ciclo) + (comSite ? info.siteStandardMensalCentavos * (ciclo === "anual" ? info.mesesDoAnual : 1) : 0);
+    const valor = precoPlano(p, ciclo);
     const hoje = hojeLocal();
     resumo.replaceChildren(
-      el("strong", { text: `Plano ${p.nome} ${ciclo === "anual" ? "anual" : "mensal"}${comSite ? " + site de horários" : ""}: ${reais(valor)} ${ciclo === "anual" ? "por ano" : "por mês"}` }),
+      el("strong", { text: `Plano ${p.nome} ${ciclo === "anual" ? "anual" : "mensal"}: ${reais(valor)} ${ciclo === "anual" ? "por ano" : "por mês"}` }),
       el("span", { text: `Grátis até ${dataCurta(somaDias(hoje, info.testeDias - 1))}. 1ª cobrança em ${dataCurta(somaDias(hoje, info.testeDias))}. Cancele quando quiser.` }));
   };
-  const desenharSite = () => {
-    const ehStandard = form.plano.value === "standard";
-    blocoSite.replaceChildren(ehStandard
-      ? caixaMarcar(`Quero o site para o cliente ver os horários livres (+ ${reaisInteiro(info.siteStandardMensalCentavos)}/mês)${info.siteDisponivel ? "" : " — em breve"}`,
-        { name: "site", disabled: info.siteDisponivel ? null : true, onchange: atualizar })
-      : null);
-    blocoSite.hidden = !ehStandard;
-  };
-  form.plano.addEventListener("change", () => { desenharSite(); atualizar(); });
+  form.plano.addEventListener("change", atualizar);
   form.ciclo.addEventListener("change", () => { cicloPlanos = form.ciclo.value; atualizar(); });
   form.barbearia.addEventListener("change", () => { if (!form.login.value && form.barbearia.value.trim()) form.login.value = sugerirLogin(form.barbearia.value); });
   mascaraDocumento(form.documento);
-  desenharSite();
   atualizar();
 
   form.addEventListener("submit", ev => {
@@ -541,8 +529,7 @@ async function telaAssinar(planoInicial) {
       const r = await api("/assinar", {
         metodo: "POST",
         corpo: {
-          plano: form.plano.value, ciclo: form.ciclo.value, siteHorarios: Boolean(form.site?.checked),
-          barbearia: form.barbearia.value, nome: form.nome.value, documento: form.documento.value,
+          plano: form.plano.value, ciclo: form.ciclo.value, barbearia: form.barbearia.value, nome: form.nome.value, documento: form.documento.value,
           telefone: form.telefone.value, email: form.email.value, login, senha: form.senha.value, aceiteTermos: form.aceite.checked
         }
       });
@@ -611,7 +598,7 @@ async function telaAssinatura() {
           el("h3", { text: `Plano ${a.nomePlano || NOME_PLANO[a.plano] || a.plano}` }),
           el("span", { class: `etiqueta ${cor}`, "data-situacao": a.situacao, text: rotulo })),
         el("p", { text: textoSituacao(a) }),
-        a.origem === "asaas" ? el("p", { class: "suave", text: `${reais(a.valorCentavos)} ${a.ciclo === "anual" ? "por ano" : "por mês"}${a.siteHorarios ? " (com site de horários)" : ""}${a.proximoVencimento && !a.cancelada ? ` · próximo vencimento ${dataCurta(a.proximoVencimento)}` : ""}` }) : null,
+        a.origem === "asaas" ? el("p", { class: "suave", text: `${reais(a.valorCentavos)} ${a.ciclo === "anual" ? "por ano" : "por mês"}${a.proximoVencimento && !a.cancelada ? ` · próximo vencimento ${dataCurta(a.proximoVencimento)}` : ""}` }) : null,
         pagar,
         a.origem === "asaas" && !a.linkPagamento && !a.cancelada ? el("p", { class: "suave", text: "O link de pagamento aparece aqui quando a cobrança for gerada (alguns dias antes do vencimento)." }) : null,
         el("p", { class: "suave", text: "Para mudar de plano, fale com o suporte do 4blade." }),
