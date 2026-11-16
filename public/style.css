@@ -4,9 +4,10 @@
   --cartao: #ffffff;
   --texto: #1c1917;
   --suave: #57534e;
-  --primaria: #1c1917;
-  --primaria-hover: #44403c;
-  --destaque: #b45309;
+  --primaria: #24272c;          /* grafite da logo */
+  --primaria-hover: #3a3e45;
+  --destaque: #a16207;          /* dourado escuro: texto legível sobre fundo claro */
+  --dourado: #e0a330;           /* dourado da logo: preenchimentos */
   --borda: #d6d3d1;
   --foco: #d97706;
   --erro: #b91c1c;
@@ -52,13 +53,15 @@ body {
   width: 44px;
   height: 44px;
   border-radius: 10px;
-  background: var(--destaque);
-  color: #fff;
-  font-weight: 800;
-  font-size: 22px;
-  display: grid;
-  place-items: center;
   flex: none;
+  display: block;
+}
+.logo-entrada {
+  display: block;
+  width: min(320px, 80%);
+  height: auto;
+  margin: 0 auto 16px;
+  border-radius: 18px;
 }
 .topo-textos { min-width: 0; flex: 1; }
 .topo h1 { margin: 0; font-size: 21px; letter-spacing: .5px; }
@@ -184,7 +187,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
   border-radius: 12px;
   padding: 12px 14px;
   box-shadow: 0 1px 2px rgba(28, 25, 23, .1);
-  border-left: 5px solid var(--destaque);
+  border-left: 5px solid var(--dourado);
 }
 .item.inativo { border-left-color: var(--borda); opacity: .75; }
 .item-topo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
@@ -420,7 +423,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
 .aviso-vermelha { background: var(--erro-fundo); color: var(--erro); }
 .aviso-amarela { background: var(--amarelo-fundo); color: var(--amarelo); }
 .grafico { width: 100%; height: auto; display: block; }
-.grafico .barra { fill: var(--destaque); }
+.grafico .barra { fill: var(--dourado); }
 .grafico .barra.primeira { fill: var(--ok); }
 .grafico .eixo { stroke: var(--borda); stroke-width: 2; }
 .grafico .rotulo { font-size: 19px; fill: var(--suave); }
@@ -429,8 +432,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
 .ranking-topo { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; font-size: 16px; }
 .ranking progress { width: 100%; height: 18px; appearance: none; -webkit-appearance: none; border: none; border-radius: 9px; background: #e7e5e4; overflow: hidden; }
 .ranking progress::-webkit-progress-bar { background: #e7e5e4; border-radius: 9px; }
-.ranking progress::-webkit-progress-value { background: var(--destaque); border-radius: 9px; }
-.ranking progress::-moz-progress-bar { background: var(--destaque); border-radius: 9px; }
+.ranking progress::-webkit-progress-value { background: var(--dourado); border-radius: 9px; }
+.ranking progress::-moz-progress-bar { background: var(--dourado); border-radius: 9px; }
 .ranking .primeiro progress::-webkit-progress-value { background: var(--ok); }
 .ranking .primeiro progress::-moz-progress-bar { background: var(--ok); }
 .grafico .rotulo-nome { font-size: 15px; fill: var(--texto); font-weight: 600; }

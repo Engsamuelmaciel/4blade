@@ -214,7 +214,8 @@ function telaLogin(mensagem = "") {
       else irParaInicial();
     });
   });
-  mostrar(el("section", { class: "estreito" }, form));
+  mostrar(el("section", { class: "estreito" },
+    el("img", { class: "logo-entrada", src: "/icons/logo.png", alt: "4blade", width: "320", height: "240" }), form));
 }
 
 function telaTrocarSenha(senhaAtual = "") {

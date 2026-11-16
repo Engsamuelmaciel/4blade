@@ -1,20 +1,26 @@
 # 4blade — VERSÃO DE TESTE na Cloudflare (dados fictícios). Separada da versão real (wrangler.toml).
-# Publicar: npx wrangler deploy --config wrangler.teste.toml
-# Migrações: npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml
+# Publicar:   npx wrangler deploy --config wrangler.teste.toml
+# Migrações:  npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml
+# Os arquivos da tela vão dentro do Worker (src/entrada-teste.js), sem a seção de assets: o envio de assets não passa
+# pelo proxy do ambiente do Claude. A versão real (wrangler.toml) usa assets normalmente.
 name = "4blade-teste"
-main = "src/index.js"
+main = "src/entrada-teste.js"
 compatibility_date = "2026-01-01"
 keep_vars = true
 workers_dev = true
 
-[assets]
-directory = "./public"
-binding = "ASSETS"
-run_worker_first = ["/api/*"]
-not_found_handling = "single-page-application"
+[[rules]]
+type = "Text"
+globs = ["**/*.html", "**/*.css", "**/public/*.js", "**/*.json", "**/*.svg", "**/_headers"]
+fallthrough = false
+
+[[rules]]
+type = "Data"
+globs = ["**/*.png"]
+fallthrough = false
 
 [[d1_databases]]
 binding = "DB"
 database_name = "4blade-db-teste"
-database_id = "PREENCHER-AO-CRIAR"
+database_id = "6aaab71a-9d46-411e-8818-7737ac0e4e33"
 migrations_dir = "migrations"
