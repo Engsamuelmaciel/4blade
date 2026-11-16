@@ -212,6 +212,14 @@ async function rodar(tela) {
     await page.waitForSelector('[data-cobrar="Hugo Avulso Fictício"] >> text=Pago');
     await print("caixa-pdv-pagos");
 
+    passo("caixa cobra atendimento sem telefone e sem nome");
+    await page.click("button:has-text('+ Atendimento sem horário')");
+    await page.waitForSelector("dialog[open] >> text=Quem atendeu");
+    await page.check("dialog[open] input[name=aserv] >> nth=0");
+    assert.equal(await page.locator("dialog[open] #c-aLgpd").isVisible(), false, "aceite LGPD só aparece com telefone");
+    await ok();
+    await page.waitForSelector('[data-cobrar="Cliente não identificado"] >> text=Pago');
+
     await page.click(".pdv-barra .alterna button:has-text('Vender')");
     await page.click('[data-produto-pdv="Pomada"]');
     await page.click('[data-produto-pdv="Pomada"]');

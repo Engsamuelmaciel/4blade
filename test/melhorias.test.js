@@ -179,7 +179,17 @@ describe("telefone opcional na marcação (pedido de 16/11/2026)", () => {
     const av = await post("/api/caixa/atendimento-avulso", cx.token, { barbeiroId: barb.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }],
       pagamentos: [{ forma: "pix", valorCentavos: 4000 }], cliente: { nome: "Passante Fictício" } });
     assert.equal(av.status, 201, JSON.stringify(av.dados));
+    // sem nome e sem telefone: no caixa vira "Cliente não identificado" (na agenda continua exigindo o nome)
+    const anon = await post("/api/caixa/atendimento-avulso", cx.token, { barbeiroId: barb.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }],
+      pagamentos: [{ forma: "dinheiro", valorCentavos: 4000 }], cliente: { telefone: "", nome: "" } });
+    assert.equal(anon.status, 201, JSON.stringify(anon.dados));
+    const anon2 = await post("/api/caixa/atendimento-avulso", cx.token, { barbeiroId: barb.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }],
+      pagamentos: [{ forma: "pix", valorCentavos: 4000 }], cliente: {} });
+    assert.equal(anon2.status, 201, JSON.stringify(anon2.dados));
     const fila = (await get("/api/caixa/atendimentos", cx.token)).dados.atendimentos;
+    const anonimos = fila.filter(a => a.cliente.nome === "Cliente não identificado");
+    assert.equal(anonimos.length, 2);
+    assert.equal(anonimos[0].cliente.telefone, null);
     assert.equal(fila.find(a => a.cliente.nome === "Passante Fictício").cliente.telefone, null);
   });
 });

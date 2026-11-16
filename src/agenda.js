@@ -151,12 +151,15 @@ async function listarAgenda(ctx) {
 // ---------- MARCAR ----------
 // Cliente identificado pelo telefone (existe → usa; não existe → nasce aqui com aceite LGPD) ou, sem telefone, pelo nome.
 // Põe em "comandos" o cadastro do cliente novo (para ir no mesmo lote) e devolve { id, nome, novo }.
+const CLIENTE_NAO_IDENTIFICADO = "Cliente não identificado";
+
 async function clienteDaMarcacao(ctx, c = {}, comandos, origem = "agenda") {
   const { db, user } = ctx;
   const semTelefone = typeof c.telefone !== "string" || !c.telefone.replace(/\D/g, "");
   if (semTelefone) {
     // Telefone é opcional: sem ele o cliente é identificado pelo nome (mesmo nome sem telefone = mesmo cliente).
-    const nome = textoLimpo(c.nome, 2, 80);
+    // No caixa (atendimento sem horário) dá para cobrar sem identificar o cliente.
+    const nome = textoLimpo(c.nome, 2, 80) || (origem === "caixa" ? CLIENTE_NAO_IDENTIFICADO : null);
     if (!nome) erro("Informe o telefone ou o nome do cliente.");
     const existente = await db.prepare(`SELECT id, nome, ativo FROM clientes WHERE barbearia_id = ? AND lower(nome) = lower(?)
                                         AND telefone LIKE '${PREFIXO_SEM_TELEFONE}%' ORDER BY ativo DESC LIMIT 1`).bind(ctx.barbeariaId, nome).first();

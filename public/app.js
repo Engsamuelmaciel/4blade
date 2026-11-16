@@ -1040,7 +1040,11 @@ async function janelaVenda({ agendamento = null, aoTerminar } = {}) {
   const totalEl = el("p", { class: "total-final", "data-teste": "total-venda" });
   const total = () => linhas.reduce((t, l) => t + (Math.max(0, parseInt(l.qtd.value, 10) || 0) * l.p.precoCentavos), 0);
   const pag = blocoPagamento(total);
-  const atualizar = () => { totalEl.textContent = `Total: ${reais(total())}`; pag.atualizar(); };
+  const atualizar = () => {
+    totalEl.textContent = `Total: ${reais(total())}`; pag.atualizar();
+    const f = janela.querySelector("form");
+    f.aLgpd.closest(".marcar").hidden = !f.aTel.value.replace(/\D/g, "");   // aceite só se houver telefone
+  };
   const promessa = abrirJanela(agendamento ? `Vender para ${agendamento.cliente.nome}` : "Vender produto", [
     el("p", { class: "suave", text: "Informe a quantidade de cada produto. A venda baixa o estoque na hora." }),
     el("div", { class: "lista-servicos" }, linhas.map(l => l.el)),
@@ -1313,8 +1317,8 @@ function janelaAvulso(profissionais, recarregar) {
     el("div", { class: "lista-servicos" }, linhas.map(l => l.el)),
     totalEl,
     campo("Telefone do cliente (WhatsApp) — opcional", { name: "aTel", inputmode: "tel", autocomplete: "off" }),
-    campo("Nome do cliente", { name: "aNome", autocomplete: "off" }, "Obrigatório sem telefone ou se for cliente novo."),
-    caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "aLgpd" }),
+    campo("Nome do cliente — opcional", { name: "aNome", autocomplete: "off" }, "Sem nome e sem telefone, fica como \"Cliente não identificado\"."),
+    Object.assign(caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "aLgpd" }), { hidden: true }),
     ...pag.elementos
   ], {
     ok: "Cobrar",
@@ -1334,7 +1338,11 @@ function janelaAvulso(profissionais, recarregar) {
       recarregar();
     }
   });
-  const atualizar = () => { totalEl.textContent = `Total: ${reais(total())}`; pag.atualizar(); };
+  const atualizar = () => {
+    totalEl.textContent = `Total: ${reais(total())}`; pag.atualizar();
+    const f = janela.querySelector("form");
+    f.aLgpd.closest(".marcar").hidden = !f.aTel.value.replace(/\D/g, "");   // aceite só se houver telefone
+  };
   janela.querySelector("form").addEventListener("input", atualizar);
   janela.querySelector("form").addEventListener("change", atualizar);
   atualizar();
