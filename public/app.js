@@ -491,7 +491,9 @@ async function telaAgenda() {
 
   const profs = ag.profissionais.filter(p => !estadoAgenda.barbeiroId || p.id === estadoAgenda.barbeiroId);
   let corpo;
-  if (v === "dia") {
+  if ((v === "dia" || v === "semana") && !profs.length) {
+    corpo = el("p", { class: "vazio", "data-teste": "sem-profissionais", text: "Nenhum profissional com agenda. Cadastre gerente ou barbeiro em Equipe e ajustes → Equipe (o proprietário não tem agenda própria)." });
+  } else if (v === "dia") {
     // Dia: um profissional por coluna (gerente vê todos lado a lado).
     corpo = el("div", { class: `agenda-colunas ${profs.length > 1 ? "varias" : ""}` }, profs.map(p => {
       const itens = itensDoDia(ag, d0, p.id);
@@ -1598,9 +1600,9 @@ async function telaPainel() {
     avisos.length ? el("section", { class: "cartao avisos" }, el("h3", { text: "Avisos" }),
       el("ul", { class: "lista-avisos" }, avisos.map(([cor, t]) => el("li", { class: `aviso-${cor}`, text: t })))) : null,
     el("div", { class: "duas-colunas iguais" },
-      el("section", { class: "cartao" }, el("h3", { text: `Faturamento por dia (R$, ${p.faturamentoPorDia.length} dias)` }), graficoBarras(p.faturamentoPorDia)),
+      el("section", { class: "cartao" }, el("h3", { text: `Faturamento por dia (R$, ${p.faturamentoPorDia.length} dias)` }), p.faturamentoPorDia.some(d => d.valorCentavos) ? graficoBarras(p.faturamentoPorDia) : el("p", { class: "vazio", text: "Ainda não há faturamento nestes dias. O gráfico aparece com os primeiros atendimentos." })),
       el("section", { class: "cartao" }, el("h3", { text: "Ranking (atendimentos no período)" }),
-        p.ranking.length ? graficoRanking(p.ranking) : el("p", { class: "suave", text: "Sem atendimentos." }))));
+        p.ranking.length ? graficoRanking(p.ranking) : el("p", { class: "vazio", text: "Sem atendimentos no período." }))));
 }
 
 // ---------- DESEMPENHO DO BARBEIRO (só dele) + EXTRATO ----------

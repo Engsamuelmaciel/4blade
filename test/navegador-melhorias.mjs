@@ -79,6 +79,34 @@ async function rodar(tela) {
   try {
     await page.goto(base);
 
+    // ---------- BARBEARIA NOVA (sem nada lançado) ----------
+    passo("barbearia nova: painel e agenda vazios ocupam a tela, sem buracos");
+    const ativar = async (login, prov, nova) => {
+      const l = await chamar("/auth/login", { login, senha: prov });
+      await chamar("/auth/trocar-senha", { senhaAtual: prov, novaSenha: nova }, l.token);
+    };
+    const plat = (await chamar("/auth/login", { login: "suporte", senha: "Nova-suporte-senha" })).token;
+    const nova = await chamar("/plataforma/barbearias", { nome: "Barbearia Vazia Fictícia", proprietario: { nome: "Vitor Fictício", login: "vitor.vazia" } }, plat);
+    await ativar("vitor.vazia", nova.senhaProvisoria, SENHA);
+    await entrar("vitor.vazia");
+    await page.waitForSelector("[data-cartao=lucro]");
+    await page.waitForSelector("text=Ainda não há faturamento");
+    if (tela.movel) {
+      const [bruto, lucro] = await Promise.all(["bruto", "lucro"].map(c => page.locator(`[data-cartao=${c}]`).boundingBox()));
+      assert.ok(lucro.width > bruto.width * 1.8, "no celular o lucro ocupa as 2 colunas");
+    }
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), tela.largura);
+    await print("barbearia-nova-painel");
+    await ir(page, "Agenda");
+    await page.waitForSelector("[data-teste=sem-profissionais]");
+    if (tela.movel) {
+      const larg = async sel => (await page.locator(sel).first().boundingBox()).width;
+      assert.ok(await larg(".barra-agenda .alterna") > tela.largura - 60, "botões Dia/Semana/Mês/Ano na largura toda");
+      assert.ok(await larg(".navega-data") > tela.largura - 60, "navegação de data na largura toda");
+    }
+    await print("barbearia-nova-agenda");
+    await sair();
+
     // ---------- MENU ----------
     passo("menu lateral com categorias; cada opção abre a tela inteira");
     await entrar("ana.semana");

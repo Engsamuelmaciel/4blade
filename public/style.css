@@ -378,6 +378,29 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
 .item.conta-paga, .item.conta-cancelada { border-left-color: var(--borda); }
 .botoes-planilha { display: flex; flex-wrap: wrap; gap: 6px; }
 
+/* ---------- celular: barras de controle ocupam a largura toda ---------- */
+@media (max-width: 699px) {
+  main .alterna { display: flex; width: 100%; }
+  main .alterna .botao { flex: 1; padding-left: 4px; padding-right: 4px; }
+  .barra-agenda { display: grid; grid-template-columns: 1fr; }
+  .navega-data { width: 100%; }
+  .navega-data .data-agenda, .navega-data .rotulo-periodo { flex: 1; min-width: 0; text-align: center; }
+  .navega-data .botao.seta { min-width: 44px; }
+  .filtro-prof { width: 100%; }
+  .acoes-agenda { display: grid; grid-template-columns: 1fr 1fr; }
+  .acoes-agenda .botao, .pdv-acoes .botao { width: 100%; }
+  .pdv-barra > .pdv-acoes { width: 100%; margin-left: 0; display: grid; grid-template-columns: repeat(3, 1fr); }
+  .pdv-barra > .pdv-acoes > a { grid-column: 1 / -1; text-align: center; }
+  .pdv-cobrar > .pdv-barra { display: grid; grid-template-columns: 1fr; }
+  .pdv-cobrar > .pdv-barra .pdv-acoes { display: block; margin-left: 0; }
+  .ticket-at { display: grid; grid-template-columns: auto 1fr auto; }
+  .ticket-at > .botao { grid-column: 1 / -1; width: 100%; }
+}
+
+/* Lucro em destaque: ocupa 2 colunas no celular e no tablet */
+.cartao-num[data-cartao=lucro] { grid-column: span 2; }
+.cartao-num[data-cartao=lucro] strong { font-size: 24px; }
+
 /* ---------- telas maiores ---------- */
 @media (min-width: 700px) {
   .cartoes { grid-template-columns: repeat(3, 1fr); }
@@ -391,6 +414,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
   body.com-menu .btn-menu, body.com-menu .fundo-menu { display: none; }
   main { padding: 18px 22px 40px; }
   .cartoes { grid-template-columns: repeat(6, 1fr); }
+  .cartao-num[data-cartao=lucro] { grid-column: auto; }
+  .cartao-num[data-cartao=lucro] strong { font-size: 20px; }
   .contas-cartao { grid-column: auto; flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 3px; }
   .contas-cartao .cartao-tit { flex-basis: auto; }
   .contas-cartao .linha-conta { font-size: 12px; padding: 1px 6px; }
