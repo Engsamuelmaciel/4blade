@@ -66,7 +66,7 @@ async function rodar(tela) {
     await page.fill("#c-senha", SENHA);
     await page.click("button:has-text('Entrar')");
   };
-  const sair = async () => { await page.click("#btn-sair"); await page.waitForSelector("text=Você saiu do sistema."); };
+  const sair = async () => { await page.click("#btn-conta"); await page.click("#btn-sair"); await page.waitForSelector("text=Você saiu do sistema."); };
   const ok = () => page.click("dialog[open] button[type=submit]");
   const chamar = async (rota, corpo, token) => {
     const r = await fetch(`${base}/api${rota}`, { method: corpo ? "POST" : "GET", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: corpo ? JSON.stringify(corpo) : undefined });
@@ -134,7 +134,14 @@ async function rodar(tela) {
     passo("barbeira marca horário fixo toda semana");
     await page.click("button:has-text('+ Novo horário')");
     await page.fill("dialog[open] #c-data", AMANHA);
-    await page.fill("dialog[open] #c-hora", "10:00");
+    // hora digitada (sem o relógio do celular, que ficava cortado): "930" vira 09:30
+    assert.equal(await page.getAttribute("dialog[open] #c-hora", "type"), "text");
+    await page.locator("dialog[open] #c-hora").pressSequentially("930");
+    await page.locator("dialog[open] #c-hora").blur();
+    assert.equal(await page.inputValue("dialog[open] #c-hora"), "09:30");
+    await page.fill("dialog[open] #c-hora", "");
+    await page.locator("dialog[open] #c-hora").pressSequentially("1000");
+    assert.equal(await page.inputValue("dialog[open] #c-hora"), "10:00");
     await page.check("dialog[open] input[name=serv] >> nth=0");
     await page.locator("dialog[open] #c-cliTel").pressSequentially("11977776666");
     assert.equal(await page.inputValue("dialog[open] #c-cliTel"), "(11) 97777-6666");
@@ -238,6 +245,28 @@ async function rodar(tela) {
     await page.waitForSelector("[data-cartao=bruto]");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), tela.largura, "nada passa da largura da tela");
     await print("gerente-painel");
+    assert.ok(await page.locator(tela.movel ? ".topo-logo img" : ".menu-logo").isVisible(), "logo no topo/menu");
+    await page.click("#btn-conta");
+    await page.waitForSelector("dialog[open] .conta-cartao >> text=Gustavo Gerente");
+    await print("minha-conta", false);
+    await page.click("dialog[open] button:has-text('Fechar')");
+
+    passo("gerente cadastra produto já com estoque e edita uma conta lançada");
+    await ir(page, "Produtos");
+    await page.fill("#c-nome", "Cera Fictícia");
+    await page.fill("#c-preco", "35,00");
+    await page.fill("#c-qtdInicial", "10");
+    await page.fill("#c-custoInicial", "18,00");
+    await page.click("form.cartao button:has-text('Salvar')");
+    await page.waitForSelector('[data-produto="Cera Fictícia"] >> text=Custo médio: R$ 18,00');
+    await ir(page, "Estoque");
+    await page.waitForSelector('[data-estoque="Cera Fictícia"] [data-teste=saldo]:has-text("10 un.")');
+    await ir(page, "Contas a pagar");
+    await page.click('[data-conta="Conta de luz"] button:has-text("Editar")');
+    await page.fill("dialog[open] #c-eValor", "215,40");
+    await print("editar-conta", false);
+    await ok();
+    await page.waitForSelector('[data-conta="Conta de luz"] >> text=R$ 215,40');
     await ir(page, "Agenda");
     await page.waitForSelector(".barra-agenda");
     await visao("Mês");

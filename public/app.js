@@ -194,6 +194,28 @@ function mascaraInteiro(input) {
     if (input.type !== "number" && limpo !== input.value) input.value = limpo;
   });
 }
+// Hora digitada (09:00): substitui o relógio do celular, que em telas com letra grande fica cortado (botão "Definir" some).
+function mascaraHora(input) {
+  input.type = "text";
+  input.setAttribute("inputmode", "numeric");
+  input.setAttribute("autocomplete", "off");
+  input.setAttribute("maxlength", "5");
+  input.setAttribute("placeholder", "00:00");
+  input.setAttribute("pattern", "([01][0-9]|2[0-3]):[0-5][0-9]");
+  input.setAttribute("title", "Hora no formato 00:00 (ex.: 09:30)");
+  input.classList.add("hora-digitada");
+  const formatar = () => {
+    const d = input.value.replace(/\D/g, "").slice(0, 4);
+    input.value = d.length > 2 ? `${d.slice(0, 2)}:${d.slice(2)}` : d;
+  };
+  input.addEventListener("input", formatar);
+  input.addEventListener("blur", () => {
+    const d = input.value.replace(/\D/g, "");
+    if (d.length === 1 || d.length === 2) input.value = `${d.padStart(2, "0")}:00`;   // "9" → 09:00
+    else if (d.length === 3) input.value = `0${d[0]}:${d.slice(1)}`;                   // "930" → 09:30
+  });
+  formatar();
+}
 // Aplica a formatação certa em TODOS os campos numéricos de uma tela ou janela (uma vez por campo).
 //   telefone: inputmode="tel" · dinheiro: inputmode="decimal" · %: inputmode="decimal" com name com* ou data-numero="percentual"
 //   quantidade: inputmode="numeric" (exceto código de produto, que aceita letras)
@@ -202,6 +224,7 @@ function aplicarMascaras(raiz) {
     const modo = input.getAttribute("inputmode");
     const nome = input.name || "";
     let tipo = null;
+    if (input.type === "time") { input.dataset.mascara = "hora"; mascaraHora(input); continue; }
     if (modo === "tel") tipo = "telefone";
     else if (modo === "decimal") tipo = /^com/.test(nome) || input.dataset.numero === "percentual" ? "percentual" : "dinheiro";
     else if (modo === "numeric" && nome !== "codigo") tipo = "inteiro";
@@ -359,7 +382,7 @@ function atualizarTopo() {
   const acoes = document.getElementById("topo-acoes");
   const logado = Boolean(usuario && !usuario.trocaObrigatoria);
   if (logado) {
-    sub.textContent = usuario.barbearia ? `${usuario.barbearia.nome} · ${usuario.nome}` : `Plataforma · ${usuario.nome}`;
+    sub.textContent = usuario.barbearia ? usuario.barbearia.nome : "Plataforma";
     montarMenu();
   } else {
     sub.textContent = "Gestão para barbearias";
@@ -1780,6 +1803,32 @@ async function telaComissoes() {
 // ---------- CONTAS A PAGAR ----------
 const NOME_CATEGORIA = { aluguel: "Aluguel", luz: "Luz", agua: "Água", fornecedor: "Fornecedor", outros: "Outros" };
 const STATUS_CONTA = { atrasada: ["Atrasada", "vermelha"], hoje: ["Vence hoje", "amarela"], proxima: ["Próximos 7 dias", ""], futura: ["Em aberto", ""], paga: ["Paga", "verde"], cancelada: ["Cancelada", "vermelha"] };
+// Editar conta: em aberto muda tudo; paga muda só descrição e categoria.
+function janelaEditarConta(c) {
+  const aberta = c.situacao === "aberta";
+  return abrirJanela(`Editar ${c.descricao}`, [
+    aberta ? null : el("p", { class: "info", text: "Conta já paga: dá para corrigir a descrição e a categoria. Valor e data já entraram no caixa e nos relatórios." }),
+    campo("Descrição", { name: "eDesc", required: true, maxlength: "100", value: c.descricao }),
+    el("div", { class: "lado-a-lado" },
+      campo("Categoria", { tag: "select", name: "eCat", valor: c.categoria, opcoes: Object.entries(NOME_CATEGORIA) }),
+      aberta ? campo("Valor (R$)", { name: "eValor", inputmode: "decimal", required: true, value: centavosParaTexto(c.valorCentavos) }) : null),
+    aberta ? campo("Vencimento", { name: "eVenc", type: "date", required: true, value: c.vencimento }) : null,
+    aberta ? caixaMarcar("Recorrente (todo mês)", { name: "eRec", checked: c.recorrente || null }) : null
+  ], {
+    ok: "Salvar alterações",
+    aoConfirmar: async f => {
+      const corpo = { id: c.id, descricao: f.eDesc.value, categoria: f.eCat.value };
+      if (aberta) {
+        const v = paraCentavos(f.eValor.value);
+        if (!v) throw new Error("Valor inválido. Exemplo: 1500,00");
+        Object.assign(corpo, { valorCentavos: v, vencimento: f.eVenc.value, recorrente: f.eRec.checked });
+      }
+      await api("/contas/alterar", { metodo: "POST", corpo });
+      avisar("Conta alterada."); telaContas();
+    }
+  });
+}
+
 async function telaContas() {
   const { contas } = await api("/contas");
   const form = el("form", { class: "cartao" },
@@ -1806,7 +1855,9 @@ async function telaContas() {
         el("span", { class: `etiqueta ${STATUS_CONTA[c.status][1]}`, text: STATUS_CONTA[c.status][0] })),
       el("p", { class: "suave", text: [NOME_CATEGORIA[c.categoria], `vence ${dataBR(c.vencimento)}`, c.recorrente ? "mensal" : null,
         c.pagoEm ? `paga em ${dataBR(c.pagoEm)}${c.pagoComCaixa ? " com dinheiro do caixa" : ""}` : null, c.motivoCancelamento].filter(Boolean).join(" · ") }),
+      c.situacao === "paga" ? el("div", { class: "item-acoes" }, botao("Editar", () => janelaEditarConta(c), "pequeno")) : null,
       c.situacao === "aberta" ? el("div", { class: "item-acoes" },
+        botao("Editar", () => janelaEditarConta(c), "pequeno"),
         botao("Pagar", () => abrirJanela(`Pagar ${c.descricao}`, [
           el("p", { text: `${reais(c.valorCentavos)} · pagamento com data de hoje.${c.recorrente ? " A do mês seguinte já fica cadastrada." : ""}` }),
           caixaMarcar("Pago com dinheiro do caixa (vira sangria do caixa de hoje)", { name: "comCaixa" })
@@ -2134,6 +2185,11 @@ async function telaProdutos() {
       el("div", { class: "lado-a-lado" },
         campo("Preço de venda (R$)", { name: "preco", required: true, inputmode: "decimal", value: p ? centavosParaTexto(p.precoCentavos) : "", placeholder: "45,00" }),
         campo("Estoque mínimo", { name: "minimo", type: "number", min: "0", inputmode: "numeric", value: p ? String(p.estoqueMinimo) : "0" })),
+      // No cadastro já dá para lançar o estoque (evita ir depois em Estoque → Entrada).
+      p ? null : el("div", { class: "lado-a-lado" },
+        campo("Quantidade em estoque", { name: "qtdInicial", inputmode: "numeric", autocomplete: "off", placeholder: "0" }),
+        campo("Custo unitário (R$)", { name: "custoInicial", inputmode: "decimal", autocomplete: "off", placeholder: "20,00" })),
+      p ? null : el("p", { class: "suave", text: "Opcional: quanto você tem hoje e quanto pagou por unidade. Depois, novas compras entram em Estoque." }),
       campo("Código (opcional)", { name: "codigo", value: p?.codigo || "", inputmode: "numeric", autocomplete: "off" }, "Pode ser o código de barras."),
       campo("Validade (opcional)", { name: "validade", type: "date", value: p?.validade || "" }),
       caixaMarcar(profissional ? "Mostrar no site" : "Mostrar no site (Plano Profissional)", { name: "site", checked: p?.mostrarSite || null })
@@ -2141,9 +2197,16 @@ async function telaProdutos() {
     montarCorpo: f => {
       const preco = paraCentavos(f.preco.value);
       if (preco === null) throw new Error("Preço inválido. Exemplo: 45,00");
+      let estoqueInicial;
+      const qtd = f.qtdInicial ? Number(f.qtdInicial.value || 0) : 0;
+      if (qtd > 0) {
+        const custo = paraCentavos(f.custoInicial.value);
+        if (custo === null) throw new Error("Informe o custo unitário do estoque (quanto pagou por unidade). Exemplo: 20,00");
+        estoqueInicial = { quantidade: qtd, custoUnitCentavos: custo };
+      }
       return {
         nome: f.nome.value, precoCentavos: preco, estoqueMinimo: Number(f.minimo.value || 0),
-        codigo: f.codigo.value.trim() || null, validade: f.validade.value || null, mostrarSite: f.site.checked
+        codigo: f.codigo.value.trim() || null, validade: f.validade.value || null, mostrarSite: f.site.checked, estoqueInicial
       };
     }
   };
@@ -2156,7 +2219,7 @@ async function telaProdutos() {
       el("p", { class: "suave", text: [p.codigo ? `Código ${p.codigo}` : null, `Mínimo ${p.estoqueMinimo}`, p.validade ? `Validade ${dataBR(p.validade)}` : null].filter(Boolean).join(" · ") }),
       linhaAcoesCadastro("produtos", p, telaProdutos, () => editarEmJanela(`Editar ${p.nome}`, def, p)))))
     : el("p", { class: "vazio", text: "Nenhum produto ainda. Cadastre o primeiro." });
-  mostrar(cabecalho("Produtos", "O custo vem da entrada de mercadoria (próximas entregas). Margem = (preço − custo) ÷ preço."),
+  mostrar(cabecalho("Produtos", "O custo vem do estoque lançado no cadastro ou das entradas de mercadoria. Margem = (preço − custo) ÷ preço."),
     el("div", { class: "duas-colunas" }, el("section", {}, lista), el("section", {}, formCadastro(def))));
 }
 
@@ -2294,9 +2357,9 @@ function montarMenu() {
   for (const g of grupos) if (g.itens.some(([r]) => r === atual)) gruposAbertos.add(g.id);
   aside.replaceChildren(
     el("div", { class: "menu-cabecalho" },
-      el("img", { src: "/icons/marca.png", alt: "", width: "40", height: "40" }),
-      el("div", {}, el("strong", { text: usuario.barbearia ? usuario.barbearia.nome : "4blade" }),
-        el("span", { text: `${usuario.nome.split(" ")[0]} · ${NOME_PERFIL[usuario.perfil]}` }))),
+      el("img", { class: "menu-logo", src: "/icons/logo.png", alt: "4blade", width: "98", height: "40" }),
+      el("strong", { text: usuario.barbearia ? usuario.barbearia.nome : "Plataforma" }),
+      el("span", { text: `${usuario.nome.split(" ")[0]} · ${NOME_PERFIL[usuario.perfil]}` })),
     el("nav", { class: "menu-nav" }, grupos.map(g => {
       const aberto = gruposAbertos.has(g.id) || grupos.length === 1;
       const itens = el("div", { class: "grupo-itens", id: `grupo-${g.id}` }, g.itens.map(([rota, titulo, ic]) =>
@@ -2375,18 +2438,37 @@ async function rotear() {
 }
 let vezRota = 0;
 
+async function sairDoSistema() {
+  if (janela.open) janela.close();
+  try { await api("/auth/logout", { metodo: "POST" }); } catch { /* sai mesmo assim */ }
+  localStorage.removeItem(CHAVE_TOKEN);
+  usuario = null;
+  document.getElementById("aviso").hidden = true;   // aviso de quem saiu não aparece para o próximo
+  estadoCaixa.aba = "cobrar"; estadoCaixa.carrinho.clear();
+  Object.assign(estadoAgenda, { data: null, visao: "dia", barbeiroId: "" });
+  clearTimeout(timerCaixa);
+  history.replaceState(null, "", "/");
+  telaLogin("Você saiu do sistema.");
+}
+
+// "Minha conta": quem está usando, em qual barbearia, e o botão Sair.
+function janelaConta() {
+  const b = usuario.barbearia;
+  return abrirJanela("Minha conta", [
+    el("div", { class: "conta-cartao" },
+      el("span", { class: "conta-avatar", text: usuario.nome.trim().charAt(0).toUpperCase() }),
+      el("div", {},
+        el("strong", { text: usuario.nome }),
+        el("span", { text: `${NOME_PERFIL[usuario.perfil]} · usuário ${usuario.login}` }),
+        b ? el("span", { text: `${b.nome} · Plano ${NOME_PLANO[b.plano] || b.plano}` }) : null)),
+    el("button", { type: "button", class: "botao perigo largo", id: "btn-sair", text: "Sair do sistema", onclick: sairDoSistema })
+  ], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
+}
+
 async function iniciar() {
-  document.getElementById("btn-sair").addEventListener("click", async () => {
-    try { await api("/auth/logout", { metodo: "POST" }); } catch { /* sai mesmo assim */ }
-    localStorage.removeItem(CHAVE_TOKEN);
-    usuario = null;
-    document.getElementById("aviso").hidden = true;   // aviso de quem saiu não aparece para o próximo
-    estadoCaixa.aba = "cobrar"; estadoCaixa.carrinho.clear();
-    Object.assign(estadoAgenda, { data: null, visao: "dia", barbeiroId: "" });
-    clearTimeout(timerCaixa);
-    history.replaceState(null, "", "/");
-    telaLogin("Você saiu do sistema.");
-  });
+  const btnConta = document.getElementById("btn-conta");
+  btnConta.prepend(icone("usuario"));
+  btnConta.addEventListener("click", janelaConta);
   const btnMenu = document.getElementById("btn-menu");
   btnMenu.append(icone("menu"));
   btnMenu.addEventListener("click", () => (menuEl().classList.contains("aberto") ? fecharMenu() : abrirMenu()));

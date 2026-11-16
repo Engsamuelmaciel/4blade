@@ -360,6 +360,33 @@ async function rotasContas(ctx, path, method) {
     await db.batch(comandos);
     return json({ mensagem: movId ? "Conta paga com dinheiro do caixa (sangria registrada)." : "Conta paga." });
   }
+  // Editar conta lançada. Em aberto: tudo. Paga: só descrição e categoria (valor e data já entraram no caixa e nos relatórios).
+  if (path === "/contas/alterar" && method === "POST") {
+    const input = await readJson(request);
+    if (!validId(input.id)) erro("Conta inválida.");
+    const c = await db.prepare("SELECT * FROM contas WHERE id = ? AND barbearia_id = ?").bind(input.id, ctx.barbeariaId).first();
+    if (!c) erro("Conta não encontrada.", 404);
+    if (c.situacao === "cancelada") erro("Conta cancelada não pode ser editada.", 409);
+    const antes = { descricao: c.descricao, categoria: c.categoria, valor_centavos: c.valor_centavos, vencimento: c.vencimento, recorrente: c.recorrente };
+    const novo = { ...antes };
+    if (input.descricao !== undefined) { novo.descricao = textoLimpo(input.descricao, 2, 100); if (!novo.descricao) erro("Informe a descrição (2 a 100 letras)."); }
+    if (input.categoria !== undefined) { if (!Object.hasOwn(CATEGORIAS, input.categoria)) erro("Categoria inválida."); novo.categoria = input.categoria; }
+    const mudaValores = ["valorCentavos", "vencimento", "recorrente"].some(k => input[k] !== undefined
+      && input[k] !== { valorCentavos: c.valor_centavos, vencimento: c.vencimento, recorrente: Boolean(c.recorrente) }[k]);
+    if (mudaValores && c.situacao !== "aberta") erro("Conta já paga: só dá para mudar a descrição e a categoria.", 409);
+    if (input.valorCentavos !== undefined) { if (!validCentavos(input.valorCentavos) || input.valorCentavos <= 0) erro("Valor inválido."); novo.valor_centavos = input.valorCentavos; }
+    if (input.vencimento !== undefined) { if (!validDate(input.vencimento)) erro("Vencimento inválido."); novo.vencimento = input.vencimento; }
+    if (input.recorrente !== undefined) { if (typeof input.recorrente !== "boolean") erro("Recorrente inválido."); novo.recorrente = input.recorrente ? 1 : 0; }
+    const mudou = Object.keys(novo).filter(k => novo[k] !== antes[k]);
+    if (!mudou.length) erro("Nada foi alterado.");
+    await db.batch([
+      db.prepare(`UPDATE contas SET descricao = ?, categoria = ?, valor_centavos = ?, vencimento = ?, recorrente = ?
+                  WHERE id = ? AND barbearia_id = ? AND situacao = ?`)
+        .bind(novo.descricao, novo.categoria, novo.valor_centavos, novo.vencimento, novo.recorrente, c.id, ctx.barbeariaId, c.situacao),
+      auditoria(ctx, "conta_alterada", c.id, { antes: Object.fromEntries(mudou.map(k => [k, antes[k]])), depois: Object.fromEntries(mudou.map(k => [k, novo[k]])) })
+    ]);
+    return json({ conta: contaPublica(await db.prepare("SELECT * FROM contas WHERE id = ?").bind(c.id).first(), hoje) });
+  }
   if (path === "/contas/cancelar" && method === "POST") {
     const input = await readJson(request);
     if (!validId(input.id)) erro("Conta inválida.");

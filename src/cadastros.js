@@ -6,6 +6,7 @@ import {
 } from "./util.js";
 import { isGestao } from "./perfis.js";
 import { telefoneReal } from "./agenda-util.js";
+import { comandosEntrada, lerEstoqueInicial } from "./estoque.js";
 import { exigirBarbearia, exigirGestao } from "./usuarios.js";
 
 export const CAMPOS_MENSAGEM = ["cliente", "data", "hora", "barbeiro", "servico", "barbearia"];
@@ -155,6 +156,8 @@ async function rotasCadastro(ctx, nome, def, path, method) {
       } else valores[c.col] = c.ler(input[api]);
     }
     def.validarNovo?.(valores);
+    // Produto novo pode já entrar com estoque (quantidade + custo): grava junto, no mesmo lote.
+    const estoqueInicial = nome === "produtos" ? lerEstoqueInicial(input.estoqueInicial) : null;
     await conferirUnico(ctx, def, valores);
     const id = crypto.randomUUID();
     const extras = nome === "clientes" ? { aceite_lgpd_em: new Date().toISOString(), aceite_lgpd_por: user.id } : {};
@@ -162,7 +165,8 @@ async function rotasCadastro(ctx, nome, def, path, method) {
     const vals = [id, ctx.barbeariaId, ...Object.values(valores), ...Object.values(extras)];
     await db.batch([
       db.prepare(`INSERT INTO ${def.tabela} (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`).bind(...vals),
-      auditoria(ctx, `${def.singular}_criado`, id, { depois: valores })
+      auditoria(ctx, `${def.singular}_criado`, id, { depois: valores }),
+      ...(estoqueInicial ? comandosEntrada(ctx, { id }, { q: estoqueInicial.q, c: estoqueInicial.c, validade: valores.validade ?? null }) : [])
     ]);
     const novo = await db.prepare(`SELECT * FROM ${def.tabela} WHERE id = ? AND barbearia_id = ?`).bind(id, ctx.barbeariaId).first();
     return json({ [def.singular]: def.publico(novo) }, 201);

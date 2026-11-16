@@ -65,7 +65,8 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - API: `marcar` aceita `repetir {intervaloSemanas, ate}`; cancelar com `serie: true`; `GET /agenda/ocupacao` (livre/poucos/cheio/fechado por dia); caixa: `GET /caixa/atendimentos`, `POST /caixa/cobrar`, `POST /caixa/atendimento-avulso`.
   - Tela: menu lateral por categorias (`montarMenu`), agenda Mês/Ano, PDV do caixa (abas Cobrar/Vender/Lançamentos), CSS refeito e compacto. `body[data-carregando]` marca tela sendo montada (usado pelos testes); `test/navegacao.mjs` (`ir`) navega pelo menu.
   - Depois: Mensagens no grupo Atendimento; celular com barras na largura toda e Lucro em 2 colunas; tela de entrada com logo + frase "Gestão afiada para sua barbearia."; carregando com a marca (`comCarga`, `#carregador`); telefone OPCIONAL ao marcar (no caixa até o nome é opcional → "Cliente não identificado"; cliente sem telefone = marcador `sem:<id>` na coluna `telefone`; `telefoneReal()` em agenda-util devolve null para a tela, CSV e WhatsApp).
-  - Testes: `npm test` (86) + `npm run teste-navegador` (E1–E4 + `test/navegador-melhorias.mjs`; prints em `docs/prints/melhorias/`).
+  - Depois (2): hora digitada (`mascaraHora`: todo `type=time` vira texto 00:00 em `aplicarMascaras`); produto novo com `estoqueInicial {quantidade, custoUnitCentavos}` (mesmo lote, `comandosEntrada` em estoque.js); topo com logo + "Minha conta" (`#btn-conta` abre a janela com `#btn-sair`); `POST /contas/alterar` (aberta: tudo; paga: descrição/categoria).
+  - Testes: `npm test` (88) + `npm run teste-navegador` (E1–E4 + `test/navegador-melhorias.mjs`; prints em `docs/prints/melhorias/`).
 
 ## Versão de teste publicada (Cloudflare)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.

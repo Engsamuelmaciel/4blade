@@ -67,7 +67,7 @@ async function rodar(tela) {
     await page.click("button:has-text('Entrar')");
   };
   const sair = async () => {
-    await page.click("#btn-sair");
+    await page.click("#btn-conta"); await page.click("#btn-sair");
     await page.waitForSelector("text=Você saiu do sistema.");
   };
   // 1º acesso: entra com a provisória e troca (a tela já traz a provisória preenchida).

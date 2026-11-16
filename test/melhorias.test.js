@@ -193,3 +193,59 @@ describe("telefone opcional na marcação (pedido de 16/11/2026)", () => {
     assert.equal(fila.find(a => a.cliente.nome === "Passante Fictício").cliente.telefone, null);
   });
 });
+
+describe("estoque já no cadastro do produto (pedido de 16/11/2026)", () => {
+  test("produto novo com quantidade e custo: saldo, custo médio e movimento de entrada no mesmo lote; isolamento", async () => {
+    const amb = await cenario();
+    const { post, get, ger, barb } = amb;
+    const r = await post("/api/produtos", ger.token, { nome: "Pomada Fictícia", precoCentavos: 4500, estoqueMinimo: 2, estoqueInicial: { quantidade: 10, custoUnitCentavos: 2000 } });
+    assert.equal(r.status, 201, JSON.stringify(r.dados));
+    const est = (await get("/api/estoque", ger.token)).dados;
+    const lista = est.produtos || est.estoque || est.itens;
+    const p = lista.find(x => x.nome === "Pomada Fictícia");
+    assert.equal(p.saldo, 10);
+    assert.equal(p.custoMedioCentavos, 2000);
+    const hist = (await get(`/api/estoque/historico?produtoId=${r.dados.produto.id}`, ger.token)).dados;
+    assert.equal(JSON.stringify(hist).includes('"entrada"'), true);
+    // sem estoque inicial continua funcionando (saldo 0)
+    assert.equal((await post("/api/produtos", ger.token, { nome: "Óleo Fictício", precoCentavos: 3000 })).status, 201);
+    // dados inválidos: nada é gravado (nem o produto)
+    const ruim = await post("/api/produtos", ger.token, { nome: "Gel Fictício", precoCentavos: 3000, estoqueInicial: { quantidade: 5, custoUnitCentavos: -1 } });
+    assert.equal(ruim.status, 400);
+    assert.ok(!(await get("/api/produtos", ger.token)).dados.produtos.some(x => x.nome === "Gel Fictício"));
+    // barbeiro não cadastra produto
+    assert.equal((await post("/api/produtos", barb.token, { nome: "X Fictício", precoCentavos: 100, estoqueInicial: { quantidade: 1, custoUnitCentavos: 1 } })).status, 403);
+    // outra barbearia não vê o estoque desta
+    const outra = await cenario("beta", amb, amb.p);
+    const estOutra = (await get("/api/estoque", outra.ger.token)).dados;
+    assert.ok(!JSON.stringify(estOutra).includes("Pomada Fictícia"));
+  });
+});
+
+describe("editar conta lançada (pedido de 16/11/2026)", () => {
+  test("em aberto muda tudo (auditado); paga só descrição/categoria; cancelada não; isolamento", async () => {
+    const amb = await cenario();
+    const { post, get, ger, barb } = amb;
+    const c = (await post("/api/contas", ger.token, { descricao: "Luz", categoria: "aluguel", valorCentavos: 25000, vencimento: AMANHA })).dados.conta;
+    const r = await post("/api/contas/alterar", ger.token, { id: c.id, descricao: "Luz (fictícia)", categoria: "luz", valorCentavos: 26050, vencimento: somarDias(AMANHA, 2), recorrente: true });
+    assert.equal(r.status, 200, JSON.stringify(r.dados));
+    assert.deepEqual([r.dados.conta.descricao, r.dados.conta.categoria, r.dados.conta.valorCentavos, r.dados.conta.vencimento, r.dados.conta.recorrente],
+      ["Luz (fictícia)", "luz", 26050, somarDias(AMANHA, 2), true]);
+    const aud = amb.env.DB.raw.prepare("SELECT detalhes FROM auditoria WHERE acao = 'conta_alterada' AND alvo = ?").get(c.id);
+    assert.match(aud.detalhes, /"antes":\{[^}]*aluguel/);
+    assert.match(aud.detalhes, /"depois":\{[^}]*26050/);
+    assert.equal((await post("/api/contas/alterar", ger.token, { id: c.id, descricao: "Luz (fictícia)" })).status, 400, "nada mudou");
+    // paga: só descrição/categoria
+    await post("/api/contas/pagar", ger.token, { id: c.id });
+    assert.equal((await post("/api/contas/alterar", ger.token, { id: c.id, valorCentavos: 1000 })).status, 409);
+    assert.equal((await post("/api/contas/alterar", ger.token, { id: c.id, descricao: "Energia (fictícia)", categoria: "luz", valorCentavos: 26050 })).status, 200);
+    // cancelada: não
+    const c2 = (await post("/api/contas", ger.token, { descricao: "Água", categoria: "agua", valorCentavos: 12000, vencimento: AMANHA })).dados.conta;
+    await post("/api/contas/cancelar", ger.token, { id: c2.id, motivo: "Lançada em dobro" });
+    assert.equal((await post("/api/contas/alterar", ger.token, { id: c2.id, descricao: "Água 2" })).status, 409);
+    // barbeiro não edita; outra barbearia não acha
+    assert.equal((await post("/api/contas/alterar", barb.token, { id: c.id, descricao: "X" })).status, 403);
+    const outra = await cenario("beta", amb, amb.p);
+    assert.equal((await post("/api/contas/alterar", outra.ger.token, { id: c.id, descricao: "Invasão" })).status, 404);
+  });
+});

@@ -52,6 +52,35 @@ async function lote(db, comandos, msgSaldo) {
 }
 
 // ---------- ESTOQUE (gestão) ----------
+// Comandos de uma entrada de mercadoria (usados na tela de estoque e no cadastro do produto com estoque inicial).
+export function comandosEntrada(ctx, p, { q, c, fornecedor = null, validade = null }) {
+  const { db, user } = ctx;
+  const id = crypto.randomUUID();
+  return [
+    garantirLinhaEstoque(ctx, p.id),
+    db.prepare(`UPDATE produtos SET
+        custo_medio_centavos = CAST(ROUND((MAX((SELECT saldo FROM produto_estoque WHERE produto_id = ?), 0) * custo_medio_centavos + ? * ?) * 1.0
+                               / (MAX((SELECT saldo FROM produto_estoque WHERE produto_id = ?), 0) + ?)) AS INTEGER),
+        validade = CASE WHEN ? IS NOT NULL AND (validade IS NULL OR ? < validade) THEN ? ELSE validade END,
+        atualizado_em = CURRENT_TIMESTAMP
+      WHERE id = ? AND barbearia_id = ?`).bind(p.id, q, c, p.id, q, validade, validade, validade, p.id, ctx.barbeariaId),
+    db.prepare("UPDATE produto_estoque SET saldo = saldo + ?, atualizado_em = CURRENT_TIMESTAMP WHERE produto_id = ? AND barbearia_id = ?").bind(q, p.id, ctx.barbeariaId),
+    db.prepare(`INSERT INTO estoque_movimentos (id, barbearia_id, produto_id, tipo, quantidade, custo_unit_centavos, custo_medio_apos_centavos, fornecedor, validade, criado_por)
+                SELECT ?, ?, ?, 'entrada', ?, ?, custo_medio_centavos, ?, ?, ? FROM produtos WHERE id = ?`)
+      .bind(id, ctx.barbeariaId, p.id, q, c, fornecedor, validade, user.id, p.id),
+    auditoria(ctx, "estoque_entrada", p.id, { quantidade: q, custoUnit: c, fornecedor, validade, antes: { saldo: p.saldo ?? 0, custoMedio: p.custo_medio_centavos ?? 0 } })
+  ];
+}
+
+// Estoque inicial informado no cadastro do produto: quantidade (inteiro > 0) e custo unitário (centavos).
+export function lerEstoqueInicial(v) {
+  if (v === undefined || v === null) return null;
+  const q = lerQuantidade(v.quantidade, "Quantidade em estoque");
+  if (q < 0) erro("Quantidade em estoque inválida.");
+  if (!validCentavos(v.custoUnitCentavos)) erro("Custo unitário inválido.");
+  return { q, c: v.custoUnitCentavos };
+}
+
 export async function rotasEstoque(ctx, path, method) {
   if (path !== "/estoque" && !path.startsWith("/estoque/")) return null;
   exigirGestao(ctx);
@@ -98,22 +127,7 @@ export async function rotasEstoque(ctx, path, method) {
     const fornecedor = textoOpcional(input.fornecedor, 80);
     if (fornecedor === false) erro("Fornecedor muito longo (até 80 letras).");
     const validade = input.validade ? (validDate(input.validade) ? input.validade : erro("Validade inválida.")) : null;
-    const c = input.custoUnitCentavos;
-    const id = crypto.randomUUID();
-    await db.batch([
-      garantirLinhaEstoque(ctx, p.id),
-      db.prepare(`UPDATE produtos SET
-          custo_medio_centavos = CAST(ROUND((MAX((SELECT saldo FROM produto_estoque WHERE produto_id = ?), 0) * custo_medio_centavos + ? * ?) * 1.0
-                                 / (MAX((SELECT saldo FROM produto_estoque WHERE produto_id = ?), 0) + ?)) AS INTEGER),
-          validade = CASE WHEN ? IS NOT NULL AND (validade IS NULL OR ? < validade) THEN ? ELSE validade END,
-          atualizado_em = CURRENT_TIMESTAMP
-        WHERE id = ? AND barbearia_id = ?`).bind(p.id, q, c, p.id, q, validade, validade, validade, p.id, ctx.barbeariaId),
-      db.prepare("UPDATE produto_estoque SET saldo = saldo + ?, atualizado_em = CURRENT_TIMESTAMP WHERE produto_id = ? AND barbearia_id = ?").bind(q, p.id, ctx.barbeariaId),
-      db.prepare(`INSERT INTO estoque_movimentos (id, barbearia_id, produto_id, tipo, quantidade, custo_unit_centavos, custo_medio_apos_centavos, fornecedor, validade, criado_por)
-                  SELECT ?, ?, ?, 'entrada', ?, ?, custo_medio_centavos, ?, ?, ? FROM produtos WHERE id = ?`)
-        .bind(id, ctx.barbeariaId, p.id, q, c, fornecedor, validade, user.id, p.id),
-      auditoria(ctx, "estoque_entrada", p.id, { quantidade: q, custoUnit: c, fornecedor, validade, antes: { saldo: p.saldo, custoMedio: p.custo_medio_centavos } })
-    ]);
+    await db.batch(comandosEntrada(ctx, p, { q, c: input.custoUnitCentavos, fornecedor, validade }));
     const depois = await produtoDaBarbearia(ctx, p.id);
     return json({ produto: { id: p.id, saldo: depois.saldo, custoMedioCentavos: depois.custo_medio_centavos, validade: depois.validade } }, 201);
   }
