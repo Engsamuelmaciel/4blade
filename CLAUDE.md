@@ -107,6 +107,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - **Publicado em 16/11/2026 (autorizado):** migração 0013 no 4blade-db e no 4blade-db-teste; oficial versão 0d2d2157, teste cfbbebbc. Conferido no forblade.com.br: `/api/planos` sem preços (cobrança desligada), `/api/assinar` 404, landing com "Solicitar teste grátis" e sem "R$" (print `docs/prints/forblade-teste-gratis.png`).
 
 - 16/11/2026: **Enviar acesso pelo WhatsApp**: `mostrarSenha(login, senha, quem, {nome, telefone, barbearia})` mostra link (`origin/#/entrar`), usuário e senha + botões "Enviar no WhatsApp de <telefone>" (se tiver), "Enviar pelo WhatsApp (escolher contato)" (`wa.me/?text=`) e "Copiar mensagem" (`mensagemAcesso`). Vale para equipe nova, nova senha, barbearia nova/pedido e nova senha do proprietário. Testado em `test/navegador-e1.mjs`.
+- 16/11/2026: **Olho nas senhas**: `aplicarMascaras` chama `botaoOlho` em todo `input[type=password]` (envolve em `.campo-senha` + botão `.olho-senha` `data-olho=<id>`, ícones `olho`/`olhoFechado`). Testado em `test/navegador-e1.mjs`.
 
 ## Versão de teste publicada (Cloudflare)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.

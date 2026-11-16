@@ -841,3 +841,13 @@ a.botao.largo { display: flex; justify-content: center; align-items: center; wid
 @media (min-width: 720px) { .lp-dores { grid-template-columns: repeat(2, 1fr); } }
 .enviar-acesso { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 4px; }
 .enviar-acesso .botao { text-align: center; }
+/* campo de senha com olho (mostrar/ocultar) */
+.campo-senha { position: relative; }
+.campo-senha input { width: 100%; padding-right: 48px; }
+.olho-senha {
+  position: absolute; top: 50%; right: 4px; transform: translateY(-50%); width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px;
+  background: transparent; color: var(--suave); cursor: pointer;
+}
+.olho-senha:hover { background: var(--neutro-2); color: var(--texto); }
+.olho-senha .icone { width: 22px; height: 22px; }

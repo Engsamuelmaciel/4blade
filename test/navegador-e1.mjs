@@ -111,6 +111,16 @@ async function rodar(tela) {
     passo("plataforma entra e cria a barbearia");
     await page.goto(`${base}/#/entrar`);
     await page.waitForSelector("text=Entrar");
+    // olho da senha: mostra e oculta
+    await page.fill("#c-senha", "Senha-de-olho-1");
+    assert.equal(await page.getAttribute("#c-senha", "type"), "password");
+    await page.click('[data-olho="c-senha"]');
+    assert.equal(await page.getAttribute("#c-senha", "type"), "text");
+    assert.equal(await page.getAttribute('[data-olho="c-senha"]', "aria-label"), "Ocultar senha");
+    await print("login-senha-visivel");
+    await page.click('[data-olho="c-senha"]');
+    assert.equal(await page.getAttribute("#c-senha", "type"), "password");
+    await page.fill("#c-senha", "");
     await print("login");
     await entrar("suporte", "Nova-suporte-senha");
     await page.waitForSelector("text=Painel da plataforma");

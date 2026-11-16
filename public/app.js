@@ -225,7 +225,27 @@ function mascaraHora(input) {
 // Aplica a formatação certa em TODOS os campos numéricos de uma tela ou janela (uma vez por campo).
 //   telefone: inputmode="tel" · dinheiro: inputmode="decimal" · %: inputmode="decimal" com name com* ou data-numero="percentual"
 //   quantidade: inputmode="numeric" (exceto código de produto, que aceita letras)
+// Campo de senha com botão de olho (mostrar/ocultar). Funciona em todas as telas e janelas.
+function botaoOlho(input) {
+  if (input.dataset.olho) return;
+  input.dataset.olho = "1";
+  const caixa = el("div", { class: "campo-senha" });
+  input.replaceWith(caixa);
+  const btn = el("button", { type: "button", class: "olho-senha", "aria-label": "Mostrar senha", title: "Mostrar senha", "aria-pressed": "false", "data-olho": input.id || input.name });
+  const desenhar = () => {
+    const visivel = input.type === "text";
+    btn.replaceChildren(icone(visivel ? "olhoFechado" : "olho"));
+    btn.setAttribute("aria-label", visivel ? "Ocultar senha" : "Mostrar senha");
+    btn.title = visivel ? "Ocultar senha" : "Mostrar senha";
+    btn.setAttribute("aria-pressed", visivel ? "true" : "false");
+  };
+  btn.addEventListener("click", () => { input.type = input.type === "password" ? "text" : "password"; desenhar(); input.focus(); });
+  caixa.append(input, btn);
+  desenhar();
+}
+
 function aplicarMascaras(raiz) {
+  for (const input of raiz.querySelectorAll("input[type=password]")) botaoOlho(input);
   for (const input of raiz.querySelectorAll("input:not([data-mascara])")) {
     const modo = input.getAttribute("inputmode");
     const nome = input.name || "";
@@ -3571,6 +3591,8 @@ function janelaReceberNota(c) {
 }
 
 const ICONES = {
+  olho: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+  olhoFechado: "M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.2A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.2 6.3C3.6 8 2 12 2 12s3.5 7 10 7a9.8 9.8 0 0 0 4.3-1",
   ajuda: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01",
   suporte: "M3 18v-6a9 9 0 0 1 18 0v6M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z",
   tutorial: "M4 5h16v11H4zM10 8.5l4 2-4 2zM8 20h8",
