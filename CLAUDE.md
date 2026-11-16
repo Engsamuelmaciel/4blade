@@ -82,7 +82,12 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.
 - No ambiente do Claude o token fica como segredo de rede de api.cloudflare.com (usar `CLOUDFLARE_API_TOKEN=proxy-injected`); o envio de "assets" não passa pelo proxy, por isso a versão de teste usa `src/entrada-teste.js` (tela dentro do Worker).
 - 1º acesso da plataforma: usuário `suporte`, senha provisória entregue ao responsável (troca obrigatória). Não há segredo ADMIN_SETUP_TOKEN nessa versão (o usuário foi criado direto no banco).
-- A versão REAL (wrangler.toml, Worker `4blade`) ainda não existe: criar só com confirmação.
+
+## Versão OFICIAL publicada (Cloudflare) — 16/11/2026, autorizada pelo responsável
+- Endereço: https://4blade.terraplanagem.workers.dev (Worker `4blade`, banco D1 `4blade-db` id `e59dc06b-cf90-4e67-bc06-710165e45d5a`, região ENAM). Dados REAIS: nunca usar para testes.
+- Configuração: `wrangler.toml` (mesma entrada `src/entrada-teste.js`, tela dentro do Worker). Publicada a partir da ramificação `melhorias-layout` (todas as melhorias até o "Depois (11)" + mensagens prontas).
+- Banco nasceu vazio, com as migrações 0001–0010 aplicadas. 1º acesso: usuário `suporte` (perfil plataforma) criado direto no banco, senha provisória entregue ao responsável na conversa (troca obrigatória no 1º login). Sem segredo ADMIN_SETUP_TOKEN.
+- Publicar de novo / migrar o banco REAL: SEMPRE pedir confirmação antes (`npx wrangler deploy`; `npx wrangler d1 migrations apply 4blade-db --remote`). Testar primeiro na versão de teste.
 
 ## Pendências fora do código
 - Conferir domínios 4blade.com.br e forblade.com.br (registro.br) e a marca no INPI (classe 42).

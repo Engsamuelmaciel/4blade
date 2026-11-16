@@ -1,6 +1,6 @@
-// Entrada da VERSÃO DE TESTE publicada a partir do ambiente do Claude: os arquivos da tela (public/) vão DENTRO do
-// Worker em vez do "Static Assets" (o envio de assets não funciona através do proxy desse ambiente).
-// A versão real continua usando wrangler.toml + [assets]. Aplica os mesmos cabeçalhos de segurança de public/_headers.
+// Entrada usada nas versões publicadas a partir do ambiente do Claude (OFICIAL: wrangler.toml; TESTE: wrangler.teste.toml):
+// os arquivos da tela (public/) vão DENTRO do Worker em vez do "Static Assets" (o envio de assets não funciona
+// através do proxy desse ambiente). Aplica os mesmos cabeçalhos de segurança de public/_headers.
 import worker from "./index.js";
 import indexHtml from "../public/index.html";
 import appJs from "../public/app.js";

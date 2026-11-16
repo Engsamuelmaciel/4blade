@@ -1,29 +1,26 @@
-# 4blade — Worker da Cloudflare (API em /api/* + tela da pasta public/).
-# ATENÇÃO: os ids abaixo são MARCADORES. Nenhum recurso foi criado na Cloudflare.
-# Antes do primeiro deploy (com autorização do responsável), crie os recursos e troque os ids:
-#   npx wrangler d1 create 4blade-db          -> copie o "database_id"
-#   npx wrangler d1 create 4blade-db-teste    -> banco separado para as prévias
-#   npx wrangler secret put ADMIN_SETUP_TOKEN  -> segredo para criar o 1º usuário da plataforma
+# 4blade — VERSÃO OFICIAL na Cloudflare (dados REAIS das barbearias). Separada da versão de teste (wrangler.teste.toml).
+# Publicar:   npx wrangler deploy                       (só com autorização do responsável)
+# Migrações:  npx wrangler d1 migrations apply 4blade-db --remote   (banco REAL: só com autorização; migrações nunca apagam dados)
+# A tela (public/) vai DENTRO do Worker (src/entrada-teste.js), como na versão de teste: o envio de "assets"
+# não passa pelo proxy do ambiente do Claude. Mesmos cabeçalhos de segurança de public/_headers.
 name = "4blade"
-main = "src/index.js"
+main = "src/entrada-teste.js"
 compatibility_date = "2026-01-01"
 keep_vars = true
+workers_dev = true
 
-[assets]
-directory = "./public"
-binding = "ASSETS"
-run_worker_first = ["/api/*"]
-not_found_handling = "single-page-application"
+[[rules]]
+type = "Text"
+globs = ["**/*.html", "**/*.css", "**/public/*.js", "**/*.json", "**/*.svg", "**/_headers"]
+fallthrough = false
+
+[[rules]]
+type = "Data"
+globs = ["**/*.png"]
+fallthrough = false
 
 [[d1_databases]]
 binding = "DB"
 database_name = "4blade-db"
-database_id = "TROQUE-PELO-ID-DO-SEU-BANCO"
-migrations_dir = "migrations"
-
-# Prévias de ramificações usam SEMPRE um banco de TESTE separado. Nunca apontar para o banco real aqui.
-[[previews.d1_databases]]
-binding = "DB"
-database_name = "4blade-db-teste"
-database_id = "TROQUE-PELO-ID-DO-BANCO-DE-TESTE"
+database_id = "e59dc06b-cf90-4e67-bc06-710165e45d5a"
 migrations_dir = "migrations"
