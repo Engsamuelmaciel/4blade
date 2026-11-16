@@ -182,7 +182,7 @@ const EXPORTAR = {
   },
   atendimentos: {
     sql: `SELECT a.data, substr(a.inicio, 12) AS hora, u.nome AS barbeiro, c.nome AS cliente, c.telefone, a.situacao, a.motivo,
-            (SELECT group_concat(nome, ' + ') FROM agendamento_servicos s WHERE s.agendamento_id = a.id) AS servicos,
+            (SELECT group_concat(nome, ' + ') FROM agendamento_servicos s WHERE s.agendamento_id = a.id AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = s.id)) AS servicos,
             f.total_centavos, f.valor_alterado, cm.valor_centavos AS comissao
           FROM agendamentos a JOIN usuarios u ON u.id = a.barbeiro_id JOIN clientes c ON c.id = a.cliente_id
           LEFT JOIN finalizacoes f ON f.agendamento_id = a.id AND f.estornada = 0 LEFT JOIN comissoes cm ON cm.finalizacao_id = f.id

@@ -18,7 +18,7 @@ async function horariosDoDia(ctx, data, ids = null) {
   const r = await ctx.db.prepare(`
     SELECT a.id, a.data, a.inicio, a.situacao, a.cliente_id, c.nome AS cliente_nome, c.telefone AS cliente_telefone, c.ativo AS cliente_ativo,
            u.nome AS barbeiro_nome,
-           (SELECT group_concat(nome, ' + ') FROM (SELECT nome FROM agendamento_servicos s WHERE s.agendamento_id = a.id ORDER BY s.rowid)) AS servicos_nomes
+           (SELECT group_concat(nome, ' + ') FROM (SELECT nome FROM agendamento_servicos s WHERE s.agendamento_id = a.id AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = s.id) ORDER BY s.rowid)) AS servicos_nomes
     FROM agendamentos a JOIN clientes c ON c.id = a.cliente_id JOIN usuarios u ON u.id = a.barbeiro_id
     WHERE a.barbearia_id = ? AND a.data = ? AND a.situacao IN ('agendado', 'finalizado')
       ${ids ? `AND a.id IN (${ids.map(() => "?").join(",")})` : ""}

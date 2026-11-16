@@ -1644,15 +1644,31 @@ function cartaoAgendamento(a, mostrarNome, { recolhivel = false } = {}) {
             const r = await api("/agenda/situacao", { metodo: "POST", corpo: { id: a.id, situacao: "cancelado", motivo: f.motivo.value.trim(), ...(f.serie?.checked ? { serie: true } : {}) } });
             avisar(r.mensagem || "Horário cancelado."); telaAgenda();
           }
-        }), "pequeno perigo")
+        }), "pequeno perigo"),
+        botao("Editar", () => janelaEditarHorario(a), "pequeno")
       ] : null,
+      a.situacao === "faltou" || a.situacao === "cancelado"
+        ? botao(a.situacao === "faltou" ? "Desfazer falta" : "Desfazer cancelamento", () => abrirJanela(a.situacao === "faltou" ? "Desfazer a falta?" : "Desfazer o cancelamento?",
+          el("p", { text: "O horário volta para agendado (se ninguém ocupou o lugar). Fica registrado." }), {
+            ok: "Voltar para agendado", aoConfirmar: async () => {
+              const r = await api("/agenda/desfazer", { metodo: "POST", corpo: { id: a.id } });
+              avisar(r.mensagem); telaAgenda();
+            }
+          }), "pequeno") : null,
       !ehCaixa() && (a.situacao === "finalizado" || a.situacao === "agendado")
         ? botao("Vender produto", () => janelaVenda({ agendamento: a, aoTerminar: telaAgenda }), "pequeno") : null,
       a.situacao === "finalizado" && !ehCaixa() ? botao("Reabrir", () => pedirMotivo("Reabrir atendimento", "Estorna a entrada no caixa e a comissão, e o horário volta para agendado. Fica registrado.", async motivo => {
         await api("/agenda/reabrir", { metodo: "POST", corpo: { id: a.id, motivo } });
         avisar("Atendimento reaberto."); telaAgenda();
       }, "Reabrir"), "pequeno") : null,
-      a.situacao === "cancelado" || a.situacao === "faltou" ? botaoWhatsapp(a, "proposta", "Propor horário") : null));
+      a.situacao === "cancelado" || a.situacao === "faltou" ? botaoWhatsapp(a, "proposta", "Propor horário") : null,
+      // Lixeira (canto de baixo, à direita): tira o horário da agenda (fica registrado). Finalizado: só reabrindo antes.
+      a.situacao !== "finalizado" ? el("button", { type: "button", class: "botao-lixeira", "aria-label": "Excluir horário", title: "Excluir horário", "data-excluir": a.cliente.nome,
+        onclick: () => pedirMotivo("Excluir horário", `O horário de ${a.cliente.nome} (${dataBR(a.data)} ${a.inicio}) sai da agenda. Fica registrado quem excluiu e o motivo.`, async motivo => {
+          const r = await api("/agenda/excluir", { metodo: "POST", corpo: { id: a.id, motivo } });
+          cartoesAbertos.delete(a.id);
+          avisar(r.mensagem); telaAgenda();
+        }, "Excluir") }, icone("lixeira")) : null));
   const cartao = el("article", { class: `slot ${a.situacao} ${destaque ? "destaque" : ""} ${recolhivel ? "recolhivel" : ""} ${recolhivel && aberto ? "aberto" : ""}`, "data-agendamento": a.cliente.nome });
   if (!recolhivel) { cartao.append(...resumo.filter(Boolean), detalhes); return cartao; }
   const cabeca = el("div", { class: "slot-resumo", role: "button", tabindex: "0", "aria-expanded": String(aberto), "data-resumo": a.cliente.nome,
@@ -1668,6 +1684,40 @@ function cartaoAgendamento(a, mostrarNome, { recolhivel = false } = {}) {
   cabeca.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); alternar(); } });
   cartao.append(cabeca, detalhes);
   return cartao;
+}
+
+// Editar horário lançado errado: serviços (o fim acompanha a duração), cliente e observação. Dia/hora/profissional: Remarcar.
+async function janelaEditarHorario(a) {
+  const servicos = servicosCache || await carregarServicos();
+  const atuais = new Set(a.servicos.map(x => x.id));
+  const novoCli = el("div", { class: "cliente-avulso" },
+    el("p", { class: "separador-ou", text: "ou outro cliente (não cadastrado)" }),
+    campo("Nome do cliente", { name: "eNome", autocomplete: "off" }),
+    campo("Telefone (WhatsApp) — opcional", { name: "eTel", inputmode: "tel", autocomplete: "off" }),
+    Object.assign(caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "eLgpd" }), { hidden: true }));
+  const seletor = seletorCliente({ id: "ed-cli", aoMudar: c => { novoCli.hidden = Boolean(c); } });
+  const promessa = abrirJanela(`Editar horário · ${a.inicio}`, [
+    el("p", { class: "suave", text: "Corrija o que foi lançado errado. Para mudar dia, hora ou profissional, use Remarcar." }),
+    el("fieldset", { class: "servicos-escolha" }, el("legend", { text: "Serviços" }),
+      servicos.map(sv => caixaMarcar(`${sv.nome} · ${reais(sv.precoCentavos)} · ${sv.duracaoMin} min`, { name: "eserv", value: sv.id, id: `eserv-${sv.id}`, checked: atuais.has(sv.id) || null }))),
+    el("fieldset", { class: "servicos-escolha bloco-cliente" }, el("legend", { text: `Cliente: ${a.cliente.nome} (trocar só se estiver errado)` }), seletor.el, novoCli),
+    campo("Observação (opcional)", { name: "eObs", maxlength: "300", autocomplete: "off", value: a.observacao || "" })
+  ], {
+    ok: "Salvar",
+    aoConfirmar: async f => {
+      const servicoIds = [...f.querySelectorAll("input[name=eserv]:checked")].map(i => i.value);
+      if (!servicoIds.length) throw new Error("Marque pelo menos um serviço.");
+      const esc = seletor.escolhido();
+      const cliente = esc ? { id: esc.id }
+        : (f.eNome.value.trim() || f.eTel.value.trim()) ? { nome: f.eNome.value.trim() || undefined, telefone: f.eTel.value, aceiteLgpd: f.eLgpd.checked } : undefined;
+      const r = await api("/agenda/editar", { metodo: "POST", corpo: { id: a.id, servicoIds, observacao: f.eObs.value, ...(cliente ? { cliente } : {}) } });
+      avisar(`${r.mensagem} Termina às ${r.fim}.`);
+      telaAgenda();
+    }
+  });
+  const f = janela.querySelector("form");
+  f.addEventListener("input", () => { f.eLgpd.closest(".marcar").hidden = !f.eTel.value.replace(/\D/g, ""); });
+  return promessa;
 }
 
 // Ficha do atendimento (a partir da lista pequena da semana): tudo o que está registrado + as mesmas ações do cartão.
@@ -4071,6 +4121,7 @@ const ICONES = {
   comissao: "M19 5L5 19M7.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM16.5 18a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
   contas: "M7 3h10l3 3v15H4V3zM8 9h8M8 13h8M8 17h5",
   contador: "M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5M9 13h6M9 17h6",
+  lixeira: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
   estoque: "M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8",
   produtos: "M6 2h12l2 6H4zM4 8v13h16V8M9 12h6",
   servicos: "M6 3l12 18M18 3L6 21M6 3a3 3 0 1 0 0 .01M18 21a3 3 0 1 0 0-.01",

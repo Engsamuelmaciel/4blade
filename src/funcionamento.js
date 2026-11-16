@@ -48,7 +48,7 @@ export async function agendadosNoPeriodo(ctx, dataIni, dataFim) {
   const r = await ctx.db.prepare(`
     SELECT a.id, a.data, a.inicio, a.fim, a.barbeiro_id, u.nome AS barbeiro_nome,
            c.nome AS cliente_nome, c.telefone AS cliente_telefone,
-           (SELECT group_concat(nome, ' + ') FROM (SELECT nome FROM agendamento_servicos s WHERE s.agendamento_id = a.id ORDER BY s.rowid)) AS servicos_nomes
+           (SELECT group_concat(nome, ' + ') FROM (SELECT nome FROM agendamento_servicos s WHERE s.agendamento_id = a.id AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = s.id) ORDER BY s.rowid)) AS servicos_nomes
     FROM agendamentos a
     JOIN usuarios u ON u.id = a.barbeiro_id
     JOIN clientes c ON c.id = a.cliente_id

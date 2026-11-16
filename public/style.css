@@ -960,3 +960,8 @@ i.marca-saida { background: var(--serie-saida); }
 .aviso-nota { margin: 6px 0; padding: 8px 10px; border-radius: 8px; background: var(--amarelo-fundo); color: var(--amarelo); font-size: 13.5px; }
 a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none; }
 .lista-outras { margin-top: 8px; }
+/* Lixeira pequena no canto de baixo, à direita do horário */
+.botao-lixeira { margin-left: auto; align-self: flex-end; width: 34px; height: 34px; display: inline-grid; place-items: center; padding: 0;
+  border: 1px solid var(--borda); border-radius: 8px; background: var(--cartao); color: var(--suave); cursor: pointer; }
+.botao-lixeira:hover { color: var(--erro); border-color: var(--erro); }
+.botao-lixeira .icone { width: 18px; height: 18px; }

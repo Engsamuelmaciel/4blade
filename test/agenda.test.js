@@ -459,3 +459,79 @@ describe("tempo do serviço ajusta a agenda (pedido de 16/11/2026)", () => {
     assert.equal((await amb.marcar(ger.token, { barbeiroId: barb.id, data: AMANHA, hora: "11:30", servicoIds: [corte.id], cliente: { nome: "Outro Cliente" } })).status, 201);
   });
 });
+
+describe("editar, desfazer e excluir horário (pedido de 16/11/2026)", () => {
+  test("editar troca serviços (o fim acompanha a duração), observação e cliente; conflito não muda nada", async () => {
+    const amb = await cenario("editar");
+    const { post, get, barb, corte, barba } = amb;
+    const m = await amb.marcar(barb.token, { data: AMANHA, hora: "10:00" });
+    const id = m.dados.agendamento.id;
+    // corte (30) + barba (20) → 10:00–10:50
+    const e = await post("/api/agenda/editar", barb.token, { id, servicoIds: [corte.id, barba.id], observacao: "Pediu degradê" });
+    assert.equal(e.status, 200, JSON.stringify(e.dados));
+    let a = (await get(`/api/agenda?data=${AMANHA}`, barb.token)).dados.agendamentos.find(x => x.id === id);
+    assert.equal(a.fim, "10:50");
+    assert.deepEqual(a.servicos.map(s => s.nome), ["Corte", "Barba"]);
+    assert.equal(a.observacao, "Pediu degradê");
+    // o serviço antigo não é apagado: fica marcado como removido
+    const linhas = amb.env.DB.raw.prepare(`SELECT s.nome, r.removido_em FROM agendamento_servicos s LEFT JOIN agendamento_servicos_removidos r ON r.linha_id = s.id
+                                           WHERE s.agendamento_id = ? ORDER BY s.rowid`).all(id);
+    assert.equal(linhas.length, 3);
+    assert.ok(linhas[0].removido_em && !linhas[1].removido_em && !linhas[2].removido_em);
+    assert.ok(amb.env.DB.raw.prepare("SELECT 1 FROM auditoria WHERE acao = 'agendamento_editado' AND alvo = ?").get(id), "auditado");
+    // trocar o cliente (da base, pelo nome)
+    assert.equal((await post("/api/agenda/editar", barb.token, { id, servicoIds: [corte.id], cliente: { nome: "Cliente Certo" } })).status, 200);
+    a = (await get(`/api/agenda?data=${AMANHA}`, barb.token)).dados.agendamentos.find(x => x.id === id);
+    assert.equal(a.cliente.nome, "Cliente Certo");
+    assert.equal(a.fim, "10:30");
+    // outro horário às 10:30: aumentar para corte + barba bateria nele → 409 e nada muda
+    assert.equal((await amb.marcar(barb.token, { data: AMANHA, hora: "10:30", cliente: { nome: "Vizinho" } })).status, 201);
+    const c = await post("/api/agenda/editar", barb.token, { id, servicoIds: [corte.id, barba.id] });
+    assert.equal(c.status, 409);
+    a = (await get(`/api/agenda?data=${AMANHA}`, barb.token)).dados.agendamentos.find(x => x.id === id);
+    assert.deepEqual([a.fim, a.servicos.map(s => s.nome)], ["10:30", ["Corte"]]);
+    // só agendado; outro barbeiro não edita
+    assert.equal((await post("/api/agenda/editar", amb.barb2.token, { id, servicoIds: [corte.id] })).status, 403);
+  });
+
+  test("desfazer falta/cancelamento; excluir com motivo some da agenda e libera o horário; finalizado não exclui; isolamento", async () => {
+    const amb = await cenario("excluir");
+    const { post, get, barb, barb2, ger, cx, corte } = amb;
+    const id = (await amb.marcar(barb.token, { data: AMANHA, hora: "09:00" })).dados.agendamento.id;
+    assert.equal((await post("/api/agenda/situacao", barb.token, { id, situacao: "faltou" })).status, 200);
+    assert.equal((await post("/api/agenda/editar", barb.token, { id, servicoIds: [corte.id] })).status, 409, "falta não se edita: desfaz");
+    assert.equal((await post("/api/agenda/desfazer", barb.token, { id })).status, 200);
+    assert.equal((await get(`/api/agenda?data=${AMANHA}`, barb.token)).dados.agendamentos.find(x => x.id === id).situacao, "agendado");
+    assert.equal((await post("/api/agenda/desfazer", barb.token, { id })).status, 409, "agendado não tem o que desfazer");
+    // cancelado e o horário foi ocupado → não volta
+    assert.equal((await post("/api/agenda/situacao", barb.token, { id, situacao: "cancelado", motivo: "Cliente desmarcou" })).status, 200);
+    const outro = (await amb.marcar(barb.token, { data: AMANHA, hora: "09:00", cliente: { nome: "Encaixe" } })).dados.agendamento.id;
+    assert.equal((await post("/api/agenda/desfazer", barb.token, { id })).status, 409);
+    // excluir: exige motivo; outro barbeiro não; some da agenda, continua no banco (cancelado) e libera o horário
+    assert.equal((await post("/api/agenda/excluir", barb.token, { id: outro })).status, 400);
+    assert.equal((await post("/api/agenda/excluir", barb2.token, { id: outro, motivo: "Lançado errado" })).status, 403);
+    const ex = await post("/api/agenda/excluir", barb.token, { id: outro, motivo: "Lançado errado" });
+    assert.equal(ex.status, 200, JSON.stringify(ex.dados));
+    assert.ok(!(await get(`/api/agenda?data=${AMANHA}`, barb.token)).dados.agendamentos.some(x => x.id === outro), "some da agenda");
+    assert.equal(amb.env.DB.raw.prepare("SELECT situacao FROM agendamentos WHERE id = ?").get(outro).situacao, "cancelado", "continua no banco");
+    assert.ok(amb.env.DB.raw.prepare("SELECT 1 FROM auditoria WHERE acao = 'agendamento_excluido' AND alvo = ?").get(outro));
+    assert.equal((await post("/api/agenda/excluir", barb.token, { id: outro, motivo: "De novo" })).status, 409);
+    assert.equal((await post("/api/agenda/desfazer", barb.token, { id: outro })).status, 409, "excluído não volta");
+    assert.equal((await amb.marcar(barb.token, { data: AMANHA, hora: "09:00", cliente: { nome: "Novo Encaixe" } })).status, 201, "horário liberado");
+    // finalizado não exclui (valor já entrou no caixa)
+    await post("/api/caixa/abrir", cx.token, { trocoCentavos: 0 });
+    const hoje = (await amb.marcar(barb.token, { hora: "15:00" })).dados.agendamento.id;
+    assert.equal((await post("/api/agenda/finalizar", barb.token, { id: hoje, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], pagamentos: [{ forma: "pix", valorCentavos: 4000 }] })).status, 201);
+    const fin = await post("/api/agenda/excluir", ger.token, { id: hoje, motivo: "Teste" });
+    assert.equal(fin.status, 409);
+    assert.match(fin.dados.erro, /Reabra/);
+    // caixa (recepção) exclui de qualquer profissional
+    const doCx = (await amb.marcar(cx.token, { barbeiroId: barb2.id, data: AMANHA, hora: "16:00", cliente: { nome: "Recepção" } })).dados.agendamento.id;
+    assert.equal((await post("/api/agenda/excluir", cx.token, { id: doCx, motivo: "Marcado no profissional errado" })).status, 200);
+    // isolamento: outra barbearia não enxerga
+    const outra = await cenario("outra", amb, amb.p);
+    for (const rota of ["editar", "desfazer", "excluir"]) {
+      assert.equal((await post(`/api/agenda/${rota}`, outra.ger.token, { id, servicoIds: [outra.corte.id], motivo: "Tentativa" })).status, 404, rota);
+    }
+  });
+});

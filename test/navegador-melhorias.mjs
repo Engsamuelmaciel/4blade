@@ -190,6 +190,41 @@ async function rodar(tela) {
     assert.match(await page.getAttribute("dialog[open] [data-pronta=promocao]", "href"), /^https:\/\/wa\.me\/55\d{10,11}\?text=/);
     await page.keyboard.press("Escape");
 
+    passo("edita horário lançado errado (serviços → o fim acompanha), desfaz falta e exclui pela lixeira");
+    await page.click("button:has-text('+ Novo horário')");
+    await page.fill("dialog[open] #c-data", AMANHA);
+    await page.fill("dialog[open] #c-hora", "17:00");
+    await page.check("dialog[open] input[name=serv] >> nth=0");
+    await page.fill("dialog[open] #c-cliNome", "Lançado Errado Fictício");
+    await ok();
+    await page.waitForSelector('[data-agendamento="Lançado Errado Fictício"]');
+    await abrirHorarios(page, "Lançado Errado Fictício");
+    const cartaoErr = '[data-agendamento="Lançado Errado Fictício"]';
+    await page.click(`${cartaoErr} button:has-text("Editar")`);
+    await page.waitForSelector("dialog[open] input[name=eserv]");
+    await page.check("dialog[open] input[name=eserv] >> nth=1");
+    await page.fill("dialog[open] [name=eObs]", "Corrigido pelo barbeiro");
+    await print("editar-horario", false);
+    await ok();
+    await page.waitForSelector(`${cartaoErr} >> text=Obs.: Corrigido pelo barbeiro`);
+    assert.match(await page.textContent(`${cartaoErr} .slot-hora`), /^17:00–\d\d:\d\d$/);
+    assert.notEqual(await page.textContent(`${cartaoErr} .slot-hora`), "17:00–17:30", "o fim acompanha a duração dos serviços");
+    // falta por engano → desfazer
+    await page.click(`${cartaoErr} button:has-text("Faltou")`);
+    await ok();
+    await page.waitForSelector(`${cartaoErr} .etiqueta:has-text("Faltou")`);
+    await page.click(`${cartaoErr} button:has-text("Desfazer falta")`);
+    await ok();
+    await page.waitForSelector(`${cartaoErr} .etiqueta:has-text("Agendado")`);
+    // lixeira (canto de baixo, à direita): pede motivo e tira da agenda
+    await page.locator(`${cartaoErr} .botao-lixeira`).scrollIntoViewIfNeeded();
+    await print("horario-com-lixeira", false);
+    await page.click(`${cartaoErr} .botao-lixeira`);
+    await page.fill("dialog[open] [name=motivo]", "Lançado por engano");
+    await ok();
+    await page.waitForSelector("text=Horário excluído da agenda.");
+    await page.waitForSelector(cartaoErr, { state: "detached" });
+
     // ---------- MÊS e ANO ----------
     passo("agenda em visão Mês (cores) e Ano");
     await visao("Mês");

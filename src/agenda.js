@@ -43,7 +43,7 @@ async function agendamentoPermitido(ctx, id, { cobrar = false } = {}) {
   if (!validId(id)) erro("Horário inválido.");
   const a = await ctx.db.prepare(`
     SELECT a.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone, u.nome AS barbeiro_nome,
-      (SELECT group_concat(nome, ' + ') FROM (SELECT nome FROM agendamento_servicos s WHERE s.agendamento_id = a.id ORDER BY s.rowid)) AS servicos_nomes
+      (SELECT group_concat(nome, ' + ') FROM (SELECT nome FROM agendamento_servicos s WHERE s.agendamento_id = a.id AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = s.id) ORDER BY s.rowid)) AS servicos_nomes
     FROM agendamentos a JOIN clientes c ON c.id = a.cliente_id JOIN usuarios u ON u.id = a.barbeiro_id
     WHERE a.id = ? AND a.barbearia_id = ?
   `).bind(id, ctx.barbeariaId).first();
@@ -74,19 +74,20 @@ async function listarAgenda(ctx) {
   const filtro = todas ? (url.searchParams.get("barbeiroId") || null) : user.id;
   if (filtro && !validId(filtro)) erro("Profissional inválido.");
 
-  const condA = `a.barbearia_id = ? AND a.data BETWEEN ? AND ?${filtro ? " AND a.barbeiro_id = ?" : ""}`;
+  // Horários excluídos (agendamentos_excluidos) não aparecem na agenda; continuam no banco.
+  const condA = `a.barbearia_id = ? AND a.data BETWEEN ? AND ?${filtro ? " AND a.barbeiro_id = ?" : ""} AND NOT EXISTS (SELECT 1 FROM agendamentos_excluidos x WHERE x.agendamento_id = a.id)`;
   const pa = [ctx.barbeariaId, data, ate, ...(filtro ? [filtro] : [])];
   const [prof, ags, servs, fins, itens, pags, coms, msgs, estornos, blq, modelos, caixa] = await Promise.all([
     db.prepare(`SELECT id, nome, perfil FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('proprietario','gerente','barbeiro')
                 ${todas ? "" : "AND id = ?"} ORDER BY CASE perfil WHEN 'gerente' THEN 0 ELSE 1 END, nome`)
       .bind(ctx.barbeariaId, ...(todas ? [] : [user.id])).all(),
     db.prepare(`SELECT a.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone, u.nome AS barbeiro_nome,
-                  (SELECT group_concat(nome, ' + ') FROM (SELECT nome FROM agendamento_servicos s WHERE s.agendamento_id = a.id ORDER BY s.rowid)) AS servicos_nomes,
+                  (SELECT group_concat(nome, ' + ') FROM (SELECT nome FROM agendamento_servicos s WHERE s.agendamento_id = a.id AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = s.id) ORDER BY s.rowid)) AS servicos_nomes,
                   si.serie_id, se.intervalo_semanas
                 FROM agendamentos a JOIN clientes c ON c.id = a.cliente_id JOIN usuarios u ON u.id = a.barbeiro_id
                 LEFT JOIN agendamento_serie_itens si ON si.agendamento_id = a.id LEFT JOIN agendamento_series se ON se.id = si.serie_id
                 WHERE ${condA} ORDER BY a.inicio`).bind(...pa).all(),
-    db.prepare(`SELECT s.* FROM agendamento_servicos s JOIN agendamentos a ON a.id = s.agendamento_id WHERE ${condA} ORDER BY s.rowid`).bind(...pa).all(),
+    db.prepare(`SELECT s.* FROM agendamento_servicos s JOIN agendamentos a ON a.id = s.agendamento_id WHERE ${condA} AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = s.id) ORDER BY s.rowid`).bind(...pa).all(),
     db.prepare(`SELECT f.* FROM finalizacoes f JOIN agendamentos a ON a.id = f.agendamento_id WHERE ${condA} AND f.estornada = 0`).bind(...pa).all(),
     db.prepare(`SELECT i.* FROM finalizacao_itens i JOIN finalizacoes f ON f.id = i.finalizacao_id JOIN agendamentos a ON a.id = f.agendamento_id
                 WHERE ${condA} AND f.estornada = 0 ORDER BY i.rowid`).bind(...pa).all(),
@@ -359,7 +360,7 @@ export async function finalizarDados(ctx, input) {
   const tab = await db.prepare(`SELECT id, nome, preco_centavos, ativo FROM servicos WHERE barbearia_id = ? AND id IN (${ids.map(() => "?").join(",")})`)
     .bind(ctx.barbeariaId, ...ids).all();
   const porId = Object.fromEntries(tab.results.map(s => [s.id, s]));
-  const doHorario = new Set((await db.prepare("SELECT servico_id FROM agendamento_servicos WHERE agendamento_id = ?").bind(a.id).all()).results.map(x => x.servico_id));
+  const doHorario = new Set((await db.prepare("SELECT servico_id FROM agendamento_servicos WHERE agendamento_id = ? AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = agendamento_servicos.id)").bind(a.id).all()).results.map(x => x.servico_id));
   const itens = itensIn.map(i => {
     const s = porId[i.servicoId];
     if (!s || (!s.ativo && !doHorario.has(s.id))) erro("Serviço não encontrado ou desativado.", 404);
@@ -540,6 +541,94 @@ async function mudarSituacao(ctx) {
     auditoria(ctx, input.situacao === "cancelado" ? "agendamento_cancelado" : "agendamento_falta", a.id, { motivo, antes: { situacao: "agendado" }, depois: { situacao: input.situacao } })
   ]);
   return json({ mensagem: input.situacao === "cancelado" ? "Horário cancelado." : "Falta registrada." });
+}
+
+// ---------- EDITAR (serviços, cliente, observação) / DESFAZER FALTA OU CANCELAMENTO / EXCLUIR ----------
+async function editar(ctx) {
+  const { db, request } = ctx;
+  const input = await readJson(request);
+  const a = await agendamentoPermitido(ctx, input.id);
+  if (await db.prepare("SELECT 1 FROM agendamentos_excluidos WHERE agendamento_id = ?").bind(a.id).first()) erro("Esse horário foi excluído.", 409);
+  if (a.situacao !== "agendado") erro("Só dá para editar um horário agendado. Finalizado: use Reabrir; falta ou cancelado: use Desfazer.", 409);
+  const observacao = textoOpcional(input.observacao, 300);
+  if (observacao === false) erro("Observação muito longa (até 300 letras).");
+  const servs = await servicosEscolhidos(ctx, input.servicoIds);
+  const ini = horaParaMin(a.inicio.slice(11));
+  const fim = ini + servs.reduce((t, x) => t + x.duracao_min, 0);
+  if (fim > 24 * 60) erro("O horário passa da meia-noite.");
+  conferirHorario(await regrasDoDia(db, ctx.barbeariaId, a.barbeiro_id, a.data), ini, fim);
+  const comandos = [];
+  const cliente = input.cliente ? await clienteDaMarcacao(ctx, input.cliente, comandos) : { id: a.cliente_id, nome: a.cliente_nome };
+  const termino = momento(a.data, fim);
+  const antes = (await db.prepare("SELECT servico_id, nome FROM agendamento_servicos WHERE agendamento_id = ? AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = agendamento_servicos.id) ORDER BY rowid").bind(a.id).all()).results;
+  const marca = new Date().toISOString();
+  // Tudo só acontece se o horário continua agendado e o novo fim não bate em outro atendimento ou bloqueio.
+  const pode = `EXISTS (SELECT 1 FROM agendamentos WHERE id = ? AND barbearia_id = ? AND situacao = 'agendado' AND fim = ? AND cliente_id = ?)`;
+  comandos.push(
+    db.prepare(`UPDATE agendamentos SET fim = ?, cliente_id = ?, observacao = ?, atualizado_em = CURRENT_TIMESTAMP
+                WHERE id = ? AND barbearia_id = ? AND situacao = 'agendado'
+                  AND NOT EXISTS (SELECT 1 FROM agendamentos o WHERE o.barbearia_id = ? AND o.barbeiro_id = ? AND o.id <> ? AND o.situacao IN ('agendado','finalizado') AND o.inicio < ? AND o.fim > ?)
+                  AND NOT EXISTS (SELECT 1 FROM bloqueios WHERE barbearia_id = ? AND barbeiro_id = ? AND ativo = 1 AND inicio < ? AND fim > ?)`)
+      .bind(termino, cliente.id, observacao || null, a.id, ctx.barbeariaId, ctx.barbeariaId, a.barbeiro_id, a.id, termino, a.inicio, ctx.barbeariaId, a.barbeiro_id, termino, a.inicio),
+    db.prepare(`INSERT INTO agendamento_servicos_removidos (linha_id, barbearia_id, agendamento_id, removido_em, removido_por)
+                SELECT s.id, s.barbearia_id, s.agendamento_id, ?, ? FROM agendamento_servicos s
+                WHERE s.agendamento_id = ? AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = s.id) AND ${pode}`)
+      .bind(marca, ctx.user.id, a.id, a.id, ctx.barbeariaId, termino, cliente.id),
+    ...servs.map(sv => db.prepare(`INSERT INTO agendamento_servicos (id, barbearia_id, agendamento_id, servico_id, nome, duracao_min) SELECT ?, ?, ?, ?, ?, ? WHERE ${pode}`)
+      .bind(crypto.randomUUID(), ctx.barbeariaId, a.id, sv.id, sv.nome, sv.duracao_min, a.id, ctx.barbeariaId, termino, cliente.id)),
+    auditoriaSe(ctx, pode, [a.id, ctx.barbeariaId, termino, cliente.id], "agendamento_editado", a.id, {
+      antes: { cliente: a.cliente_id, fim: a.fim, observacao: a.observacao || null, servicos: antes.map(x => x.nome) },
+      depois: { cliente: cliente.id, fim: termino, observacao: observacao || null, servicos: servs.map(x => x.nome) }
+    })
+  );
+  await db.batch(comandos);
+  // Conferência: se o UPDATE não passou (conflito), o fim/cliente não mudaram e nada foi trocado.
+  if (!(await db.prepare(`SELECT 1 FROM agendamentos WHERE id = ? AND fim = ? AND cliente_id = ?`).bind(a.id, termino, cliente.id).first())) {
+    erro("Com esses serviços o horário passa a bater em outro atendimento ou bloqueio. Remarque ou escolha menos serviços.", 409);
+  }
+  return json({ mensagem: "Horário atualizado.", fim: minParaHora(fim) });
+}
+
+async function desfazer(ctx) {
+  const { db, request } = ctx;
+  const input = await readJson(request);
+  const a = await agendamentoPermitido(ctx, input.id);
+  if (await db.prepare("SELECT 1 FROM agendamentos_excluidos WHERE agendamento_id = ?").bind(a.id).first()) erro("Esse horário foi excluído.", 409);
+  if (!["faltou", "cancelado"].includes(a.situacao)) erro("Só dá para desfazer uma falta ou um cancelamento.", 409);
+  const r = await db.batch([
+    db.prepare(`UPDATE agendamentos SET situacao = 'agendado', motivo = NULL, atualizado_em = CURRENT_TIMESTAMP
+                WHERE id = ? AND barbearia_id = ? AND situacao = ?
+                  AND NOT EXISTS (SELECT 1 FROM agendamentos o WHERE o.barbearia_id = ? AND o.barbeiro_id = ? AND o.id <> ? AND o.situacao IN ('agendado','finalizado') AND o.inicio < ? AND o.fim > ?)
+                  AND NOT EXISTS (SELECT 1 FROM bloqueios WHERE barbearia_id = ? AND barbeiro_id = ? AND ativo = 1 AND inicio < ? AND fim > ?)`)
+      .bind(a.id, ctx.barbeariaId, a.situacao, ctx.barbeariaId, a.barbeiro_id, a.id, a.fim, a.inicio, ctx.barbeariaId, a.barbeiro_id, a.fim, a.inicio),
+    auditoriaSe(ctx, "EXISTS (SELECT 1 FROM agendamentos WHERE id = ? AND situacao = 'agendado')", [a.id], "agendamento_desfeito", a.id, {
+      antes: { situacao: a.situacao, motivo: a.motivo || null }, depois: { situacao: "agendado" }
+    })
+  ]);
+  if (!r[0].meta?.changes) erro("Esse horário já foi ocupado por outro atendimento ou bloqueio. Marque um novo horário.", 409);
+  return json({ mensagem: a.situacao === "faltou" ? "Falta desfeita: o horário voltou para agendado." : "Cancelamento desfeito: o horário voltou para agendado." });
+}
+
+async function excluir(ctx) {
+  const { db, user, request } = ctx;
+  const input = await readJson(request);
+  const a = await agendamentoPermitido(ctx, input.id);
+  const motivo = exigirMotivo(input.motivo);
+  if (await db.prepare("SELECT 1 FROM agendamentos_excluidos WHERE agendamento_id = ?").bind(a.id).first()) erro("Esse horário já foi excluído.", 409);
+  if (a.situacao === "finalizado") erro("Atendimento finalizado não pode ser excluído: o valor já entrou no caixa. Reabra antes, se foi lançado errado.", 409);
+  const r = await db.batch([
+    db.prepare(`INSERT INTO agendamentos_excluidos (agendamento_id, barbearia_id, motivo, situacao_antes, excluido_por)
+                SELECT id, barbearia_id, ?, situacao, ? FROM agendamentos WHERE id = ? AND barbearia_id = ? AND situacao <> 'finalizado'`)
+      .bind(motivo, user.id, a.id, ctx.barbeariaId),
+    db.prepare(`UPDATE agendamentos SET situacao = 'cancelado', motivo = ?, atualizado_em = CURRENT_TIMESTAMP
+                WHERE id = ? AND barbearia_id = ? AND situacao = 'agendado' AND EXISTS (SELECT 1 FROM agendamentos_excluidos WHERE agendamento_id = ?)`)
+      .bind(`Excluído: ${motivo}`, a.id, ctx.barbeariaId, a.id),
+    auditoriaSe(ctx, "EXISTS (SELECT 1 FROM agendamentos_excluidos WHERE agendamento_id = ?)", [a.id], "agendamento_excluido", a.id, {
+      motivo, antes: { situacao: a.situacao, inicio: a.inicio, cliente: a.cliente_id }, depois: { excluido: true }
+    })
+  ]);
+  if (!r[0].meta?.changes) erro("Não foi possível excluir: o horário mudou. Atualize a agenda.", 409);
+  return json({ mensagem: "Horário excluído da agenda." });
 }
 
 // ---------- MENSAGEM (registro do envio pelo WhatsApp) ----------
@@ -780,6 +869,9 @@ export async function rotasAgenda(ctx, path, method) {
   if (path === "/agenda/reabrir" && method === "POST") return reabrir(ctx);
   if (path === "/agenda/situacao" && method === "POST") return mudarSituacao(ctx);
   if (path === "/agenda/remarcar" && method === "POST") return remarcar(ctx);
+  if (path === "/agenda/editar" && method === "POST") return editar(ctx);
+  if (path === "/agenda/desfazer" && method === "POST") return desfazer(ctx);
+  if (path === "/agenda/excluir" && method === "POST") return excluir(ctx);
   if (path === "/agenda/mensagem" && method === "POST") return registrarMensagem(ctx);
   if (path === "/agenda/bloqueios" && method === "POST") return bloquear(ctx);
   if (path === "/agenda/bloqueios/cancelar" && method === "POST") return cancelarBloqueio(ctx);
