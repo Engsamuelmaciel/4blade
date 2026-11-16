@@ -104,6 +104,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - Asaas Sandbox: chave e token já estão no `4blade-teste`; teste de assinatura real no Sandbox feito (cobrança criada + aviso PAYMENT_CREATED recebido). Para continuar o teste do Sandbox, pôr `COBRANCA_ON_LINE="sim"` só no `4blade-teste`.
 
 - 16/11/2026: **Solicitar teste grátis** (ESPECIFICACAO.md seção 15). `migrations/0013_solicitacoes_teste.sql`; `src/solicitacoes.js` (`POST /api/solicitar-teste` público com limite 3/h por IP e sem duplicar o mesmo WhatsApp em aberto; `GET /plataforma/solicitacoes[?situacao=todas]`, `POST /plataforma/solicitacoes/situacao`); `POST /plataforma/barbearias` aceita `solicitacaoId` (marca o pedido como cadastrado). Tela: `telaSolicitarTeste` (rota pública `teste-gratis`), plataforma `#/pedidos` (`telaPedidos`, `janelaCadastrarPedido`). Testes: `test/solicitacoes.test.js` + `test/navegador-ajuda.mjs`. `npm test` (126).
+  - **Publicado em 16/11/2026 (autorizado):** migração 0013 no 4blade-db e no 4blade-db-teste; oficial versão 0d2d2157, teste cfbbebbc. Conferido no forblade.com.br: `/api/planos` sem preços (cobrança desligada), `/api/assinar` 404, landing com "Solicitar teste grátis" e sem "R$" (print `docs/prints/forblade-teste-gratis.png`).
 
 ## Versão de teste publicada (Cloudflare)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
