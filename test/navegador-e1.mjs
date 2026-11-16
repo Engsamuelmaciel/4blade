@@ -153,6 +153,13 @@ async function rodar(tela) {
     await primeiroAcesso("gabriel.navalha", senhaGer, "Senha-Gabriel-2026");
     await page.waitForSelector("text=Olá, Gabriel!");
     await page.click("a.menu-item:has-text('Serviços')");
+    // formatação de dinheiro: ponto vira vírgula, milhar com ponto, no máximo 2 casas, letras ignoradas
+    for (const [digitado, esperado] of [["38.5", "38,50"], ["1234,5", "1.234,50"], ["12,345", "12,34"], ["4a0", "40,00"]]) {
+      await page.fill("#c-preco", "");
+      await page.locator("#c-preco").pressSequentially(digitado);
+      await page.locator("#c-preco").blur();
+      assert.equal(await page.inputValue("#c-preco"), esperado, `preço digitado ${digitado}`);
+    }
     for (const [nome, preco, dur] of [["Corte masculino", "40,00", "30"], ["Barba completa", "30,00", "20"]]) {
       await page.fill("#c-nome", nome);
       await page.fill("#c-preco", preco.replace(",00", ""));   // digita "40" → vira "40,00" ao sair do campo
@@ -169,7 +176,9 @@ async function rodar(tela) {
     for (const [nome, preco, cod] of [["Pomada modeladora", "45,00", "7890000000011"], ["Óleo para barba", "38,50", ""]]) {
       await page.fill("#c-nome", nome);
       await page.fill("#c-preco", preco);
-      await page.fill("#c-minimo", "2");
+      await page.fill("#c-minimo", "");
+      await page.locator("#c-minimo").pressSequentially("2-e,");   // só o número fica
+      assert.equal(await page.inputValue("#c-minimo"), "2");
       if (cod) await page.fill("#c-codigo", cod);
       await page.click("form.cartao button:has-text('Salvar')");
       await page.waitForSelector(`[data-produto="${nome}"]`);
@@ -180,7 +189,8 @@ async function rodar(tela) {
     await page.click("text=‹ Voltar");
     await page.click("a.menu-item:has-text('Clientes')");
     await page.fill("#c-nome", "Diego Cliente Fictício");
-    await page.fill("#c-telefone", "(11) 90000-1234");
+    await page.locator("#c-telefone").pressSequentially("11900001234");
+    assert.equal(await page.inputValue("#c-telefone"), "(11) 90000-1234");
     // sem o aceite LGPD o servidor recusa
     await page.click("form.cartao button:has-text('Salvar')");
     await page.waitForSelector("form .erro:has-text('LGPD')");

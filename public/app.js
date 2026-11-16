@@ -27,6 +27,7 @@ function el(tag, attrs = {}, ...filhos) {
 
 function mostrar(...filhos) {
   app.replaceChildren(...filhos.flat().filter(Boolean));
+  aplicarMascaras(app);
   app.focus({ preventScroll: true });
   window.scrollTo(0, 0);
 }
@@ -51,16 +52,18 @@ const fone = d => {
 const NOME_PERFIL = { plataforma: "Plataforma", proprietario: "Proprietário", gerente: "Gerente", barbeiro: "Barbeiro", caixa: "Caixa" };
 const NOME_PLANO = { basico: "Básico", profissional: "Profissional" };
 
-// "45", "45,9", "1.234,56", "R$ 45,00" → centavos (inteiro). null se inválido.
+// Ponto digitado como vírgula decimal ("38.5" → "38,5"); "1.234" continua sendo milhar.
+const pontoDecimal = t => (!t.includes(",") && (t.match(/\./g) || []).length === 1 && /\.\d{0,2}$/.test(t) ? t.replace(".", ",") : t);
+// "45", "45,9", "38.5", "1.234,56", "R$ 45,00" → centavos (inteiro). null se inválido.
 function paraCentavos(texto) {
-  const t = String(texto || "").replace(/R\$\s?/i, "").trim().replace(/\./g, "").replace(",", ".");
+  const t = pontoDecimal(String(texto || "").replace(/R\$\s?/i, "").trim()).replace(/\./g, "").replace(",", ".");
   if (!/^\d+(\.\d{1,2})?$/.test(t)) return null;
   return Math.round(Number(t) * 100);
 }
-const centavosParaTexto = c => (Number(c) / 100).toFixed(2).replace(".", ",");
+const centavosParaTexto = c => (Number(c) / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // "40" ou "37,5" → centésimos de % (4000, 3750)
 function paraBp(texto) {
-  const t = String(texto || "0").trim().replace("%", "").replace(",", ".");
+  const t = pontoDecimal(String(texto || "0").trim().replace("%", "")).replace(",", ".");
   if (!/^\d+(\.\d{1,2})?$/.test(t)) return null;
   const v = Math.round(Number(t) * 100);
   return v <= 10000 ? v : null;
@@ -102,8 +105,6 @@ function campo(rotulo, attrs = {}, ajuda = null) {
     : attrs.tag === "select"
       ? el("select", { ...attrs, tag: null, opcoes: null, valor: null, id }, ...(attrs.opcoes || []).map(([v, t]) => el("option", { value: v, selected: v === attrs.valor || null, text: t })))
       : el("input", { type: "text", ...attrs, id });
-  if (attrs.inputmode === "tel") mascaraTelefone(controle);
-  else if (attrs.inputmode === "decimal" && !/^com/.test(attrs.name || "")) mascaraDinheiro(controle);   // % de comissão fica livre
   return el("div", { class: "campo" },
     el("label", { for: id, text: rotulo }),
     controle,
@@ -134,12 +135,50 @@ function mascaraTelefone(input) {
     if (document.activeElement === input) input.setSelectionRange(pos, pos);
   });
 }
-// Dinheiro: ao sair do campo, "40" vira "40,00" e "1234,5" vira "1.234,50".
+// Número com vírgula (dinheiro e %): só dígitos, pontos de milhar e UMA vírgula com até 2 casas.
+function limparDecimal(v) {
+  let t = pontoDecimal(String(v).replace(/[^\d.,]/g, ""));
+  const i = t.indexOf(",");
+  if (i >= 0) t = t.slice(0, i + 1) + t.slice(i + 1).replace(/[.,]/g, "").slice(0, 2);
+  return t;
+}
+function mascaraDecimal(input) {
+  input.addEventListener("input", () => {
+    const limpo = limparDecimal(input.value);
+    if (limpo !== input.value) input.value = limpo;
+  });
+}
+// Dinheiro: além da limpeza, ao sair do campo "40" vira "40,00" e "1234,5" vira "1.234,50".
 function mascaraDinheiro(input) {
+  mascaraDecimal(input);
   input.addEventListener("blur", () => {
     const c = paraCentavos(input.value);
-    if (c !== null && input.value.trim()) input.value = (c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (c !== null && input.value.trim()) input.value = centavosParaTexto(c);
   });
+}
+// Quantidade: só números inteiros (sem letra "e", sinal, ponto ou vírgula).
+function mascaraInteiro(input) {
+  input.addEventListener("keydown", e => { if (["e", "E", "+", "-", ".", ","].includes(e.key)) e.preventDefault(); });
+  input.addEventListener("input", () => {
+    const limpo = input.value.replace(/\D/g, "");
+    if (input.type !== "number" && limpo !== input.value) input.value = limpo;
+  });
+}
+// Aplica a formatação certa em TODOS os campos numéricos de uma tela ou janela (uma vez por campo).
+//   telefone: inputmode="tel" · dinheiro: inputmode="decimal" · %: inputmode="decimal" com name com* ou data-numero="percentual"
+//   quantidade: inputmode="numeric" (exceto código de produto, que aceita letras)
+function aplicarMascaras(raiz) {
+  for (const input of raiz.querySelectorAll("input:not([data-mascara])")) {
+    const modo = input.getAttribute("inputmode");
+    const nome = input.name || "";
+    let tipo = null;
+    if (modo === "tel") tipo = "telefone";
+    else if (modo === "decimal") tipo = /^com/.test(nome) || input.dataset.numero === "percentual" ? "percentual" : "dinheiro";
+    else if (modo === "numeric" && nome !== "codigo") tipo = "inteiro";
+    if (!tipo) continue;
+    input.dataset.mascara = tipo;
+    ({ telefone: mascaraTelefone, dinheiro: mascaraDinheiro, percentual: mascaraDecimal, inteiro: mascaraInteiro })[tipo](input);
+  }
 }
 
 function caixaMarcar(rotulo, attrs = {}) {
@@ -203,6 +242,7 @@ function abrirJanela(titulo, conteudo, { ok = "Confirmar", perigo = false, aoCon
       });
     });
     janela.replaceChildren(form);
+    aplicarMascaras(form);
     janela.addEventListener("close", () => resolve(null), { once: true });   // Esc também fecha
     janela.showModal();
     const primeiro = form.querySelector("input, textarea, select");
