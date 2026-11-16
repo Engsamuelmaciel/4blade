@@ -136,7 +136,7 @@ async function rodar(tela) {
     assert.deepEqual(await page.locator("#menu [data-nav]").allInnerTexts(), ["Barbearias", "Pedidos de teste", "Chamados"], "plataforma: barbearias e chamados");
     assert.match(await page.textContent("[data-teste=explicacao-plataforma]"), /entre com o usuário do proprietário/);
     await page.click("button:has-text('Criar barbearia')");
-    const senhaProp = await lerSenhaDaJanela();
+    let senhaProp = await lerSenhaDaJanela();
     await print("plataforma-senha-do-proprietario");
     await fecharJanela();
     await page.waitForSelector('[data-barbearia="Barbearia Navalha Fictícia"]');
@@ -145,6 +145,38 @@ async function rodar(tela) {
     assert.match(cartaoB, /Cadastrada pelo suporte/);
     assert.ok(!/Assinou pelo site|R\$/.test(cartaoB), "barbearia do suporte sem valor nem 'assinou pelo site'");
     await print("plataforma-painel");
+
+    // suporte edita os dados do dono (WhatsApp) e envia o acesso direto para ele
+    const cartaoNavalha = '[data-barbearia="Barbearia Navalha Fictícia"]';
+    await page.click(`${cartaoNavalha} button:has-text("Editar dados")`);
+    await page.waitForSelector("dialog[open] #c-propLogin");
+    assert.equal(await page.inputValue("dialog[open] #c-propLogin"), "carlos.navalha");
+    await page.fill("dialog[open] #c-propTel", "");
+    await page.locator("dialog[open] #c-propTel").pressSequentially("11900005555");
+    await print("plataforma-editar-dados", false);
+    await page.click("dialog[open] button[type=submit]");
+    await page.waitForSelector(`${cartaoNavalha} >> text=WhatsApp (11) 90000-5555`);
+    await page.click(`${cartaoNavalha} button:has-text("Enviar acesso ao dono")`);
+    await page.fill("dialog[open] #c-motivo", "Envio do 1º acesso");
+    await page.click("dialog[open] button[type=submit]");
+    senhaProp = await lerSenhaDaJanela();
+    const hrefDono = await page.getAttribute("dialog[open] [data-teste=whats-acesso]", "href");
+    assert.match(hrefDono, /^https:\/\/wa\.me\/5511900005555\?text=/);
+    assert.match(decodeURIComponent(hrefDono), /Usuário: carlos\.navalha/);
+    await print("plataforma-enviar-acesso", false);
+    await fecharJanela();
+
+    // suporte cria um usuário (caixa) na equipe da barbearia
+    await page.click(`${cartaoNavalha} button:has-text("Equipe")`);
+    await page.waitForSelector("dialog[open] [data-equipe='carlos.navalha']");
+    await page.selectOption("dialog[open] #c-eqPerfil", "caixa");
+    await page.fill("dialog[open] #c-eqNome", "Caixa do Suporte");
+    await page.fill("dialog[open] #c-eqLogin", "caixa.suporte");
+    await print("plataforma-equipe", false);
+    await page.click("dialog[open] [data-teste=criar-usuario-suporte]");
+    await lerSenhaDaJanela();
+    await fecharJanela();
+    passo("suporte: editou o WhatsApp do dono, enviou o acesso e criou um usuário na equipe");
     await sair();
 
     // ---------- PROPRIETÁRIO ----------

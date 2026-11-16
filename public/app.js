@@ -1197,7 +1197,7 @@ async function telaPlataforma() {
         b.assinatura?.origem === "asaas" ? el("span", { class: `etiqueta ${(NOME_SIT_ASSINATURA[b.assinatura.situacao] || [])[1] || ""}`, "data-situacao": b.assinatura.situacao, text: NOME_SIT_ASSINATURA[b.assinatura.situacao]?.[0] || b.assinatura.situacao }) : null),
       b.assinatura?.origem !== "asaas" ? el("p", { class: "suave", "data-teste": "origem-barbearia", text: "Cadastrada pelo suporte" }) : null,
       b.assinatura?.origem === "asaas" ? el("p", { class: "suave", text: `Assinou pelo site · ${reais(b.assinatura.valorCentavos)}/${b.assinatura.ciclo === "anual" ? "ano" : "mês"} · ${textoSituacao(b.assinatura)}${b.email ? ` · ${b.email}` : ""}` }) : null,
-      el("p", { class: "suave", text: `Proprietário: ${b.proprietario?.nome || "—"} · usuário ${b.proprietario?.login || "—"}${b.proprietario?.trocaPendente ? " · ainda não entrou" : ""}` }),
+      el("p", { class: "suave", text: `Proprietário: ${b.proprietario?.nome || "—"} · usuário ${b.proprietario?.login || "—"}${b.proprietario?.telefone ? ` · WhatsApp ${fone(b.proprietario.telefone)}` : ""}${b.proprietario?.trocaPendente ? " · ainda não entrou" : ""}` }),
       b.telefone ? el("p", { class: "suave", text: `Telefone: ${fone(b.telefone)}` }) : null,
       el("p", { class: "suave", text: `Equipe ativa: ${b.usuariosAtivos.gerente} gerente(s), ${b.usuariosAtivos.barbeiro} barbeiro(s), ${b.usuariosAtivos.caixa} caixa(s)` }),
       b.bloqueada && b.motivoBloqueio ? el("p", { class: "suave", text: `Motivo do bloqueio: ${b.motivoBloqueio}` }) : null,
@@ -1211,21 +1211,96 @@ async function telaPlataforma() {
             telaPlataforma();
           }, b.bloqueada ? "Desbloquear" : "Bloquear"), "pequeno"),
         botao("Plano", () => janelaPlano(b), "pequeno"),
-        botao("Nova senha do proprietário", () => pedirMotivo(
-          "Nova senha do proprietário", "Gera uma senha provisória. A senha antiga para de funcionar.",
+        botao("Editar dados", () => janelaEditarBarbearia(b), "pequeno"),
+        botao("Equipe", () => janelaEquipeBarbearia(b), "pequeno"),
+        botao("Enviar acesso ao dono", () => pedirMotivo(
+          "Enviar acesso ao dono",
+          b.proprietario?.trocaPendente
+            ? "Gera uma senha provisória nova para o dono e abre a mensagem pronta (link, usuário e senha) para enviar."
+            : "O dono já criou a senha dele. Gerar uma provisória nova SUBSTITUI a senha atual. Use só se ele esqueceu ou pediu.",
           async motivo => {
             const r = await api("/plataforma/barbearias/redefinir-senha", { metodo: "POST", corpo: { id: b.id, motivo } });
-            await mostrarSenha(r.login, r.senhaProvisoria, "o proprietário", { nome: b.proprietario?.nome, barbearia: b.nome });
-          }, "Gerar senha"), "pequeno"))
+            setTimeout(() => mostrarSenha(r.login, r.senhaProvisoria, `o proprietário (${r.nome})`, { nome: r.nome, telefone: r.telefone, barbearia: b.nome }), 0);
+          }, "Gerar e enviar"), "pequeno principal"))
     )))
     : el("p", { class: "vazio", text: "Nenhuma barbearia ainda. Crie a primeira ao lado." });
 
   mostrar(
     cabecalho("Painel da plataforma", "Barbearias clientes do 4blade", null),
-    el("p", { class: "info", "data-teste": "explicacao-plataforma", text: "Este painel é só para administrar as barbearias (criar, bloquear, plano e senha do dono). Para usar o sistema de uma barbearia (agenda, caixa, equipe…), toque em Sair e entre com o usuário do proprietário. Se ele não tiver a senha, use \"Nova senha do proprietário\"." }),
+    el("p", { class: "info", "data-teste": "explicacao-plataforma", text: "Este painel é só para administrar as barbearias (criar, bloquear, plano e senha do dono). Para usar o sistema de uma barbearia (agenda, caixa, equipe…), toque em Sair e entre com o usuário do proprietário. Para mandar o acesso ao dono (ou à equipe), use \"Enviar acesso ao dono\" ou \"Equipe\"." }),
     el("div", { class: "duas-colunas" },
       el("section", {}, el("h3", { text: `Barbearias (${barbearias.length})` }), lista),
       el("section", {}, form)));
+}
+
+// Suporte: corrigir nome/telefones da barbearia e o nome, USUÁRIO e telefone do dono.
+function janelaEditarBarbearia(b) {
+  const p = b.proprietario || {};
+  return abrirJanela(`Editar ${b.nome}`, [
+    campo("Nome da barbearia", { name: "nome", required: true, maxlength: "80", value: b.nome }),
+    campo("Telefone da barbearia (opcional)", { name: "telefone", inputmode: "tel", value: b.telefone ? fone(b.telefone) : "" }),
+    el("h4", { text: "Proprietário" }),
+    campo("Nome do proprietário", { name: "propNome", required: true, value: p.nome || "" }),
+    campo("Usuário de acesso", { name: "propLogin", required: true, value: p.login || "", autocapitalize: "none", spellcheck: "false" }, "Se trocar, o dono passa a entrar com o usuário novo (a senha continua a mesma)."),
+    campo("WhatsApp do proprietário (opcional)", { name: "propTel", inputmode: "tel", value: p.telefone ? fone(p.telefone) : "" }, "Com o WhatsApp preenchido, o envio do acesso vai direto para ele."),
+    campo("Motivo", { name: "motivo", required: true, minlength: "3", value: "Atualização de cadastro" })
+  ], {
+    ok: "Salvar",
+    aoConfirmar: async form => {
+      await api("/plataforma/barbearias/editar", { metodo: "POST", corpo: {
+        id: b.id, nome: form.nome.value, telefone: form.telefone.value, motivo: form.motivo.value,
+        proprietario: { nome: form.propNome.value, login: form.propLogin.value.trim().toLowerCase(), telefone: form.propTel.value }
+      } });
+      avisar("Dados atualizados.");
+      telaPlataforma();
+    }
+  });
+}
+
+// Suporte: equipe da barbearia — ver, criar usuário e enviar o acesso de cada pessoa.
+async function janelaEquipeBarbearia(b) {
+  const { usuarios, vagaBarbeiro } = await api(`/plataforma/barbearias/equipe?id=${encodeURIComponent(b.id)}`);
+  const enviarAcesso = u => pedirMotivo(`Enviar acesso para ${u.nome}`,
+    u.trocaPendente ? "Gera uma senha provisória nova e abre a mensagem pronta para enviar." : "Essa pessoa já criou a senha dela. Gerar uma provisória nova SUBSTITUI a senha atual.",
+    async motivo => {
+      const r = u.perfil === "proprietario"
+        ? await api("/plataforma/barbearias/redefinir-senha", { metodo: "POST", corpo: { id: b.id, motivo } })
+        : await api("/plataforma/barbearias/equipe/senha", { metodo: "POST", corpo: { barbeariaId: b.id, usuarioId: u.id, motivo } });
+      setTimeout(() => mostrarSenha(r.login, r.senhaProvisoria, u.nome, { nome: r.nome, telefone: r.telefone, barbearia: b.nome }), 0);
+    }, "Gerar e enviar");
+  const lista = el("ul", { class: "lista" }, usuarios.map(u => el("li", { class: `item ${u.ativo ? "" : "inativo"}`, "data-equipe": u.login },
+    el("div", { class: "item-topo" },
+      el("strong", { text: u.nome }), el("span", { class: "etiqueta", text: NOME_PERFIL[u.perfil] }),
+      !u.ativo ? el("span", { class: "etiqueta vermelha", text: "Desativado" }) : u.trocaPendente ? el("span", { class: "etiqueta amarela", text: "Ainda não entrou" }) : null),
+    el("p", { class: "suave", text: [`Usuário: ${u.login}`, u.telefone ? fone(u.telefone) : null].filter(Boolean).join(" · ") }),
+    u.ativo ? el("div", { class: "item-acoes" }, botao("Enviar acesso", () => enviarAcesso(u), "pequeno")) : null)));
+  const erroNovo = el("p", { class: "erro", role: "alert", hidden: true });
+  const criar = el("button", { type: "button", class: "botao principal", "data-teste": "criar-usuario-suporte", text: "Criar e enviar acesso" });
+  const novo = el("div", { class: "cartao" },
+    el("h4", { text: "Criar usuário" }),
+    campo("Perfil", { tag: "select", name: "eqPerfil", id: "c-eqPerfil", opcoes: [["barbeiro", "Barbeiro"], ["gerente", "Gerente"], ["caixa", "Caixa"]] }),
+    campo("Nome", { name: "eqNome", id: "c-eqNome" }),
+    campo("Usuário de acesso", { name: "eqLogin", id: "c-eqLogin", autocapitalize: "none", spellcheck: "false" }, "Minúsculas, sem espaço. Ex.: pedro.stylos"),
+    campo("WhatsApp (opcional)", { name: "eqTel", id: "c-eqTel", inputmode: "tel" }),
+    el("p", { class: "suave", text: `Vagas de barbeiro: ${vagaBarbeiro.ativos}/${vagaBarbeiro.limite}. Comissões começam em 0%: o dono ajusta em Equipe.` }),
+    erroNovo, criar);
+  const valor = id => novo.querySelector(`#${id}`).value;
+  criar.addEventListener("click", async () => {
+    erroNovo.hidden = true;
+    criar.disabled = true;
+    try {
+      const r = await api("/plataforma/barbearias/equipe", { metodo: "POST", corpo: {
+        barbeariaId: b.id, perfil: valor("c-eqPerfil"), nome: valor("c-eqNome"), login: valor("c-eqLogin").trim().toLowerCase(), telefone: valor("c-eqTel") || undefined } });
+      janela.close();
+      setTimeout(async () => {
+        await mostrarSenha(r.usuario.login, r.senhaProvisoria, r.usuario.nome, { nome: r.usuario.nome, telefone: r.usuario.telefone, barbearia: b.nome });
+        telaPlataforma();
+      }, 0);
+    } catch (e) {
+      erroNovo.textContent = e.message; erroNovo.hidden = false;
+    } finally { criar.disabled = false; }
+  });
+  return abrirJanela(`Equipe — ${b.nome}`, [lista, novo], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
 }
 
 function janelaPlano(b) {

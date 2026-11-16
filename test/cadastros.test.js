@@ -172,7 +172,7 @@ describe("painel da plataforma", () => {
     const lista = (await get("/api/plataforma/barbearias", p)).dados.barbearias;
     assert.equal(lista.length, 1);
     assert.equal(lista[0].plano, "basico");
-    assert.deepEqual(lista[0].proprietario, { nome: "Dono alfa", login: "dono.alfa", trocaPendente: false });
+    assert.deepEqual({ ...lista[0].proprietario, id: undefined }, { id: undefined, nome: "Dono alfa", login: "dono.alfa", telefone: null, trocaPendente: false });
     assert.deepEqual(lista[0].usuariosAtivos, { gerente: 1, barbeiro: 0, caixa: 0 });
 
     assert.equal((await post("/api/plataforma/barbearias/alterar", p, { id: a.id, plano: "profissional", motivo: "plano antigo" })).status, 400);

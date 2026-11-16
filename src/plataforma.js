@@ -1,7 +1,7 @@
 // Painel da plataforma (nós): criar barbearia + 1º acesso do proprietário, bloquear/desbloquear, plano, senha do proprietário.
 import {
   json, fail, readJson, validId, validLogin, normalizarLogin, textoLimpo, normalizarTelefone, exigirMotivo,
-  hashPassword, gerarSenhaProvisoria, auditoria, diferenca
+  hashPassword, gerarSenhaProvisoria, auditoria, diferenca, HttpError
 } from "./util.js";
 import { PLANOS, limiteDoPerfil, PERFIS_EQUIPE, valorDoPlano } from "./perfis.js";
 import { MODELOS_PADRAO } from "./cadastros.js";
@@ -23,7 +23,7 @@ function barbeariaPublica(b) {
     bloqueada: Boolean(b.bloqueada),
     motivoBloqueio: b.motivo_bloqueio || null,
     criadoEm: b.criado_em,
-    proprietario: b.prop_login ? { nome: b.prop_nome, login: b.prop_login, trocaPendente: Boolean(b.prop_troca) } : null,
+    proprietario: b.prop_login ? { id: b.prop_id, nome: b.prop_nome, login: b.prop_login, telefone: b.prop_tel || null, trocaPendente: Boolean(b.prop_troca) } : null,
     usuariosAtivos: {
       gerente: Number(b.n_gerente || 0),
       barbeiro: Number(b.n_barbeiro || 0),
@@ -37,7 +37,7 @@ const SELECT_BARBEARIAS = `
     a.origem AS a_origem, a.ciclo AS a_ciclo, a.site_horarios AS a_site, a.valor_centavos AS a_valor, a.teste_ate AS a_teste_ate,
     a.pago_ate AS a_pago_ate, a.proximo_vencimento AS a_proximo, a.cancelada AS a_cancelada, a.cancelada_em AS a_cancelada_em,
     a.ultimo_pagamento_em AS a_ultimo_pag, a.email AS a_email,
-    p.nome AS prop_nome, p.login AS prop_login, p.trocar_senha AS prop_troca,
+    p.id AS prop_id, p.telefone AS prop_tel, p.nome AS prop_nome, p.login AS prop_login, p.trocar_senha AS prop_troca,
     (SELECT COUNT(*) FROM usuarios x WHERE x.barbearia_id = b.id AND x.ativo = 1 AND x.perfil = 'gerente') AS n_gerente,
     (SELECT COUNT(*) FROM usuarios x WHERE x.barbearia_id = b.id AND x.ativo = 1 AND x.perfil = 'barbeiro') AS n_barbeiro,
     (SELECT COUNT(*) FROM usuarios x WHERE x.barbearia_id = b.id AND x.ativo = 1 AND x.perfil = 'caixa') AS n_caixa
@@ -197,7 +197,7 @@ export async function rotasPlataforma(ctx, path, method) {
     if (!validId(input.id)) return fail("Barbearia inválida.");
     const motivo = exigirMotivo(input.motivo);
     const prop = await db.prepare(
-      "SELECT id, login FROM usuarios WHERE barbearia_id = ? AND perfil = 'proprietario'"
+      "SELECT id, login, nome, telefone FROM usuarios WHERE barbearia_id = ? AND perfil = 'proprietario'"
     ).bind(input.id).first();
     if (!prop) return fail("Proprietário não encontrado.", 404);
     const senha = gerarSenhaProvisoria();
@@ -208,7 +208,127 @@ export async function rotasPlataforma(ctx, path, method) {
         .bind(prop.id),
       auditoria({ ...ctx, barbeariaId: input.id }, "senha_redefinida", prop.id, { motivo })
     ]);
-    return json({ login: prop.login, senhaProvisoria: senha });
+    return json({ login: prop.login, nome: prop.nome, telefone: prop.telefone || null, senhaProvisoria: senha });
+  }
+
+  // Editar dados da barbearia e do proprietário (nome, telefones e o USUÁRIO de acesso do dono).
+  if (path === "/plataforma/barbearias/editar" && method === "POST") {
+    const input = await readJson(request);
+    if (!validId(input.id)) return fail("Barbearia inválida.");
+    const motivo = exigirMotivo(input.motivo);
+    const b = await db.prepare("SELECT id, nome, telefone FROM barbearias WHERE id = ?").bind(input.id).first();
+    if (!b) return fail("Barbearia não encontrada.", 404);
+    const prop = await db.prepare("SELECT id, nome, login, telefone FROM usuarios WHERE barbearia_id = ? AND perfil = 'proprietario'").bind(b.id).first();
+    if (!prop) return fail("Proprietário não encontrado.", 404);
+    const tel = (v, rotulo) => {
+      if (v === undefined) return undefined;
+      if (v === null || v === "") return null;
+      const t = normalizarTelefone(v);
+      if (!t) throw new HttpError(`${rotulo} inválido (DDD + número).`, 400);
+      return t;
+    };
+    const p = input.proprietario || {};
+    const novo = {
+      nome: input.nome === undefined ? b.nome : textoLimpo(input.nome, 2, 80),
+      telefone: input.telefone === undefined ? b.telefone : tel(input.telefone, "Telefone da barbearia"),
+      prop_nome: p.nome === undefined ? prop.nome : textoLimpo(p.nome),
+      prop_login: p.login === undefined ? prop.login : normalizarLogin(p.login),
+      prop_tel: p.telefone === undefined ? prop.telefone : tel(p.telefone, "Telefone do proprietário")
+    };
+    if (!novo.nome) return fail("Nome da barbearia inválido (2 a 80 letras).");
+    if (!novo.prop_nome) return fail("Nome do proprietário inválido.");
+    if (!validLogin(novo.prop_login)) return fail("Usuário inválido: use 3 a 30 letras minúsculas, números, ponto ou hífen.");
+    const antes = { nome: b.nome, telefone: b.telefone || null, prop_nome: prop.nome, prop_login: prop.login, prop_tel: prop.telefone || null };
+    const dif = diferenca(antes, { ...novo, telefone: novo.telefone || null, prop_tel: novo.prop_tel || null });
+    if (!dif.mudou) return fail("Nada foi alterado.");
+    if (novo.prop_login !== prop.login && await db.prepare("SELECT 1 FROM usuarios WHERE login = ?").bind(novo.prop_login).first()) {
+      return fail("Esse usuário de acesso já existe. Escolha outro.", 409);
+    }
+    const comandos = [
+      db.prepare("UPDATE barbearias SET nome = ?, telefone = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?").bind(novo.nome, novo.telefone || null, b.id),
+      db.prepare("UPDATE usuarios SET nome = ?, login = ?, telefone = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND barbearia_id = ?")
+        .bind(novo.prop_nome, novo.prop_login, novo.prop_tel || null, prop.id, b.id),
+      auditoria({ ...ctx, barbeariaId: b.id }, "barbearia_dados_editados", b.id, { motivo, antes: dif.antes, depois: dif.depois })
+    ];
+    // Usuário trocado: quem estava dentro entra de novo com o usuário novo.
+    if (novo.prop_login !== prop.login) {
+      comandos.push(db.prepare("UPDATE sessoes SET revogado_em = CURRENT_TIMESTAMP WHERE usuario_id = ? AND revogado_em IS NULL").bind(prop.id));
+    }
+    try {
+      await db.batch(comandos);
+    } catch (e) {
+      if (/UNIQUE/i.test(String(e?.message))) return fail("Esse usuário de acesso já existe. Escolha outro.", 409);
+      throw e;
+    }
+    const depois = await db.prepare(`${SELECT_BARBEARIAS} WHERE b.id = ?`).bind(b.id).first();
+    return json({ barbearia: barbeariaPublica(depois) });
+  }
+
+  // Equipe de uma barbearia (o suporte vê, cria usuário e gera senha para enviar o acesso).
+  if (path === "/plataforma/barbearias/equipe" && method === "GET") {
+    const id = new URL(request.url).searchParams.get("id");
+    if (!validId(id)) return fail("Barbearia inválida.");
+    const b = await db.prepare(`${SELECT_BARBEARIAS} WHERE b.id = ?`).bind(id).first();
+    if (!b) return fail("Barbearia não encontrada.", 404);
+    const r = await db.prepare(`
+      SELECT id, nome, login, telefone, perfil, ativo, trocar_senha FROM usuarios WHERE barbearia_id = ?
+      ORDER BY ativo DESC, CASE perfil WHEN 'proprietario' THEN 0 WHEN 'gerente' THEN 1 WHEN 'barbeiro' THEN 2 ELSE 3 END, nome
+    `).bind(id).all();
+    const bp = { plano: b.plano_atual, barbeiros_adicionais: b.barbeiros_adicionais };
+    return json({
+      barbearia: { id: b.id, nome: b.nome, plano: b.plano_atual },
+      usuarios: r.results.map(u => ({ id: u.id, nome: u.nome, login: u.login, telefone: u.telefone && !String(u.telefone).startsWith("sem:") ? u.telefone : null,
+        perfil: u.perfil, ativo: Boolean(u.ativo), trocaPendente: Boolean(u.trocar_senha) })),
+      vagaBarbeiro: { ativos: Number(b.n_barbeiro || 0), limite: limiteDoPerfil(bp, "barbeiro") }
+    });
+  }
+
+  if (path === "/plataforma/barbearias/equipe" && method === "POST") {
+    const input = await readJson(request);
+    if (!validId(input.barbeariaId)) return fail("Barbearia inválida.");
+    const b = await db.prepare(`${SELECT_BARBEARIAS} WHERE b.id = ?`).bind(input.barbeariaId).first();
+    if (!b) return fail("Barbearia não encontrada.", 404);
+    const perfil = input.perfil;
+    if (!PERFIS_EQUIPE.includes(perfil)) return fail("Perfil inválido (gerente, barbeiro ou caixa).");
+    const nome = textoLimpo(input.nome);
+    if (!nome) return fail("Informe o nome (2 a 120 letras).");
+    const login = normalizarLogin(input.login);
+    if (!validLogin(login)) return fail("Usuário inválido: use 3 a 30 letras minúsculas, números, ponto ou hífen.");
+    let telefone = null;
+    if (input.telefone) {
+      telefone = normalizarTelefone(input.telefone);
+      if (!telefone) return fail("Telefone inválido (DDD + número).");
+    }
+    if (await db.prepare("SELECT 1 FROM usuarios WHERE login = ?").bind(login).first()) return fail("Esse usuário de acesso já existe. Escolha outro.", 409);
+    const limite = limiteDoPerfil({ plano: b.plano_atual, barbeiros_adicionais: b.barbeiros_adicionais }, perfil);
+    const id = crypto.randomUUID();
+    const senha = gerarSenhaProvisoria();
+    const ins = await db.prepare(`
+      INSERT INTO usuarios (id, barbearia_id, login, nome, telefone, perfil, comissao_servico_bp, comissao_produto_bp, senha_hash, trocar_senha)
+      SELECT ?, ?, ?, ?, ?, ?, 0, 0, ?, 1
+      WHERE (SELECT COUNT(*) FROM usuarios WHERE barbearia_id = ? AND perfil = ? AND ativo = 1) < ?
+    `).bind(id, b.id, login, nome, telefone, perfil, await hashPassword(senha), b.id, perfil, limite).run();
+    if (ins.meta.changes !== 1) return fail(`Limite do plano atingido: ${limite} ${perfil}(s) ativo(s).`, 409);
+    await auditoria({ ...ctx, barbeariaId: b.id }, "usuario_criado_suporte", id, { depois: { login, nome, telefone, perfil } }).run();
+    return json({ usuario: { id, nome, login, telefone, perfil }, senhaProvisoria: senha, barbearia: { nome: b.nome } }, 201);
+  }
+
+  if (path === "/plataforma/barbearias/equipe/senha" && method === "POST") {
+    const input = await readJson(request);
+    if (!validId(input.barbeariaId) || !validId(input.usuarioId)) return fail("Dados inválidos.");
+    const motivo = exigirMotivo(input.motivo);
+    // Só usuário DESSA barbearia (e ativo).
+    const u = await db.prepare("SELECT id, login, nome, telefone FROM usuarios WHERE id = ? AND barbearia_id = ? AND ativo = 1")
+      .bind(input.usuarioId, input.barbeariaId).first();
+    if (!u) return fail("Usuário não encontrado nessa barbearia.", 404);
+    const senha = gerarSenhaProvisoria();
+    await db.batch([
+      db.prepare("UPDATE usuarios SET senha_hash = ?, trocar_senha = 1, atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND barbearia_id = ?")
+        .bind(await hashPassword(senha), u.id, input.barbeariaId),
+      db.prepare("UPDATE sessoes SET revogado_em = CURRENT_TIMESTAMP WHERE usuario_id = ? AND revogado_em IS NULL").bind(u.id),
+      auditoria({ ...ctx, barbeariaId: input.barbeariaId }, "senha_redefinida", u.id, { motivo, pelo: "suporte" })
+    ]);
+    return json({ login: u.login, nome: u.nome, telefone: u.telefone && !String(u.telefone).startsWith("sem:") ? u.telefone : null, senhaProvisoria: senha });
   }
 
   return null;
