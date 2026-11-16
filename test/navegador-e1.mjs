@@ -141,6 +141,9 @@ async function rodar(tela) {
     await fecharJanela();
     await page.waitForSelector('[data-barbearia="Barbearia Navalha Fictícia"]');
     assert.match(await page.textContent('[data-barbearia="Barbearia Navalha Fictícia"]'), /Telefone: \(11\) 98765-4321/);
+    const cartaoB = await page.textContent('[data-barbearia="Barbearia Navalha Fictícia"]');
+    assert.match(cartaoB, /Cadastrada pelo suporte/);
+    assert.ok(!/Assinou pelo site|R\$/.test(cartaoB), "barbearia do suporte sem valor nem 'assinou pelo site'");
     await print("plataforma-painel");
     await sair();
 

@@ -1194,8 +1194,9 @@ async function telaPlataforma() {
         el("strong", { text: b.nome }),
         el("span", { class: `etiqueta ${b.bloqueada ? "vermelha" : "verde"}`, text: b.bloqueada ? "Bloqueada" : "Ativa" }),
         el("span", { class: "etiqueta", text: `Plano ${NOME_PLANO[b.plano]}${b.barbeirosAdicionais ? ` +${b.barbeirosAdicionais}` : ""}` }),
-        b.assinatura ? el("span", { class: `etiqueta ${(NOME_SIT_ASSINATURA[b.assinatura.situacao] || [])[1] || ""}`, "data-situacao": b.assinatura.situacao, text: NOME_SIT_ASSINATURA[b.assinatura.situacao]?.[0] || b.assinatura.situacao }) : null),
-      b.assinatura ? el("p", { class: "suave", text: `Assinou pelo site · ${reais(b.assinatura.valorCentavos)}/${b.assinatura.ciclo === "anual" ? "ano" : "mês"} · ${textoSituacao(b.assinatura)}${b.email ? ` · ${b.email}` : ""}` }) : null,
+        b.assinatura?.origem === "asaas" ? el("span", { class: `etiqueta ${(NOME_SIT_ASSINATURA[b.assinatura.situacao] || [])[1] || ""}`, "data-situacao": b.assinatura.situacao, text: NOME_SIT_ASSINATURA[b.assinatura.situacao]?.[0] || b.assinatura.situacao }) : null),
+      b.assinatura?.origem !== "asaas" ? el("p", { class: "suave", "data-teste": "origem-barbearia", text: "Cadastrada pelo suporte" }) : null,
+      b.assinatura?.origem === "asaas" ? el("p", { class: "suave", text: `Assinou pelo site · ${reais(b.assinatura.valorCentavos)}/${b.assinatura.ciclo === "anual" ? "ano" : "mês"} · ${textoSituacao(b.assinatura)}${b.email ? ` · ${b.email}` : ""}` }) : null,
       el("p", { class: "suave", text: `Proprietário: ${b.proprietario?.nome || "—"} · usuário ${b.proprietario?.login || "—"}${b.proprietario?.trocaPendente ? " · ainda não entrou" : ""}` }),
       b.telefone ? el("p", { class: "suave", text: `Telefone: ${fone(b.telefone)}` }) : null,
       el("p", { class: "suave", text: `Equipe ativa: ${b.usuariosAtivos.gerente} gerente(s), ${b.usuariosAtivos.barbeiro} barbeiro(s), ${b.usuariosAtivos.caixa} caixa(s)` }),
@@ -1230,7 +1231,7 @@ async function telaPlataforma() {
 function janelaPlano(b) {
   return abrirJanela(`Plano de ${b.nome}`, [
     campo("Plano", { tag: "select", name: "plano", valor: b.plano, opcoes: OPCOES_PLANO }),
-    b.assinatura ? el("p", { class: "suave", text: "Assinatura pelo Asaas: o valor das próximas cobranças muda junto." }) : null,
+    b.assinatura?.origem === "asaas" ? el("p", { class: "suave", text: "Assinatura pelo Asaas: o valor das próximas cobranças muda junto." }) : null,
     campo("Barbeiros adicionais (só Pro)", { name: "adicionais", type: "number", min: "0", max: "100", value: String(b.barbeirosAdicionais), inputmode: "numeric" }),
     campo("Motivo", { name: "motivo", required: true, minlength: "3" })
   ], {
