@@ -308,6 +308,78 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
 }
 .aviso-flutuante.erro { background: var(--erro); }
 
+/* ---------- E2: agenda ---------- */
+.barra-agenda { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+.navega-data { display: flex; align-items: center; gap: 6px; }
+.navega-data .data-agenda { width: auto; min-height: 44px; padding: 6px 10px; font-size: 16px; }
+.botao.seta { min-width: 44px; font-size: 22px; padding: 0 10px; }
+.alterna { display: flex; gap: 0; }
+.alterna .botao { border-radius: 0; }
+.alterna .botao:first-child { border-radius: 10px 0 0 10px; }
+.alterna .botao:last-child { border-radius: 0 10px 10px 0; border-left: none; }
+.botao.ativo { background: var(--primaria); color: #fff; }
+.filtro-prof { width: auto; min-height: 44px; font-size: 16px; padding: 6px 10px; }
+.acoes-agenda { display: flex; gap: 8px; flex-wrap: wrap; }
+.agenda-colunas { display: grid; gap: 14px; }
+.coluna-prof h3, .dia-semana h3 { margin: 4px 0 8px; font-size: 18px; color: var(--destaque); }
+.dia-semana { margin-bottom: 12px; }
+.slot {
+  background: var(--cartao);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 2px rgba(28, 25, 23, .1);
+  border-left: 6px solid var(--primaria);
+}
+.slot p { margin: 2px 0; }
+.slot.finalizado { border-left-color: var(--ok); }
+.slot.faltou { border-left-color: #ca8a04; }
+.slot.cancelado { border-left-color: var(--borda); opacity: .75; }
+.slot.bloqueio { border-left-color: #78716c; background: repeating-linear-gradient(135deg, #fafaf9, #fafaf9 8px, #f0efed 8px, #f0efed 16px); }
+.slot.destaque { border-left-color: #ea580c; background: #fff7ed; }
+.slot-topo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.slot-hora { font-size: 18px; margin-right: auto; }
+.slot-final { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--borda); }
+.alteracoes { margin: 4px 0; padding-left: 18px; color: #9a3412; font-weight: 600; font-size: 15px; }
+.etiqueta.laranja { background: #ffedd5; color: #9a3412; }
+.botao.whats { border-color: #15803d; color: #15803d; text-decoration: none; display: inline-flex; align-items: center; }
+.cliente-achado { margin: 6px 0 0; font-weight: 700; }
+.cliente-achado.ok { color: var(--ok); }
+.cliente-achado.novo { color: var(--amarelo); }
+.servicos-escolha { border: 2px solid var(--borda); border-radius: 10px; margin: 12px 0 0; padding: 4px 12px 12px; }
+.servicos-escolha legend { font-weight: 600; font-size: 16px; padding: 0 4px; }
+
+/* finalizar */
+.lista-servicos { display: grid; gap: 8px; margin: 8px 0; }
+.linha-servico { display: grid; grid-template-columns: 1fr 110px; gap: 4px 10px; align-items: center; }
+.linha-servico .marcar { margin: 0; }
+.linha-servico input[type=text] { min-height: 44px; text-align: right; }
+.linha-servico .alterado { grid-column: 1 / -1; color: #9a3412; font-size: 14px; font-weight: 700; }
+.total-final { font-size: 22px; font-weight: 800; margin: 10px 0 0; }
+.valor2 { min-height: 50px; display: flex; align-items: center; font-size: 20px; font-weight: 700; margin: 0; }
+
+/* funcionamento e horário */
+.dias-func { display: grid; gap: 10px; margin-top: 8px; }
+.linha-dia { border-bottom: 1px solid #e7e5e4; padding-bottom: 8px; }
+.linha-dia .marcar { margin-top: 4px; }
+.horas { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 10px; margin-top: 6px; }
+.mini { font-size: 14px; font-weight: 600; margin: 0; color: var(--suave); }
+.mini input { min-height: 44px; font-size: 17px; margin-top: 2px; }
+
+/* caixa */
+.resumo-caixa { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+.resumo-caixa .vaga strong { font-size: 19px; }
+.formas { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.item.estorno { border-left-color: var(--erro); }
+.preco.negativo { color: var(--erro); }
+.estreito-esq { max-width: 480px; }
+
+@media (min-width: 900px) {
+  .agenda-colunas.varias { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: start; }
+  .horas { grid-template-columns: repeat(4, 1fr); }
+  .acoes-agenda { margin-left: auto; }
+}
+
 /* ---------- computador ---------- */
 @media (min-width: 900px) {
   .duas-colunas { display: grid; grid-template-columns: 3fr 2fr; gap: 20px; align-items: start; }

@@ -207,7 +207,7 @@ async function rodar(tela) {
     // ---------- CAIXA ----------
     passo("caixa entra e abre direto na tela do caixa");
     await primeiroAcesso("camila.navalha", senhaCx, "Senha-Camila-2026");
-    await page.waitForSelector("text=Caixa — em construção");
+    await page.waitForSelector("[data-tela=caixa]");
     assert.match(page.url(), /#\/caixa$/);
     await print("caixa-tela-inicial");
     await sair();
@@ -232,7 +232,7 @@ async function rodar(tela) {
     await page.waitForSelector('[data-barbearia="Barbearia Navalha Fictícia"] .etiqueta:has-text("Ativa")');
     await sair();
     await entrar("camila.navalha", "Senha-Camila-2026");
-    await page.waitForSelector("text=Caixa — em construção");
+    await page.waitForSelector("[data-tela=caixa]");
 
     assert.deepEqual(problemas, [], `erros no console (CSP etc.): ${problemas.join(" | ")}`);
     passo("OK — nenhum erro no console (inclui bloqueios de CSP)");

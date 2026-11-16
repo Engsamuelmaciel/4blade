@@ -347,15 +347,17 @@ const gestao = () => usuario.perfil === "proprietario" || usuario.perfil === "ge
 function telaInicio() {
   const itens = gestao()
     ? [
-      ["#/equipe", "Equipe", "Usuários, perfis e comissões"],
+      ["#/agenda", "Agenda", "Todos os profissionais"],
+      ["#/caixa", "Caixa", "Abertura e entradas do dia"],
+      ["#/equipe", "Equipe", "Usuários, comissões e horários"],
       ["#/servicos", "Serviços", "Preços e duração"],
       ["#/produtos", "Produtos", "Preço, custo e margem"],
       ["#/clientes", "Clientes", "Cadastro com aceite LGPD"],
-      ["#/mensagens", "Mensagens", "Modelos para o WhatsApp"],
-      ["#/agenda", "Agenda", "Em construção"]
+      ["#/funcionamento", "Funcionamento", "Dias, horários e datas fechadas"],
+      ["#/mensagens", "Mensagens", "Modelos para o WhatsApp"]
     ]
     : [
-      ["#/agenda", "Minha agenda", "Em construção"],
+      ["#/agenda", "Minha agenda", "Marcar, avisar e finalizar"],
       ["#/servicos", "Serviços", "Preços da barbearia"],
       ["#/produtos", "Produtos", "Preço e disponível"]
     ];
@@ -366,24 +368,491 @@ function telaInicio() {
       el("span", { class: "menu-textos" }, el("strong", { text: t }), el("span", { class: "suave", text: s }))))));
 }
 
-function telaEmConstrucao(titulo, texto, voltar = "#/inicio") {
-  mostrar(
-    cabecalho(titulo, null, voltar),
-    el("div", { class: "cartao construcao" },
-      el("p", { class: "grande", text: `${titulo} — em construção` }),
-      el("p", { class: "suave", text: texto })));
+// ---------- datas e horas ----------
+const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+const DIAS_CURTO = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const diaDaSemana = d => new Date(`${d}T12:00:00Z`).getUTCDay();
+const somaDias = (d, n) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+const hojeLocal = () => new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);   // America/Sao_Paulo
+const dataLonga = d => `${DIAS_CURTO[diaDaSemana(d)]}, ${dataBR(d).slice(0, 5)}`;
+// "2026-11-16 15:04:05" (UTC do banco) → "12:04" (Brasília)
+const horaLocal = utc => new Date(`${utc.replace(" ", "T")}Z`).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+const NOME_FORMA = { dinheiro: "Dinheiro", pix: "Pix", debito: "Débito", credito: "Crédito" };
+const NOME_SITUACAO = { agendado: "Agendado", finalizado: "Finalizado", faltou: "Faltou", cancelado: "Cancelado" };
+const COR_SITUACAO = { agendado: "", finalizado: "verde", faltou: "amarela", cancelado: "vermelha" };
+
+// ---------- AGENDA ----------
+const estadoAgenda = { data: null, dias: 1, barbeiroId: "" };
+let servicosCache = null;
+
+async function carregarServicos() {
+  servicosCache = (await api("/servicos")).servicos.filter(s => s.ativo);
+  return servicosCache;
 }
 
-function telaCaixa() {
+async function telaAgenda() {
+  estadoAgenda.data ||= hojeLocal();
+  const q = new URLSearchParams({ data: estadoAgenda.data, dias: String(estadoAgenda.dias) });
+  if (gestao() && estadoAgenda.barbeiroId) q.set("barbeiroId", estadoAgenda.barbeiroId);
+  const [ag] = await Promise.all([api(`/agenda?${q}`), carregarServicos()]);
+
+  const irPara = d => { estadoAgenda.data = d; telaAgenda(); };
+  const passo = estadoAgenda.dias === 7 ? 7 : 1;
+  const dataInput = el("input", { type: "date", value: estadoAgenda.data, "aria-label": "Data", class: "data-agenda" });
+  dataInput.addEventListener("change", () => dataInput.value && irPara(dataInput.value));
+  const filtro = gestao()
+    ? el("select", { "aria-label": "Profissional", class: "filtro-prof" },
+      el("option", { value: "", text: "Todos os profissionais", selected: !estadoAgenda.barbeiroId || null }),
+      ag.profissionais.map(p => el("option", { value: p.id, text: p.nome, selected: p.id === estadoAgenda.barbeiroId || null })))
+    : null;
+  filtro?.addEventListener("change", () => { estadoAgenda.barbeiroId = filtro.value; telaAgenda(); });
+
+  const barra = el("div", { class: "barra-agenda" },
+    el("div", { class: "navega-data" },
+      botao("‹", () => irPara(somaDias(estadoAgenda.data, -passo)), "pequeno seta"),
+      dataInput,
+      botao("›", () => irPara(somaDias(estadoAgenda.data, passo)), "pequeno seta"),
+      botao("Hoje", () => irPara(hojeLocal()), "pequeno")),
+    el("div", { class: "alterna" },
+      botao("Dia", () => { estadoAgenda.dias = 1; telaAgenda(); }, `pequeno ${estadoAgenda.dias === 1 ? "ativo" : ""}`),
+      botao("Semana", () => { estadoAgenda.dias = 7; telaAgenda(); }, `pequeno ${estadoAgenda.dias === 7 ? "ativo" : ""}`)),
+    filtro,
+    el("div", { class: "acoes-agenda" },
+      botao("+ Novo horário", () => janelaMarcar(ag), "principal pequeno"),
+      botao("Bloquear horário", () => janelaBloquear(ag), "pequeno")));
+
+  const profs = ag.profissionais.filter(p => !estadoAgenda.barbeiroId || p.id === estadoAgenda.barbeiroId);
+  let corpo;
+  if (estadoAgenda.dias === 1) {
+    // Dia: um profissional por coluna (gerente vê todos lado a lado).
+    corpo = el("div", { class: `agenda-colunas ${profs.length > 1 ? "varias" : ""}` }, profs.map(p => {
+      const itens = itensDoDia(ag, estadoAgenda.data, p.id);
+      return el("section", { class: "coluna-prof", "data-prof": p.nome },
+        el("h3", { text: p.nome }),
+        itens.length ? itens : el("p", { class: "vazio", text: "Nenhum horário." }));
+    }));
+  } else {
+    corpo = el("div", { class: "agenda-semana" }, [0, 1, 2, 3, 4, 5, 6].map(i => {
+      const d = somaDias(estadoAgenda.data, i);
+      const itens = profs.flatMap(p => itensDoDia(ag, d, p.id, profs.length > 1));
+      return el("section", { class: "dia-semana" },
+        el("h3", { text: `${DIAS[diaDaSemana(d)]} ${dataBR(d).slice(0, 5)}${d === ag.hoje ? " (hoje)" : ""}` }),
+        itens.length ? itens : el("p", { class: "suave", text: "Sem horários." }));
+    }));
+  }
+
   mostrar(
-    cabecalho("Caixa", usuario.barbearia.nome, null),
-    el("div", { class: "cartao construcao", "data-tela": "caixa" },
-      el("p", { class: "grande", text: "Caixa — em construção" }),
-      el("p", { class: "suave", text: "Aqui você vai abrir e fechar o caixa, acompanhar as entradas do dia, vender produtos e registrar sangria e suprimento. Chega nas próximas entregas." })),
-    el("nav", { class: "menu" },
-      el("a", { class: "menu-item", href: "#/produtos" },
-        el("span", { class: "menu-letra", "aria-hidden": "true", text: "P" }),
-        el("span", { class: "menu-textos" }, el("strong", { text: "Produtos" }), el("span", { class: "suave", text: "Preços para consulta" })))));
+    cabecalho(gestao() ? "Agenda" : "Minha agenda",
+      estadoAgenda.dias === 1 ? `${DIAS[diaDaSemana(estadoAgenda.data)]}, ${dataBR(estadoAgenda.data)}` : `Semana de ${dataBR(ag.data)} a ${dataBR(ag.ate)}`),
+    barra,
+    !ag.caixaAberto ? el("p", { class: "info", text: "O caixa de hoje ainda não foi aberto: para finalizar atendimentos, peça para abrir o caixa." }) : null,
+    corpo);
+}
+
+// Horários e bloqueios de um profissional num dia, em ordem.
+function itensDoDia(ag, data, profId, mostrarNome = false) {
+  const lista = [
+    ...ag.agendamentos.filter(a => a.data === data && a.barbeiroId === profId).map(a => ({ ordem: a.inicio, el: cartaoAgendamento(a, mostrarNome) })),
+    ...ag.bloqueios.filter(b => b.barbeiroId === profId && b.inicio.slice(0, 10) <= data && b.fim.slice(0, 10) >= data).map(b => {
+      const ini = b.inicio.slice(0, 10) === data ? b.inicio.slice(11) : "00:00";
+      const fim = b.fim.slice(0, 10) === data ? b.fim.slice(11) : "23:59";
+      return { ordem: ini, el: cartaoBloqueio(b, ini, fim, mostrarNome) };
+    })
+  ];
+  return lista.sort((x, y) => x.ordem.localeCompare(y.ordem)).map(x => x.el);
+}
+
+function cartaoBloqueio(b, ini, fim, mostrarNome) {
+  return el("article", { class: "slot bloqueio", "data-bloqueio": b.motivo || "Bloqueado" },
+    el("div", { class: "slot-topo" },
+      el("strong", { class: "slot-hora", text: ini === "00:00" && fim === "23:59" ? "Dia todo" : `${ini}–${fim}` }),
+      el("span", { class: "etiqueta", text: "Bloqueado" })),
+    el("p", { class: "suave", text: [mostrarNome ? b.barbeiroNome : null, b.motivo || "Sem motivo informado"].filter(Boolean).join(" · ") }),
+    el("div", { class: "item-acoes" },
+      botao("Desbloquear", () => pedirMotivo("Desbloquear horário", "O horário volta a ficar livre na agenda.", async motivo => {
+        await api("/agenda/bloqueios/cancelar", { metodo: "POST", corpo: { id: b.id, motivo } });
+        avisar("Horário desbloqueado.");
+        telaAgenda();
+      }, "Desbloquear"), "pequeno")));
+}
+
+// Abre o WhatsApp (link wa.me) e registra o envio (quem, quando, qual modelo).
+function botaoWhatsapp(a, tipo, rotulo) {
+  return el("a", {
+    class: "botao pequeno whats", href: a.whatsapp[tipo], target: "_blank", rel: "noopener", "data-whats": tipo,
+    onclick: () => {
+      const token = localStorage.getItem(CHAVE_TOKEN);
+      fetch("/api/agenda/mensagem", {
+        method: "POST", keepalive: true,
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ id: a.id, tipo })
+      }).then(r => { if (r.ok) setTimeout(() => location.hash.startsWith("#/agenda") && telaAgenda(), 400); }).catch(() => {});
+    }
+  }, rotulo);
+}
+
+function cartaoAgendamento(a, mostrarNome) {
+  const f = a.finalizacao;
+  const destaque = gestao() && f?.valorAlterado;
+  const ultimaMsg = a.mensagens.at(-1);
+  return el("article", { class: `slot ${a.situacao} ${destaque ? "destaque" : ""}`, "data-agendamento": a.cliente.nome },
+    el("div", { class: "slot-topo" },
+      el("strong", { class: "slot-hora", text: `${a.inicio}–${a.fim}` }),
+      el("span", { class: `etiqueta ${COR_SITUACAO[a.situacao]}`, text: NOME_SITUACAO[a.situacao] }),
+      destaque ? el("span", { class: "etiqueta laranja", text: "Valor alterado" }) : null),
+    el("p", { class: "slot-cliente" }, el("strong", { text: a.cliente.nome }), ` · ${fone(a.cliente.telefone)}`),
+    el("p", { class: "suave", text: [mostrarNome ? a.barbeiroNome : null, a.servicos.map(s => s.nome).join(" + ")].filter(Boolean).join(" · ") }),
+    a.observacao ? el("p", { class: "suave", text: `Obs.: ${a.observacao}` }) : null,
+    a.motivo ? el("p", { class: "suave", text: `Motivo: ${a.motivo}` }) : null,
+    f ? el("div", { class: "slot-final" },
+      el("p", {}, el("strong", { text: `Total ${reais(f.totalCentavos)}` }), ` · ${f.pagamentos.map(p => `${NOME_FORMA[p.forma]} ${reais(p.valorCentavos)}`).join(" + ") || "sem pagamento"}`),
+      destaque ? el("ul", { class: "alteracoes" },
+        f.itens.filter(i => i.cobradoCentavos !== i.tabelaCentavos).map(i => el("li", { text: `${i.nome}: tabela ${reais(i.tabelaCentavos)} → cobrado ${reais(i.cobradoCentavos)}` })),
+        f.totalAnteriorCentavos !== null && f.totalAnteriorCentavos !== f.totalCentavos
+          ? el("li", { text: `Reaberto: total anterior ${reais(f.totalAnteriorCentavos)} → agora ${reais(f.totalCentavos)}` }) : null) : null,
+      f.comissaoCentavos !== undefined
+        ? el("p", { class: "suave", "data-teste": "comissao", text: `${a.barbeiroId === usuario.id ? "Sua comissão" : "Comissão"}: ${reais(f.comissaoCentavos)} (${pct(f.comissaoBp)})` }) : null) : null,
+    gestao() && a.reaberturas ? el("p", { class: "suave", text: `Reaberto ${a.reaberturas}x` }) : null,
+    ultimaMsg ? el("p", { class: "suave", text: `${ultimaMsg.tipo === "lembrete" ? "Lembrete" : "Proposta"} aberto no WhatsApp por ${ultimaMsg.por.split(" ")[0]} às ${horaLocal(ultimaMsg.em)}` }) : null,
+    el("div", { class: "item-acoes" },
+      a.situacao === "agendado" ? [
+        botao("Finalizar", () => janelaFinalizar(a), "pequeno principal"),
+        botaoWhatsapp(a, "lembrete", "Enviar lembrete"),
+        botaoWhatsapp(a, "proposta", "Propor horário"),
+        botao("Faltou", () => abrirJanela(`${a.cliente.nome} faltou?`, el("p", { text: "O horário fica registrado como falta." }), {
+          ok: "Registrar falta", aoConfirmar: async () => {
+            await api("/agenda/situacao", { metodo: "POST", corpo: { id: a.id, situacao: "faltou" } });
+            avisar("Falta registrada."); telaAgenda();
+          }
+        }), "pequeno"),
+        botao("Cancelar", () => pedirMotivo(`Cancelar horário de ${a.cliente.nome}`, "O horário fica livre. Nada é apagado.", async motivo => {
+          await api("/agenda/situacao", { metodo: "POST", corpo: { id: a.id, situacao: "cancelado", motivo } });
+          avisar("Horário cancelado."); telaAgenda();
+        }, "Cancelar horário"), "pequeno perigo")
+      ] : null,
+      a.situacao === "finalizado" ? botao("Reabrir", () => pedirMotivo("Reabrir atendimento", "Estorna a entrada no caixa e a comissão, e o horário volta para agendado. Fica registrado.", async motivo => {
+        await api("/agenda/reabrir", { metodo: "POST", corpo: { id: a.id, motivo } });
+        avisar("Atendimento reaberto."); telaAgenda();
+      }, "Reabrir"), "pequeno") : null,
+      a.situacao === "cancelado" || a.situacao === "faltou" ? botaoWhatsapp(a, "proposta", "Propor horário") : null));
+}
+
+function campoProfissional(ag) {
+  if (!gestao()) return null;
+  const padrao = estadoAgenda.barbeiroId || (ag.profissionais.some(p => p.id === usuario.id) ? usuario.id : ag.profissionais[0]?.id);
+  return campo("Profissional", { tag: "select", name: "prof", valor: padrao, opcoes: ag.profissionais.map(p => [p.id, p.nome]) });
+}
+
+function janelaMarcar(ag) {
+  const servicos = servicosCache || [];
+  const blocoNovo = el("div", { class: "cliente-novo" },
+    campo("Nome do cliente", { name: "cliNome", autocomplete: "off" }),
+    caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "cliLgpd" }));
+  blocoNovo.hidden = true;
+  const achado = el("p", { class: "cliente-achado", role: "status" });
+  const tel = campo("Telefone do cliente (WhatsApp)", { name: "cliTel", inputmode: "tel", autocomplete: "off", placeholder: "(11) 91234-5678", required: true });
+  const buscar = async () => {
+    const v = tel.querySelector("input").value.replace(/\D/g, "");
+    if (v.length < 10) { achado.textContent = ""; blocoNovo.hidden = true; return; }
+    try {
+      const r = await api(`/agenda/cliente?telefone=${encodeURIComponent(v)}`);
+      if (r.cliente) { achado.textContent = `Cliente: ${r.cliente.nome}`; achado.className = "cliente-achado ok"; blocoNovo.hidden = true; }
+      else { achado.textContent = "Cliente novo: informe o nome."; achado.className = "cliente-achado novo"; blocoNovo.hidden = false; }
+    } catch (e) { achado.textContent = e.message; }
+  };
+  tel.querySelector("input").addEventListener("change", buscar);
+  tel.querySelector("input").addEventListener("input", () => { if (tel.querySelector("input").value.replace(/\D/g, "").length >= 10) buscar(); });
+
+  return abrirJanela("Novo horário", [
+    campoProfissional(ag),
+    el("div", { class: "lado-a-lado" },
+      campo("Data", { name: "data", type: "date", value: estadoAgenda.data, required: true }),
+      campo("Hora", { name: "hora", type: "time", step: "300", required: true })),
+    el("fieldset", { class: "servicos-escolha" }, el("legend", { text: "Serviços" }),
+      servicos.length ? servicos.map(s => caixaMarcar(`${s.nome} · ${reais(s.precoCentavos)} · ${s.duracaoMin} min`, { name: "serv", value: s.id, id: `serv-${s.id}` }))
+        : el("p", { class: "suave", text: "Nenhum serviço cadastrado." })),
+    tel, achado, blocoNovo,
+    campo("Observação (opcional)", { name: "obs", maxlength: "300", autocomplete: "off" })
+  ], {
+    ok: "Marcar",
+    aoConfirmar: async f => {
+      const servicoIds = [...f.querySelectorAll("input[name=serv]:checked")].map(i => i.value);
+      if (!servicoIds.length) throw new Error("Escolha pelo menos um serviço.");
+      await api("/agenda", {
+        metodo: "POST",
+        corpo: {
+          barbeiroId: f.prof?.value, data: f.data.value, hora: f.hora.value, servicoIds,
+          observacao: f.obs.value || null,
+          cliente: { telefone: f.cliTel.value, nome: f.cliNome.value || undefined, aceiteLgpd: f.cliLgpd.checked }
+        }
+      });
+      estadoAgenda.data = f.data.value;
+      avisar("Horário marcado.");
+      telaAgenda();
+    }
+  });
+}
+
+function janelaBloquear(ag) {
+  return abrirJanela("Bloquear horário", [
+    el("p", { class: "suave", text: "Almoço, folga, férias ou compromisso. A agenda não aceita marcação no período." }),
+    campoProfissional(ag),
+    el("div", { class: "lado-a-lado" },
+      campo("De (data)", { name: "dIni", type: "date", value: estadoAgenda.data, required: true }),
+      campo("Hora", { name: "hIni", type: "time", value: "12:00", required: true })),
+    el("div", { class: "lado-a-lado" },
+      campo("Até (data)", { name: "dFim", type: "date", value: estadoAgenda.data, required: true }),
+      campo("Hora", { name: "hFim", type: "time", value: "13:00", required: true })),
+    campo("Motivo (opcional)", { name: "motivoBloq", maxlength: "120", placeholder: "Ex.: almoço, folga, férias", autocomplete: "off" })
+  ], {
+    ok: "Bloquear",
+    aoConfirmar: async f => {
+      await api("/agenda/bloqueios", {
+        metodo: "POST",
+        corpo: { barbeiroId: f.prof?.value, inicio: `${f.dIni.value}T${f.hIni.value}`, fim: `${f.dFim.value}T${f.hFim.value}`, motivo: f.motivoBloq.value || null }
+      });
+      avisar("Horário bloqueado.");
+      telaAgenda();
+    }
+  });
+}
+
+// Finalizar: serviços com valor de tabela (alterável), até 2 formas de pagamento com soma conferida.
+function janelaFinalizar(a) {
+  const doHorario = new Set(a.servicos.map(s => s.id));
+  const lista = [...(servicosCache || [])];
+  for (const s of a.servicos) if (!lista.some(x => x.id === s.id)) lista.push({ id: s.id, nome: s.nome, precoCentavos: 0, duracaoMin: s.duracaoMin });
+  const totalEl = el("p", { class: "total-final", "data-teste": "total" });
+  const linhas = lista.map(s => {
+    const chk = el("input", { type: "checkbox", name: "fserv", value: s.id, id: `f-${s.id}`, checked: doHorario.has(s.id) || null });
+    const valor = el("input", { type: "text", inputmode: "decimal", name: `valor-${s.id}`, value: centavosParaTexto(s.precoCentavos), "aria-label": `Valor cobrado de ${s.nome}`, "data-tabela": String(s.precoCentavos) });
+    const aviso = el("span", { class: "alterado", text: "valor diferente da tabela" });
+    const linha = el("div", { class: "linha-servico" },
+      el("div", { class: "marcar" }, chk, el("label", { for: `f-${s.id}`, text: `${s.nome} (tabela ${reais(s.precoCentavos)})` })),
+      valor, aviso);
+    return { s, chk, valor, aviso, linha };
+  });
+  const forma1 = campo("Forma de pagamento", { tag: "select", name: "forma1", valor: "pix", opcoes: Object.entries(NOME_FORMA) });
+  const dividir = caixaMarcar("Dividir em 2 formas", { name: "dividir" });
+  const valor1 = campo("Valor na 1ª forma (R$)", { name: "valor1", inputmode: "decimal" });
+  const segunda = el("div", { class: "lado-a-lado" },
+    campo("2ª forma", { tag: "select", name: "forma2", valor: "dinheiro", opcoes: Object.entries(NOME_FORMA) }),
+    el("div", { class: "campo" }, el("label", { text: "Valor na 2ª forma" }), el("p", { class: "valor2", "data-teste": "valor2" })));
+  valor1.hidden = true;
+  segunda.hidden = true;
+
+  const total = () => linhas.filter(l => l.chk.checked).reduce((t, l) => t + (paraCentavos(l.valor.value) ?? 0), 0);
+  const atualizar = () => {
+    for (const l of linhas) l.aviso.hidden = !l.chk.checked || paraCentavos(l.valor.value) === Number(l.valor.dataset.tabela);
+    totalEl.textContent = `Total: ${reais(total())}`;
+    const dividindo = dividir.querySelector("input").checked;
+    valor1.hidden = !dividindo;
+    segunda.hidden = !dividindo;
+    const v1 = paraCentavos(valor1.querySelector("input").value) ?? 0;
+    segunda.querySelector(".valor2").textContent = reais(total() - v1);
+  };
+  const conteudo = [
+    el("p", { class: "suave", text: `${a.cliente.nome} · ${a.inicio} · o valor pode ser alterado (fica registrado e aparece para o gerente).` }),
+    el("div", { class: "lista-servicos" }, linhas.map(l => l.linha)),
+    totalEl, forma1, dividir, valor1, segunda
+  ];
+  const promessa = abrirJanela("Finalizar atendimento", conteudo, {
+    ok: "Confirmar",
+    aoConfirmar: async f => {
+      const itens = [];
+      for (const l of linhas.filter(x => x.chk.checked)) {
+        const v = paraCentavos(l.valor.value);
+        if (v === null) throw new Error(`Valor de ${l.s.nome} inválido. Exemplo: 40,00`);
+        itens.push({ servicoId: l.s.id, precoCobradoCentavos: v });
+      }
+      if (!itens.length) throw new Error("Marque pelo menos um serviço.");
+      const t = itens.reduce((s, i) => s + i.precoCobradoCentavos, 0);
+      let pagamentos = t > 0 ? [{ forma: f.forma1.value, valorCentavos: t }] : [];
+      if (f.dividir.checked && t > 0) {
+        const v1 = paraCentavos(f.valor1.value);
+        if (v1 === null || v1 <= 0 || v1 >= t) throw new Error("Valor da 1ª forma inválido: precisa ser maior que zero e menor que o total.");
+        pagamentos = [{ forma: f.forma1.value, valorCentavos: v1 }, { forma: f.forma2.value, valorCentavos: t - v1 }];
+      }
+      await api("/agenda/finalizar", { metodo: "POST", corpo: { id: a.id, itens, pagamentos } });
+      avisar("Atendimento finalizado. Entrada lançada no caixa.");
+      telaAgenda();
+    }
+  });
+  janela.querySelector("form").addEventListener("input", atualizar);
+  janela.querySelector("form").addEventListener("change", atualizar);
+  atualizar();
+  return promessa;
+}
+
+// ---------- FUNCIONAMENTO (gestão) ----------
+async function telaFuncionamento() {
+  const f = await api("/funcionamento");
+  const linhas = f.dias.map(d => {
+    const id = `d${d.dia}`;
+    return el("div", { class: "linha-dia", "data-dia": String(d.dia) },
+      el("div", { class: "marcar" },
+        el("input", { type: "checkbox", id: `${id}-aberto`, name: `${id}-aberto`, checked: d.aberto || null }),
+        el("label", { for: `${id}-aberto`, text: DIAS[d.dia] })),
+      el("div", { class: "horas" },
+        el("label", { class: "mini" }, "Abre", el("input", { type: "time", name: `${id}-abre`, value: d.abre || "09:00" })),
+        el("label", { class: "mini" }, "Fecha", el("input", { type: "time", name: `${id}-fecha`, value: d.fecha || "19:00" })),
+        el("label", { class: "mini" }, "Intervalo de", el("input", { type: "time", name: `${id}-ii`, value: d.intervaloIni || "" })),
+        el("label", { class: "mini" }, "até", el("input", { type: "time", name: `${id}-if`, value: d.intervaloFim || "" }))));
+  });
+  const form = el("form", { class: "cartao" },
+    el("h3", { text: "Dias e horários da semana" }),
+    !f.configurado ? el("p", { class: "info", text: "Ainda não cadastrado: a agenda só aceita horários depois que o funcionamento for salvo." }) : null,
+    el("div", { class: "dias-func" }, linhas),
+    el("p", { class: "ajuda", text: "Intervalo é opcional (ex.: almoço 12:00 até 13:00). Deixe em branco se não houver." }),
+    el("button", { type: "submit", class: "botao principal", text: "Salvar funcionamento" }));
+  form.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(form, async () => {
+      const dias = f.dias.map(d => {
+        const g = n => form.elements[`d${d.dia}-${n}`];
+        return g("aberto").checked
+          ? { dia: d.dia, aberto: true, abre: g("abre").value, fecha: g("fecha").value, intervaloIni: g("ii").value || null, intervaloFim: g("if").value || null }
+          : { dia: d.dia, aberto: false };
+      });
+      await api("/funcionamento/salvar", { metodo: "POST", corpo: { dias } });
+      avisar("Funcionamento salvo.");
+      telaFuncionamento();
+    });
+  });
+
+  const formFechar = el("form", { class: "cartao" },
+    el("h3", { text: "Fechar a agenda (feriado, folga coletiva, reforma)" }),
+    el("div", { class: "lado-a-lado" },
+      campo("De", { name: "fIni", type: "date", required: true, value: hojeLocal() }),
+      campo("Até (opcional)", { name: "fFim", type: "date" })),
+    campo("Motivo", { name: "fMotivo", required: true, minlength: "3", placeholder: "Ex.: Feriado de Natal" }),
+    el("button", { type: "submit", class: "botao principal", text: "Fechar agenda" }));
+  formFechar.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(formFechar, async () => {
+      const ini = formFechar.fIni.value;
+      const fim = formFechar.fFim.value || ini;
+      const { afetados } = await api(`/funcionamento/afetados?dataIni=${ini}&dataFim=${fim}`);
+      const ok = await abrirJanela("Confirmar fechamento", [
+        el("p", { text: afetados.length
+          ? `Há ${afetados.length} horário(s) marcado(s) nesse período. A agenda NÃO cancela sozinha: depois de fechar, você recebe a lista para remarcar com cada cliente.`
+          : "Não há horários marcados nesse período." })
+      ], { ok: "Fechar agenda", aoConfirmar: () => true });
+      if (!ok) return;
+      const r = await api("/funcionamento/datas-fechadas", { metodo: "POST", corpo: { dataIni: ini, dataFim: fim, motivo: formFechar.fMotivo.value } });
+      avisar("Agenda fechada no período.");
+      await telaFuncionamento();
+      if (r.afetados.length) mostrarAfetados(r.afetados);
+    });
+  });
+
+  const fechadas = el("section", { class: "cartao" },
+    el("h3", { text: "Datas fechadas" }),
+    f.datasFechadas.length
+      ? el("ul", { class: "lista" }, f.datasFechadas.map(d => el("li", { class: "item", "data-fechada": d.motivo },
+        el("div", { class: "item-topo" }, el("strong", { text: d.dataIni === d.dataFim ? dataBR(d.dataIni) : `${dataBR(d.dataIni)} a ${dataBR(d.dataFim)}` })),
+        el("p", { class: "suave", text: d.motivo }),
+        el("div", { class: "item-acoes" },
+          botao("Ver horários marcados", async () => mostrarAfetados((await api(`/funcionamento/afetados?dataIni=${d.dataIni}&dataFim=${d.dataFim}`)).afetados), "pequeno"),
+          botao("Reabrir agenda", () => pedirMotivo("Reabrir a agenda nessas datas", "A agenda volta a aceitar horários no período.", async motivo => {
+            await api("/funcionamento/datas-fechadas/desativar", { metodo: "POST", corpo: { id: d.id, motivo } });
+            avisar("Agenda reaberta."); telaFuncionamento();
+          }, "Reabrir"), "pequeno")))))
+      : el("p", { class: "suave", text: "Nenhuma data fechada daqui para frente." }));
+
+  mostrar(cabecalho("Funcionamento", "O horário de cada profissional fica dentro do funcionamento (Equipe → Horário)."),
+    el("div", { class: "duas-colunas" }, el("section", {}, form), el("section", {}, formFechar, fechadas)));
+}
+
+function mostrarAfetados(afetados) {
+  return abrirJanela("Horários para remarcar", [
+    afetados.length
+      ? el("ul", { class: "lista" }, afetados.map(a => el("li", { class: "item", "data-afetado": a.cliente },
+        el("strong", { text: `${dataLonga(a.data)} ${a.hora} · ${a.cliente}` }),
+        el("p", { class: "suave", text: `${a.barbeiro} · ${a.servicos}` }),
+        el("div", { class: "item-acoes" }, el("a", { class: "botao pequeno whats", href: a.whatsapp.proposta, target: "_blank", rel: "noopener", text: "Propor horário" })))))
+      : el("p", { text: "Nenhum horário marcado nesse período." }),
+    el("p", { class: "suave", text: "Remarque cada um pela agenda (cancele com o motivo e marque no novo horário)." })
+  ], { ok: "Pronto", semCancelar: true, aoConfirmar: () => true });
+}
+
+// ---------- HORÁRIO DE TRABALHO (Equipe) ----------
+async function janelaHorario(u) {
+  const [h, f] = await Promise.all([api(`/horarios-trabalho?id=${u.id}`), api("/funcionamento")]);
+  if (!f.configurado) { avisar("Cadastre primeiro o funcionamento da barbearia.", "erro"); return; }
+  const linhas = h.dias.map(d => {
+    const fd = f.dias[d.dia];
+    const trabalha = h.configurado ? d.trabalha : fd.aberto;
+    return el("div", { class: "linha-dia" },
+      el("div", { class: "marcar" },
+        el("input", { type: "checkbox", id: `h${d.dia}`, name: `h${d.dia}`, checked: trabalha || null, disabled: !fd.aberto || null }),
+        el("label", { for: `h${d.dia}`, text: fd.aberto ? DIAS[d.dia] : `${DIAS[d.dia]} (fechado)` })),
+      el("div", { class: "horas" },
+        el("label", { class: "mini" }, "De", el("input", { type: "time", name: `h${d.dia}-ini`, value: (h.configurado && d.ini) || fd.abre || "" })),
+        el("label", { class: "mini" }, "Até", el("input", { type: "time", name: `h${d.dia}-fim`, value: (h.configurado && d.fim) || fd.fecha || "" }))));
+  });
+  return abrirJanela(`Horário de ${u.nome}`, [
+    el("p", { class: "suave", text: h.configurado ? "Dias e horas em que atende." : "Ainda segue o funcionamento da barbearia. Ajuste e salve." }),
+    el("div", { class: "dias-func" }, linhas)
+  ], {
+    ok: "Salvar",
+    aoConfirmar: async form => {
+      const dias = h.dias.map(d => form.elements[`h${d.dia}`].checked
+        ? { dia: d.dia, trabalha: true, ini: form.elements[`h${d.dia}-ini`].value, fim: form.elements[`h${d.dia}-fim`].value }
+        : { dia: d.dia, trabalha: false });
+      await api("/horarios-trabalho", { metodo: "POST", corpo: { id: u.id, dias } });
+      avisar("Horário salvo.");
+    }
+  });
+}
+
+// ---------- CAIXA (abertura mínima + entradas do dia) ----------
+let timerCaixa;
+async function telaCaixa() {
+  clearTimeout(timerCaixa);
+  const c = await api("/caixa/hoje");
+  const voltar = gestao() ? "#/inicio" : null;
+  if (!c.caixa) {
+    const form = el("form", { class: "cartao" },
+      el("h3", { text: "Abrir o caixa de hoje" }),
+      campo("Troco inicial (R$)", { name: "troco", inputmode: "decimal", required: true, placeholder: "100,00" }),
+      el("button", { type: "submit", class: "botao principal", text: "Abrir caixa" }));
+    form.addEventListener("submit", ev => {
+      ev.preventDefault();
+      enviar(form, async () => {
+        const troco = paraCentavos(form.troco.value);
+        if (troco === null) throw new Error("Valor do troco inválido. Exemplo: 100,00");
+        await api("/caixa/abrir", { metodo: "POST", corpo: { trocoCentavos: troco } });
+        avisar("Caixa aberto.");
+        telaCaixa();
+      });
+    });
+    mostrar(cabecalho("Caixa", `${dataBR(c.data)} · ${usuario.barbearia.nome}`, voltar),
+      el("p", { class: "info", text: "Enquanto o caixa não for aberto, os barbeiros não conseguem finalizar atendimentos." }),
+      el("section", { class: "estreito-esq", "data-tela": "caixa" }, form));
+    return;
+  }
+  const t = c.totais;
+  mostrar(
+    cabecalho("Caixa", `${dataBR(c.data)} · aberto por ${c.caixa.abertoPor}`, voltar),
+    el("div", { class: "resumo-caixa", "data-tela": "caixa" },
+      el("div", { class: "vaga" }, el("strong", { text: reais(c.caixa.trocoCentavos) }), el("span", { text: "Troco inicial" })),
+      el("div", { class: "vaga" }, el("strong", { "data-teste": "entradas", text: reais(t.entradasCentavos) }), el("span", { text: "Entradas (bruto)" })),
+      el("div", { class: "vaga" }, el("strong", { text: reais(t.dinheiroEsperadoCentavos) }), el("span", { text: "Dinheiro na gaveta" }))),
+    el("div", { class: "formas" }, Object.entries(t.porForma).map(([f, v]) =>
+      el("span", { class: "etiqueta", text: `${NOME_FORMA[f]}: ${reais(v)}` }))),
+    el("h3", { text: "Entradas do dia" }),
+    c.lancamentos.length
+      ? el("ul", { class: "lista" }, c.lancamentos.map(l => el("li", { class: `item ${l.tipo === "estorno_atendimento" ? "estorno" : ""}`, "data-lancamento": l.cliente || "" },
+        el("div", { class: "item-topo" },
+          el("strong", { text: `${l.hora || ""} ${l.cliente || ""}`.trim() }),
+          el("span", { class: `preco ${l.valorCentavos < 0 ? "negativo" : ""}`, text: reais(l.valorCentavos) })),
+        el("p", { class: "suave", text: [l.barbeiro, l.servicos, NOME_FORMA[l.forma], l.tipo === "estorno_atendimento" ? "ESTORNO (atendimento reaberto)" : null].filter(Boolean).join(" · ") }))))
+      : el("p", { class: "vazio", text: "Nenhuma entrada ainda. Os atendimentos finalizados aparecem aqui na hora." }),
+    botao("Atualizar", telaCaixa, ""),
+    el("p", { class: "suave", text: "Venda de produtos, sangria, suprimento e fechamento do caixa chegam na próxima entrega." }));
+  // Atualiza sozinho a cada 20 s enquanto a tela estiver aberta.
+  timerCaixa = setTimeout(() => { if (location.hash === "#/caixa" && !janela.open) telaCaixa().catch(() => {}); }, 20000);
 }
 
 // ---------- EQUIPE ----------
@@ -405,8 +874,11 @@ async function telaEquipe() {
     u.perfil === "gerente" || u.perfil === "barbeiro"
       ? el("p", { class: "suave", text: `Comissão: ${pct(u.comissaoServicoBp)} em serviços · ${pct(u.comissaoProdutoBp)} em produtos` }) : null,
     !u.ativo && u.motivoDesativacao ? el("p", { class: "suave", text: `Motivo: ${u.motivoDesativacao}` }) : null,
+    !u.podeGerenciar && u.id === usuario.id && u.perfil === "gerente"
+      ? el("div", { class: "item-acoes" }, botao("Meu horário", () => janelaHorario(u), "pequeno")) : null,
     u.podeGerenciar ? el("div", { class: "item-acoes" },
       botao("Editar", () => janelaUsuario(u), "pequeno"),
+      (u.perfil === "gerente" || u.perfil === "barbeiro") && u.ativo ? botao("Horário", () => janelaHorario(u), "pequeno") : null,
       u.ativo ? botao("Nova senha", () => pedirMotivo(`Nova senha para ${u.nome}`, "Gera uma senha provisória. A senha antiga para de funcionar.", async motivo => {
         const r = await api("/usuarios/redefinir-senha", { metodo: "POST", corpo: { id: u.id, motivo } });
         await mostrarSenha(r.login, r.senhaProvisoria, u.nome);
@@ -702,13 +1174,14 @@ async function telaMensagens() {
 const ROTAS = {
   plataforma: { perfis: ["plataforma"], tela: telaPlataforma },
   inicio: { perfis: ["proprietario", "gerente", "barbeiro"], tela: telaInicio },
-  caixa: { perfis: ["caixa"], tela: telaCaixa },
+  caixa: { perfis: ["caixa", "proprietario", "gerente"], tela: telaCaixa },
+  funcionamento: { perfis: ["proprietario", "gerente"], tela: telaFuncionamento },
   equipe: { perfis: ["proprietario", "gerente"], tela: telaEquipe },
   servicos: { perfis: ["proprietario", "gerente", "barbeiro"], tela: telaServicos },
   produtos: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaProdutos },
   clientes: { perfis: ["proprietario", "gerente"], tela: () => telaClientes() },
   mensagens: { perfis: ["proprietario", "gerente"], tela: telaMensagens },
-  agenda: { perfis: ["proprietario", "gerente", "barbeiro"], tela: () => telaEmConstrucao("Agenda", "A agenda (marcar, lembrar pelo WhatsApp e finalizar atendimento) chega na próxima entrega.") }
+  agenda: { perfis: ["proprietario", "gerente", "barbeiro"], tela: telaAgenda }
 };
 
 async function rotear() {
@@ -734,6 +1207,8 @@ async function iniciar() {
     try { await api("/auth/logout", { metodo: "POST" }); } catch { /* sai mesmo assim */ }
     localStorage.removeItem(CHAVE_TOKEN);
     usuario = null;
+    document.getElementById("aviso").hidden = true;   // aviso de quem saiu não aparece para o próximo
+    clearTimeout(timerCaixa);
     history.replaceState(null, "", "/");
     telaLogin("Você saiu do sistema.");
   });

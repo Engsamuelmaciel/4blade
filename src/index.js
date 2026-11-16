@@ -15,8 +15,11 @@ import { TELA_INICIAL } from "./perfis.js";
 import { rotasPlataforma } from "./plataforma.js";
 import { rotasUsuarios } from "./usuarios.js";
 import { rotasCadastros } from "./cadastros.js";
+import { rotasFuncionamento } from "./funcionamento.js";
+import { rotasAgenda } from "./agenda.js";
+import { rotasCaixa } from "./caixa.js";
 
-export const VERSAO = "0.1.0";
+export const VERSAO = "0.2.0";
 const SESSAO_HORAS = 12;
 
 async function rateLimit(db, key, max, windowSeconds) {
@@ -242,7 +245,8 @@ export default {
       }
 
       // ---------- DADOS DA BARBEARIA: exige usuário de barbearia ----------
-      const r = (await rotasUsuarios(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
+      const r = (await rotasFuncionamento(ctx, path, method)) || (await rotasAgenda(ctx, path, method)) ||
+        (await rotasCaixa(ctx, path, method)) || (await rotasUsuarios(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
       if (r) {
         return r;
       }

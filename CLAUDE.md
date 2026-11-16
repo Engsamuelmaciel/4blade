@@ -26,7 +26,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 
 ## Estado
 - 15/11/2026: especificação aprovada (versão 4).
-- 16/11/2026: **E1 (Base) pronta** na ramificação `e1-base`, aguardando avaliação. Próximo: E2 (Agenda).
+- 16/11/2026: **E1 (Base) pronta** na ramificação `e1-base` (aprovada pelo responsável).
   - Banco: `migrations/0001_base.sql` (barbearias com `plano`, usuarios, sessoes, limites_acesso, auditoria, servicos, produtos, clientes, modelos_mensagem). Comissão em centésimos de % (`*_bp`, 4000 = 40%).
   - API: `src/index.js` (login, sessão 12 h, 5 tentativas/15 min, troca obrigatória), `src/plataforma.js`, `src/usuarios.js` (equipe + limite por plano), `src/cadastros.js`, `src/perfis.js` (limites e quem gerencia quem), `src/util.js`.
   - Usuários = colaboradores; login único no sistema todo; senha provisória gerada pelo servidor (mostrada 1 vez). 1º usuário da plataforma: `POST /api/setup/plataforma` com o segredo `ADMIN_SETUP_TOKEN`.
@@ -34,6 +34,14 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - Testes: `npm test` (44 automáticos) e `node test/navegador-e1.mjs` (Playwright, 1366 e 390 px; prints em `docs/prints/e1/`). Tela local: `npm run tela` (usuário `suporte`, senha `Nova-suporte-senha`).
   - Deixado para a E2: horário de trabalho do colaborador (depende do funcionamento, 4.9); busca de cliente pelo barbeiro na marcação. Estoque/custo médio: E3 (barbeiro e caixa veem "disponível" = produto ativo por enquanto).
   - `wrangler.toml` com ids MARCADORES: nada criado na Cloudflare, nenhum deploy.
+- 16/11/2026: **E2 (Agenda e finalização) pronta** na ramificação `e2-agenda` (criada a partir da `e1-base`), aguardando avaliação. Próximo: E3 (Caixa e estoque).
+  - Banco: `migrations/0002_agenda.sql` (funcionamento, datas_fechadas, horario_trabalho, bloqueios, agendamentos, agendamento_servicos, caixas, finalizacoes, finalizacao_itens, caixa_lancamentos, comissoes, mensagens_enviadas). Horas em minutos; início/fim de horário em texto local `AAAA-MM-DDTHH:MM`.
+  - API: `src/funcionamento.js` (funcionamento, datas fechadas com lista para remarcar, horário de trabalho), `src/agenda.js` (agenda, marcar, faltou/cancelado, mensagem wa.me registrada, finalizar, reabrir, bloqueios), `src/caixa.js` (abrir caixa + entradas do dia), `src/agenda-util.js`.
+  - Gravações críticas em um só lote com condição (sem sobreposição por corrida; finalização só com caixa aberto; no máximo 1 finalização válida por horário — índice único). Reabrir = estorno (lançamento negativo + comissão estornada), nada apagado.
+  - Valor alterado: item com cobrado ≠ tabela OU refinalização com total diferente do anterior → destacado só para a gestão.
+  - Regras que decidi (confirmar com o responsável): sem funcionamento cadastrado a agenda não aceita horário; bloqueio por cima de horário marcado é recusado; finalizar só horários de hoje ou anteriores (a entrada vai para o caixa de hoje); "Propor horário" usa a data/hora do próprio horário; proprietário não tem agenda própria (só gerente e barbeiro).
+  - Pendente para a E3: fechar/reabrir caixa (o gerente reabrir atendimento com caixa fechado depende disso), sangria, suprimento, vendas.
+  - Testes: `npm test` (61) + `node test/navegador-e1.mjs` e `node test/navegador-e2.mjs` (prints em `docs/prints/e1/` e `docs/prints/e2/`).
 
 ## Pendências fora do código
 - Conferir domínios 4blade.com.br e forblade.com.br (registro.br) e a marca no INPI (classe 42).

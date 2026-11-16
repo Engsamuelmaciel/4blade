@@ -1,0 +1,107 @@
+▶ rotas e tela
+  ✔ API responde em /api e /api/health (28.200569ms)
+  ✔ endereços fora de /api/ entregam a tela (3.408099ms)
+  ✔ rota desconhecida devolve 404 e sem sessão devolve 401 (138.323445ms)
+  ✔ migrações podem ser aplicadas de novo sem erro (3.039591ms)
+✔ rotas e tela (173.983282ms)
+▶ setup da plataforma
+  ✔ exige o token e só funciona uma vez (117.465342ms)
+✔ setup da plataforma (117.694543ms)
+▶ login e troca de senha
+  ✔ 1º acesso exige troca e bloqueia as demais rotas (186.401472ms)
+  ✔ login aceita maiúsculas no usuário (vira minúsculo) (267.538789ms)
+  ✔ recusa senha curta, igual ao usuário e senha atual errada (235.58735ms)
+  ✔ troca de senha encerra a sessão antiga e a senha provisória deixa de valer (255.986359ms)
+  ✔ logout revoga o token (105.011416ms)
+  ✔ erro não revela se o usuário existe (145.977412ms)
+  ✔ sessão vence em 12 horas (118.035209ms)
+  ✔ /auth/me informa a tela inicial do perfil (caixa abre no caixa) (419.54272ms)
+✔ login e troca de senha (1735.219124ms)
+▶ limite de tentativas (5 a cada 15 min)
+  ✔ 5 erros bloqueiam, mesmo com a senha certa depois (218.626936ms)
+  ✔ passados 15 minutos, volta a entrar (250.833946ms)
+  ✔ logins certos não contam; acerto zera os erros (479.826323ms)
+  ✔ limite por IP segura ataque a muitos usuários (2237.414622ms)
+✔ limite de tentativas (5 a cada 15 min) (3187.422806ms)
+▶ barbearia bloqueada não entra
+  ✔ bloquear derruba sessões, recusa login e desbloquear devolve o acesso (610.292022ms)
+✔ barbearia bloqueada não entra (610.668388ms)
+▶ funcionamento da barbearia (4.9)
+  ✔ validações do funcionamento (756.228086ms)
+  ✔ sem funcionamento cadastrado não marca; dia fechado e fora do horário são recusados (333.591189ms)
+  ✔ data fechada: avisa os horários marcados para remarcar, não cancela e bloqueia novas marcações (653.671589ms)
+  ✔ horário do barbeiro fica dentro do funcionamento e limita a agenda (620.169601ms)
+✔ funcionamento da barbearia (4.9) (2365.141019ms)
+▶ agenda (4.1)
+  ✔ cliente identificado pelo telefone: novo nasce na marcação (com LGPD); existente é reaproveitado (624.567796ms)
+  ✔ não permite dois horários sobrepostos para o mesmo barbeiro (outro barbeiro pode) (678.676086ms)
+  ✔ barbeiro só vê e agenda a própria agenda; gerente vê e agenda todas; caixa não acessa (721.218498ms)
+  ✔ situações: faltou e cancelado (cancelar exige motivo); horário cancelado libera a vaga (688.874436ms)
+  ✔ bloqueios: barbeiro bloqueia a própria agenda; gerente a de qualquer um; marcação no bloqueio é recusada (692.423675ms)
+  ✔ botões de mensagem: link wa.me com o modelo preenchido e envio registrado (quem, quando, qual) (704.857633ms)
+✔ agenda (4.1) (4111.406893ms)
+▶ finalizar atendimento (4.2) e caixa
+  ✔ exige caixa do dia aberto; barbeiro não abre caixa; caixa abre uma vez só (695.359114ms)
+  ✔ valor bruto no caixa, comissão à parte; valor alterado registrado e destacado; caixa não vê comissão (783.099594ms)
+  ✔ validações dos pagamentos: até 2 formas, soma igual ao total (744.567701ms)
+  ✔ reabrir: barbeiro reabre o próprio com caixa aberto, estorna entrada e comissão; refinalizar com outro valor fica destacado (686.039652ms)
+  ✔ caixa fechado: barbeiro não reabre; gerente precisa reabrir o caixa antes (643.103444ms)
+✔ finalizar atendimento (4.2) e caixa (3552.873702ms)
+▶ isolamento da agenda entre barbearias
+  ✔ ids da outra barbearia não funcionam em nenhuma rota da agenda/caixa (1150.930554ms)
+  ✔ plataforma não acessa agenda nem caixa (653.75345ms)
+✔ isolamento da agenda entre barbearias (1804.980655ms)
+▶ serviços
+  ✔ validações (415.262869ms)
+  ✔ desativar exige motivo e não apaga; alteração auditada com antes/depois (340.068776ms)
+✔ serviços (756.616996ms)
+▶ produtos
+  ✔ validações e campos (314.007825ms)
+✔ produtos (314.254487ms)
+▶ clientes
+  ✔ telefone obrigatório e válido, aceite LGPD obrigatório, telefone único (322.886008ms)
+✔ clientes (323.13172ms)
+▶ modelos de mensagem
+  ✔ barbearia nasce com os dois modelos; só aceita os campos conhecidos (306.855018ms)
+✔ modelos de mensagem (307.33893ms)
+▶ equipe: comissões em centésimos de %
+  ✔ comissão de 0% a 100% só para quem atende; caixa fica com 0 (347.493972ms)
+  ✔ login inválido e nome curto são recusados (318.075656ms)
+✔ equipe: comissões em centésimos de % (666.06249ms)
+▶ painel da plataforma
+  ✔ cria barbearia com proprietário, lista, muda plano e redefine senha do proprietário (366.081182ms)
+✔ painel da plataforma (366.282027ms)
+▶ isolamento entre barbearias
+  ✔ listas só trazem dados da própria barbearia (1062.646737ms)
+  ✔ mesmo código de produto e mesmo telefone de cliente podem existir em barbearias diferentes (982.065026ms)
+  ✔ alterar com id da outra barbearia dá 'não encontrado' e nada muda (991.317413ms)
+  ✔ mandar barbearia_id na requisição não muda nada: o servidor usa o da sessão (1090.429184ms)
+  ✔ busca de clientes não encontra cliente da outra barbearia (1102.617943ms)
+  ✔ modelos de mensagem são de cada barbearia (1030.496613ms)
+  ✔ auditoria grava a barbearia certa (928.791224ms)
+✔ isolamento entre barbearias (7190.162228ms)
+▶ cada perfil recusado nas rotas que não pode
+  ✔ matriz de permissões (727.454937ms)
+  ✔ plataforma não lê dados de barbearia; barbearia não acessa a plataforma (604.098833ms)
+  ✔ barbeiro e caixa não veem custo nem margem dos produtos (600.998551ms)
+  ✔ barbeiro e caixa só veem serviços e produtos ativos (583.14608ms)
+✔ cada perfil recusado nas rotas que não pode (2517.095902ms)
+▶ quem cria quem
+  ✔ proprietário cria gerente; gerente não cria gerente; barbeiro/caixa não criam ninguém (563.821732ms)
+  ✔ gerente não altera gerente nem proprietário; ninguém altera a si mesmo (598.707752ms)
+  ✔ desativar exige motivo, derruba a sessão e impede login (529.55091ms)
+  ✔ redefinir senha gera provisória com troca obrigatória (553.804627ms)
+  ✔ usuário de acesso repetido é recusado (em qualquer barbearia) (541.774324ms)
+✔ quem cria quem (2788.613979ms)
+▶ limite de usuários por plano (conferido no servidor)
+  ✔ Básico: 1 gerente, 3 barbeiros, 1 caixa; desativar libera a vaga (706.639244ms)
+  ✔ Profissional: 2 gerentes, 10 barbeiros (+ adicionais), 2 caixas (631.09636ms)
+✔ limite de usuários por plano (conferido no servidor) (1338.163878ms)
+ℹ tests 61
+ℹ suites 19
+ℹ pass 61
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12620.450825

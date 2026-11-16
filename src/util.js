@@ -184,3 +184,14 @@ export function diferenca(antes, depois) {
   }
   return { antes: a, depois: d, mudou: Object.keys(d).length > 0 };
 }
+
+// Igual a auditoria(), mas só grava se a condição SQL for verdadeira (para lotes em que a operação pode não acontecer).
+export function auditoriaSe(ctx, condicaoSql, condicaoParams, acao, alvo = null, detalhes = null) {
+  return ctx.db.prepare(`
+    INSERT INTO auditoria (barbearia_id, usuario_id, acao, alvo, detalhes, ip_hash)
+    SELECT ?, ?, ?, ?, ?, ? WHERE ${condicaoSql}
+  `).bind(
+    ctx.barbeariaId ?? null, ctx.usuarioId ?? null, acao, alvo,
+    detalhes ? JSON.stringify(detalhes).slice(0, 4000) : null, ctx.ipHash ?? null, ...condicaoParams
+  );
+}
