@@ -231,11 +231,18 @@ async function rodar(tela) {
     await page.click('[data-produto-pdv="Pomada"]');
     await page.click('[data-produto-pdv="Pomada"]');
     await page.waitForSelector("[data-teste=total-venda]:has-text('90,00')");
+    assert.equal(await page.locator("[data-teste=desconto-venda]").isVisible(), false, "sem desconto, não aparece a linha");
+    // desconto de 10%: o sistema calcula o valor e o total
+    await page.locator("#c-desconto").pressSequentially("10");
+    await page.waitForSelector("[data-teste=total-venda]:has-text('81,00')");
+    assert.match(await page.textContent("[data-teste=desconto-venda]"), /9,00/);
+    assert.match(await page.textContent("[data-teste=subtotal-venda]"), /90,00/);
     await print("caixa-pdv-carrinho");
     await page.click("[data-teste=carrinho] button[type=submit]");
     await page.waitForSelector("text=Venda registrada");
     await page.click(".pdv-barra .alterna button:has-text('Lançamentos')");
     await page.waitForSelector('[data-lancamento="Hugo Avulso Fictício"]');
+    assert.match(await page.textContent("[data-teste=desconto-lancamento]"), /Desconto de 10%/);
     await print("caixa-lancamentos");
 
     passo("caixa (recepção) vê a agenda de todos, marca para um barbeiro e acessa clientes, mensagens e catálogo");

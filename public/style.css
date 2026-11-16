@@ -435,6 +435,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
 .linha-carrinho { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--borda); font-size: 14px; }
 .qtd { display: inline-flex; align-items: center; gap: 4px; }
 .qtd button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--borda); background: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+.campo-desconto { margin-top: 10px; }
+.campo-desconto input { max-width: 140px; }
+.linha-resumo { display: flex; justify-content: space-between; font-size: 14px; color: var(--suave); padding: 2px 0; }
+.linha-resumo.desconto { color: var(--ok); font-weight: 700; }
 .total-carrinho { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; font-size: 15px; }
 .total-carrinho strong { font-size: 22px; }
 .item.estorno { border-left-color: var(--erro); }

@@ -30,8 +30,10 @@ export async function resumoCaixa(db, barbeariaId, caixa) {
       WHERE m.caixa_id = ? AND m.barbearia_id = ?`).bind(caixa.id, barbeariaId).all(),
     db.prepare(`
       SELECT v.id, v.situacao, v.total_centavos, v.motivo_cancelamento, uv.nome AS vendedor, c.nome AS cliente,
+        d.percentual_bp AS desconto_bp, d.valor_centavos AS desconto_centavos, d.bruto_centavos,
         (SELECT group_concat(nome, ', ') FROM (SELECT i.quantidade || 'x ' || i.nome AS nome FROM venda_itens i WHERE i.venda_id = v.id ORDER BY i.rowid)) AS itens
       FROM vendas v JOIN usuarios uv ON uv.id = v.vendedor_id LEFT JOIN clientes c ON c.id = v.cliente_id
+      LEFT JOIN venda_descontos d ON d.venda_id = v.id
       WHERE v.caixa_id = ? AND v.barbearia_id = ?`).bind(caixa.id, barbeariaId).all()
   ]);
   const vendaPor = Object.fromEntries(vendas.results.map(v => [v.id, v]));
@@ -63,6 +65,7 @@ export async function resumoCaixa(db, barbeariaId, caixa) {
       hora: null, cliente: v?.cliente || null, barbeiro: v?.vendedor || null,
       descricao: m.tipo === "sangria" || m.tipo === "suprimento" ? `${m.motivo} (${m.usuario})` : v?.itens || null,
       vendaId: m.venda_id || null, vendaCancelada: v?.situacao === "cancelada",
+      desconto: m.tipo === "venda" && v?.desconto_bp ? { percentualBp: v.desconto_bp, valorCentavos: v.desconto_centavos, brutoCentavos: v.bruto_centavos } : null,
       corrigido: m.forma_atual !== m.forma,
       podeCorrigir: m.tipo === "venda" && v?.situacao === "ativa" && caixa.situacao === "aberto",
       podeCancelarVenda: m.tipo === "venda" && v?.situacao === "ativa" && caixa.situacao === "aberto"
@@ -75,7 +78,8 @@ export async function resumoCaixa(db, barbeariaId, caixa) {
 
   return {
     lancamentos: itens,
-    vendas: vendas.results.map(v => ({ id: v.id, situacao: v.situacao, totalCentavos: v.total_centavos, itens: v.itens, vendedor: v.vendedor, cliente: v.cliente, motivoCancelamento: v.motivo_cancelamento })),
+    vendas: vendas.results.map(v => ({ id: v.id, situacao: v.situacao, totalCentavos: v.total_centavos, itens: v.itens, vendedor: v.vendedor, cliente: v.cliente, motivoCancelamento: v.motivo_cancelamento,
+      descontoBp: v.desconto_bp || 0, descontoCentavos: v.desconto_centavos || 0 })),
     totais: {
       porForma,
       atendimentosCentavos: atendimentos,

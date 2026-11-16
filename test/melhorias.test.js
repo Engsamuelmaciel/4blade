@@ -289,3 +289,42 @@ describe("caixa como recepção: agenda de todos, clientes, mensagens e catálog
     assert.ok(!(await get("/api/clientes", outra.cx.token)).dados.clientes.some(c => c.nome === "Recepção Fictícia 2"));
   });
 });
+
+describe("desconto na venda do caixa (pedido de 16/11/2026)", () => {
+  test("2 pomadas com 10%: servidor calcula, caixa recebe o final, comissão sobre o final, desconto registrado; cancelar estorna o final", async () => {
+    const amb = await cenario();
+    const { post, get, ger, barb, cx } = amb;
+    const pom = (await post("/api/produtos", ger.token, { nome: "Pomada Fictícia", precoCentavos: 2500, estoqueInicial: { quantidade: 9, custoUnitCentavos: 1000 } })).dados.produto;
+    await post("/api/usuarios/alterar", ger.token, { id: barb.id, comissaoProdutoBp: 1000 });
+    await post("/api/caixa/abrir", cx.token, { trocoCentavos: 1000 });
+    const itens = [{ produtoId: pom.id, quantidade: 2 }];
+    // pagamento pelo valor cheio com desconto: recusado (tem que bater com o final)
+    assert.equal((await post("/api/vendas", cx.token, { itens, descontoBp: 1000, pagamentos: [{ forma: "pix", valorCentavos: 5000 }] })).status, 400);
+    // desconto inválido
+    assert.equal((await post("/api/vendas", cx.token, { itens, descontoBp: 10000, pagamentos: [{ forma: "pix", valorCentavos: 0 }] })).status, 400);
+    assert.equal((await post("/api/vendas", cx.token, { itens, descontoBp: 7.5, pagamentos: [{ forma: "pix", valorCentavos: 4625 }] })).status, 400);
+    const v = await post("/api/vendas", cx.token, { itens, descontoBp: 1000, vendedorId: barb.id, pagamentos: [{ forma: "debito", valorCentavos: 4500 }] });
+    assert.equal(v.status, 201, JSON.stringify(v.dados));
+    assert.deepEqual([v.dados.venda.brutoCentavos, v.dados.venda.descontoCentavos, v.dados.venda.totalCentavos], [5000, 500, 4500]);
+    const cxHoje = (await get("/api/caixa/hoje", cx.token)).dados;
+    assert.equal(cxHoje.totais.vendasCentavos, 4500);
+    const lanc = cxHoje.lancamentos.find(l => l.vendaId === v.dados.venda.id);
+    assert.deepEqual(lanc.desconto, { percentualBp: 1000, valorCentavos: 500, brutoCentavos: 5000 });
+    const com = amb.env.DB.raw.prepare("SELECT base_centavos, valor_centavos FROM comissoes_produto WHERE venda_id = ?").get(v.dados.venda.id);
+    assert.deepEqual([com.base_centavos, com.valor_centavos], [4500, 450], "comissão sobre o valor com desconto");
+    const aud = amb.env.DB.raw.prepare("SELECT detalhes FROM auditoria WHERE acao = 'venda_registrada' AND alvo = ?").get(v.dados.venda.id);
+    assert.match(aud.detalhes, /"descontoBp":1000/);
+    // desconto quebrado: 7,5% de 50,00 = 3,75
+    const v2 = await post("/api/vendas", cx.token, { itens: [{ produtoId: pom.id, quantidade: 2 }], descontoBp: 750, pagamentos: [{ forma: "dinheiro", valorCentavos: 4625 }] });
+    assert.equal(v2.status, 201, JSON.stringify(v2.dados));
+    // cancelar a venda com desconto estorna 45,00
+    await post("/api/vendas/cancelar", ger.token, { id: v.dados.venda.id, motivo: "Cliente devolveu" });
+    assert.equal((await get("/api/caixa/hoje", cx.token)).dados.totais.vendasCentavos, 4625);
+    // sem desconto continua igual
+    assert.equal((await post("/api/vendas", cx.token, { itens: [{ produtoId: pom.id, quantidade: 1 }], pagamentos: [{ forma: "pix", valorCentavos: 2500 }] })).status, 201);
+    // isolamento: outra barbearia não vê
+    const outra = await cenario("beta", amb, amb.p);
+    await post("/api/caixa/abrir", outra.cx.token, { trocoCentavos: 0 });
+    assert.ok(!JSON.stringify((await get("/api/caixa/hoje", outra.cx.token)).dados).includes("Pomada Fictícia"));
+  });
+});

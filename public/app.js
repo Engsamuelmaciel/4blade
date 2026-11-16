@@ -1118,6 +1118,7 @@ function listaCaixa(c, recarregar) {
       l.tipo === "sangria" || l.tipo === "suprimento" ? null : NOME_FORMA[l.formaAtual]
     ].filter(Boolean).join(" · ") }),
     l.corrigido ? el("p", { class: "suave destaque-texto", text: `Forma corrigida: ${NOME_FORMA[l.forma]} → ${NOME_FORMA[l.formaAtual]}` }) : null,
+    l.desconto ? el("p", { class: "suave", "data-teste": "desconto-lancamento", text: `Desconto de ${bpParaTexto(l.desconto.percentualBp)}% (− ${reais(l.desconto.valorCentavos)}; sem desconto seria ${reais(l.desconto.brutoCentavos)})` }) : null,
     l.vendaCancelada && l.tipo === "venda" ? el("p", { class: "suave", text: "Venda cancelada" }) : null,
     l.podeCorrigir || l.podeCancelarVenda ? el("div", { class: "item-acoes" },
       l.podeCorrigir ? botao("Corrigir forma", () => abrirJanela("Corrigir forma de pagamento", [
@@ -1381,13 +1382,24 @@ async function abaVender(recarregar) {
   const carrinho = estadoCaixa.carrinho;
   for (const id of [...carrinho.keys()]) if (!produtos.some(p => p.id === id)) carrinho.delete(id);
   const saldoDe = p => p.saldo ?? 999;
-  const total = () => produtos.reduce((t, p) => t + (carrinho.get(p.id) || 0) * p.precoCentavos, 0);
+  const bruto = () => produtos.reduce((t, p) => t + (carrinho.get(p.id) || 0) * p.precoCentavos, 0);
+  // Desconto em %: o sistema calcula o valor e o total final (o servidor confere o mesmo cálculo).
+  const descontoInput = el("input", { type: "text", id: "c-desconto", name: "desconto", inputmode: "decimal", "data-numero": "percentual", placeholder: "0", autocomplete: "off" });
+  const descontoBp = () => { const v = paraBp(descontoInput.value || "0"); return v === null || v >= 10000 ? null : v; };
+  const descontoValor = () => Math.round((bruto() * (descontoBp() || 0)) / 10000);
+  const total = () => bruto() - descontoValor();
   const linhasEl = el("div", { class: "linhas-carrinho" });
   const totalEl = el("strong", { "data-teste": "total-venda" });
+  const subtotalEl = el("span", { "data-teste": "subtotal-venda" });
+  const descontoEl = el("span", { class: "valor-desconto", "data-teste": "desconto-venda" });
+  const linhaSubtotal = el("div", { class: "linha-resumo" }, el("span", { text: "Subtotal" }), subtotalEl);
+  const linhaDesconto = el("div", { class: "linha-resumo desconto" }, el("span", { "data-teste": "rotulo-desconto" }), descontoEl);
   const pag = blocoPagamento(total);
   const form = el("form", { class: "carrinho", "data-teste": "carrinho" },
-    el("h3", {}, el("span", { text: "Venda" }), botao("Limpar", () => { carrinho.clear(); desenhar(); }, "pequeno")),
+    el("h3", {}, el("span", { text: "Venda" }), botao("Limpar", () => { carrinho.clear(); descontoInput.value = ""; desenhar(); }, "pequeno")),
     linhasEl,
+    el("div", { class: "campo campo-desconto" }, el("label", { for: "c-desconto", text: "Desconto (%)" }), descontoInput),
+    linhaSubtotal, linhaDesconto,
     el("div", { class: "total-carrinho" }, el("span", { text: "Total" }), totalEl),
     ...pag.elementos,
     el("button", { type: "submit", class: "botao principal", text: "Finalizar venda" }));
@@ -1405,20 +1417,32 @@ async function abaVender(recarregar) {
         el("span", { text: String(carrinho.get(p.id)) }),
         el("button", { type: "button", "aria-label": `Mais ${p.nome}`, text: "+", onclick: () => { const q = carrinho.get(p.id); if (q < saldoDe(p)) { carrinho.set(p.id, q + 1); desenhar(); } } })),
       el("span", { class: "preco", text: reais(carrinho.get(p.id) * p.precoCentavos) }))) : [el("p", { class: "suave", text: "Toque nos produtos para adicionar." })]));
+    atualizarTotais();
+  }
+  function atualizarTotais() {
+    const bp = descontoBp();
+    const temDesconto = Boolean(bp) && bruto() > 0;
+    subtotalEl.textContent = reais(bruto());
+    descontoEl.textContent = `− ${reais(descontoValor())}`;
+    linhaDesconto.querySelector("[data-teste=rotulo-desconto]").textContent = `Desconto (${bpParaTexto(bp || 0)}%)`;
+    linhaSubtotal.hidden = !temDesconto;
+    linhaDesconto.hidden = !temDesconto;
     totalEl.textContent = reais(total());
     pag.atualizar();
   }
-  form.addEventListener("input", () => pag.atualizar());
-  form.addEventListener("change", () => pag.atualizar());
+  form.addEventListener("input", atualizarTotais);
+  form.addEventListener("change", atualizarTotais);
   form.addEventListener("submit", ev => {
     ev.preventDefault();
     enviar(form, async () => {
       const itens = [...carrinho.entries()].map(([produtoId, quantidade]) => ({ produtoId, quantidade }));
       if (!itens.length) throw new Error("Adicione pelo menos um produto.");
+      const bp = descontoBp();
+      if (bp === null) throw new Error("Desconto inválido: use um número de 0 a 99 (ex.: 10 ou 7,5).");
       const valor = total();
-      await api("/vendas", { metodo: "POST", corpo: { itens, pagamentos: pag.ler(form) } });
+      await api("/vendas", { metodo: "POST", corpo: { itens, pagamentos: pag.ler(form), ...(bp ? { descontoBp: bp } : {}) } });
       carrinho.clear();
-      avisar(`Venda registrada: ${reais(valor)}.`);
+      avisar(bp ? `Venda registrada: ${reais(valor)} (desconto de ${bpParaTexto(bp)}%).` : `Venda registrada: ${reais(valor)}.`);
       recarregar();
     });
   });

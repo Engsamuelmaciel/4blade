@@ -234,7 +234,15 @@ async function vender(ctx) {
     if (p.saldo < q) erro(`Estoque insuficiente de ${p.nome} (tem ${p.saldo}). Peça ao gerente para ajustar.`, 409);
     return { p, q, preco: p.preco_centavos, custo: p.custo_medio_centavos };
   });
-  const total = itens.reduce((t, i) => t + i.preco * i.q, 0);
+  const bruto = itens.reduce((t, i) => t + i.preco * i.q, 0);
+  // Desconto em % (centésimos: 1000 = 10%), calculado aqui no servidor; o total final é o que entra no caixa.
+  let descontoBp = 0;
+  if (input.descontoBp !== undefined && input.descontoBp !== null && input.descontoBp !== 0) {
+    if (!Number.isInteger(input.descontoBp) || input.descontoBp < 1 || input.descontoBp > 9999) erro("Desconto inválido: de 0,01% a 99,99%.");
+    descontoBp = input.descontoBp;
+  }
+  const descontoCentavos = Math.round((bruto * descontoBp) / 10000);
+  const total = bruto - descontoCentavos;
   const pagamentos = lerPagamentos(input.pagamentos, total);
 
   const id = crypto.randomUUID();
@@ -262,17 +270,20 @@ async function vender(ctx) {
         .bind(crypto.randomUUID(), ctx.barbeariaId, vendedorId, id, total, Number(vendedor.comissao_produto_bp),
           Math.round((total * Number(vendedor.comissao_produto_bp)) / 10000), ...existe[1])
     ] : []),
+    ...(descontoBp ? [db.prepare(`INSERT INTO venda_descontos (venda_id, barbearia_id, bruto_centavos, percentual_bp, valor_centavos, criado_por)
+                  SELECT ?, ?, ?, ?, ?, ? WHERE ${existe[0]}`)
+      .bind(id, ctx.barbeariaId, bruto, descontoBp, descontoCentavos, user.id, ...existe[1])] : []),
     ...pagamentos.map(pg => db.prepare(`INSERT INTO caixa_movimentos (id, barbearia_id, caixa_id, tipo, forma, valor_centavos, venda_id, criado_por)
                   SELECT ?, ?, ?, 'venda', ?, ?, ?, ? WHERE ${existe[0]}`)
       .bind(crypto.randomUUID(), ctx.barbeariaId, caixa.id, pg.forma, pg.valorCentavos, id, user.id, ...existe[1])),
     auditoriaSe(ctx, ...existe, "venda_registrada", id, {
-      total, vendedor: vendedorId, itens: itens.map(i => ({ produto: i.p.nome, quantidade: i.q, preco: i.preco })), pagamentos
+      total, ...(descontoBp ? { bruto, descontoBp, descontoCentavos } : {}), vendedor: vendedorId, itens: itens.map(i => ({ produto: i.p.nome, quantidade: i.q, preco: i.preco })), pagamentos
     })
   ], "Estoque insuficiente (outra venda acabou de usar o saldo). Peça ao gerente para ajustar.");
   if (!(await db.prepare("SELECT 1 FROM vendas WHERE id = ?").bind(id).first())) {
     erro("Não foi possível registrar: o caixa foi fechado ou o estoque acabou. Atualize a tela.", 409);
   }
-  return json({ venda: { id, totalCentavos: total } }, 201);
+  return json({ venda: { id, totalCentavos: total, brutoCentavos: bruto, descontoBp, descontoCentavos } }, 201);
 }
 
 async function cancelarVenda(ctx) {
