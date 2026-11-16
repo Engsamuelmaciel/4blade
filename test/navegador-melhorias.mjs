@@ -78,6 +78,11 @@ async function rodar(tela) {
 
   try {
     await page.goto(base);
+    passo("abertura com a logo e a frase; tela de entrada nova");
+    await page.waitForSelector("[data-teste=slogan]");
+    assert.equal((await page.textContent("[data-teste=slogan]")).trim(), "Gestão afiada para sua barbearia.");
+    await page.waitForSelector("#carregador", { state: "hidden" });
+    await print("entrada-com-logo-e-frase");
 
     // ---------- BARBEARIA NOVA (sem nada lançado) ----------
     passo("barbearia nova: painel e agenda vazios ocupam a tela, sem buracos");
@@ -145,14 +150,26 @@ async function rodar(tela) {
     await print("horario-fixo-criado", false);
     await ok();
     await page.waitForSelector('[data-agendamento="Fábio Fixo Fictício"] >> text=Fixo semanal');
-    await print("agenda-dia-com-fixo");
+
+    passo("marca horário SEM telefone (só o nome)");
+    await page.click("button:has-text('+ Novo horário')");
+    await page.fill("dialog[open] #c-data", AMANHA);
+    await page.fill("dialog[open] #c-hora", "15:00");
+    await page.check("dialog[open] input[name=serv] >> nth=0");
+    assert.equal(await page.locator("dialog[open] #c-cliTel").getAttribute("required"), null, "telefone não é obrigatório");
+    assert.ok(await page.locator("dialog[open] #c-cliNome").isVisible(), "nome aparece mesmo sem telefone");
+    await page.fill("dialog[open] #c-cliNome", "Seu Zé Fictício");
+    await ok();
+    await page.waitForSelector('[data-agendamento="Seu Zé Fictício"] >> text=sem telefone');
+    assert.equal(await page.locator('[data-agendamento="Seu Zé Fictício"] [data-whats]').count(), 0, "sem telefone, sem botão de WhatsApp");
+    await print("agenda-dia-com-fixo-e-sem-telefone");
 
     // ---------- MÊS e ANO ----------
     passo("agenda em visão Mês (cores) e Ano");
     await visao("Mês");
     await page.waitForSelector(".calendario .dia-cal");
     const celAmanha = page.locator(`.dia-cal[data-dia="${AMANHA}"]`);
-    assert.match(await celAmanha.getAttribute("aria-label"), /1 marcado/);
+    assert.match(await celAmanha.getAttribute("aria-label"), /2 marcado/);
     assert.ok(["livre", "poucos"].includes(await celAmanha.getAttribute("data-status")));
     assert.equal(await page.locator(".legenda >> text=Agenda cheia").count(), 1);
     await print("agenda-mes");

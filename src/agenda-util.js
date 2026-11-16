@@ -117,6 +117,12 @@ export function preencherModelo(texto, campos) {
   return texto.replace(/\{(cliente|data|hora|barbeiro|servico|barbearia)\}/g, (_, c) => campos[c] ?? "");
 }
 
+// Cliente marcado sem telefone fica com o marcador "sem:<id>" na coluna (NOT NULL e única); para a tela, telefone = null.
+export const PREFIXO_SEM_TELEFONE = "sem:";
+export function telefoneReal(t) {
+  return typeof t === "string" && /^\d{10,11}$/.test(t) ? t : null;
+}
+
 export function linkWhatsapp(telefone, texto) {
   return `https://wa.me/55${telefone}?text=${encodeURIComponent(texto)}`;
 }
@@ -133,6 +139,7 @@ export function camposMensagem(ag, barbeariaNome) {
 }
 
 export function linksWhatsapp(ag, modelos, barbeariaNome) {
+  if (!telefoneReal(ag.cliente_telefone)) return null;   // sem telefone: sem WhatsApp
   const campos = camposMensagem(ag, barbeariaNome);
   const r = {};
   for (const [tipo, texto] of Object.entries(modelos)) r[tipo] = linkWhatsapp(ag.cliente_telefone, preencherModelo(texto, campos));

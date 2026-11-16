@@ -2,7 +2,7 @@
 // Só proprietário e gerente. Não é nota fiscal.
 import { json, fail, HttpError, readJson, sha256, textoOpcional, normalizarTelefone, auditoria, hojeBrasil } from "./util.js";
 import { exigirGestao } from "./usuarios.js";
-import { somarDias, formaEfetiva, FORMAS } from "./agenda-util.js";
+import { somarDias, formaEfetiva, FORMAS, telefoneReal } from "./agenda-util.js";
 import { dadosPeriodo, resultado, porBarbeiro, somarMes, CATEGORIAS } from "./gestao.js";
 import { gerarPdf, base64 } from "./pdf.js";
 import { gerarCsv, dinheiroCsv, dataCsv } from "./csv.js";
@@ -151,7 +151,7 @@ const EXPORTAR = {
   clientes: {
     sql: "SELECT nome, telefone, observacao, aceite_lgpd, aceite_lgpd_em, ativo, criado_em FROM clientes WHERE barbearia_id = ? ORDER BY nome",
     cab: ["Nome", "Telefone", "Observação", "Aceite LGPD", "Aceite em", "Ativo", "Cadastrado em"],
-    linha: r => [r.nome, r.telefone, r.observacao, r.aceite_lgpd ? "sim" : "não", dataCsv(r.aceite_lgpd_em), r.ativo ? "sim" : "não", dataCsv(r.criado_em)]
+    linha: r => [r.nome, telefoneReal(r.telefone), r.observacao, r.aceite_lgpd ? "sim" : "não", dataCsv(r.aceite_lgpd_em), r.ativo ? "sim" : "não", dataCsv(r.criado_em)]
   },
   atendimentos: {
     sql: `SELECT a.data, substr(a.inicio, 12) AS hora, u.nome AS barbeiro, c.nome AS cliente, c.telefone, a.situacao, a.motivo,
@@ -161,7 +161,7 @@ const EXPORTAR = {
           LEFT JOIN finalizacoes f ON f.agendamento_id = a.id AND f.estornada = 0 LEFT JOIN comissoes cm ON cm.finalizacao_id = f.id
           WHERE a.barbearia_id = ? ORDER BY a.inicio`,
     cab: ["Data", "Hora", "Profissional", "Cliente", "Telefone", "Situação", "Motivo", "Serviços", "Valor (R$)", "Valor alterado", "Comissão (R$)"],
-    linha: r => [dataCsv(r.data), r.hora, r.barbeiro, r.cliente, r.telefone, r.situacao, r.motivo, r.servicos, dinheiroCsv(r.total_centavos), r.valor_alterado ? "sim" : "", dinheiroCsv(r.comissao)]
+    linha: r => [dataCsv(r.data), r.hora, r.barbeiro, r.cliente, telefoneReal(r.telefone), r.situacao, r.motivo, r.servicos, dinheiroCsv(r.total_centavos), r.valor_alterado ? "sim" : "", dinheiroCsv(r.comissao)]
   },
   caixa: {
     sql: `SELECT c.data, l.criado_em AS em, l.tipo, l.forma, l.valor_centavos, '' AS motivo FROM caixa_lancamentos l JOIN caixas c ON c.id = l.caixa_id WHERE l.barbearia_id = ?1

@@ -5,6 +5,7 @@ import {
   normalizarTelefone, exigirMotivo, auditoria, diferenca
 } from "./util.js";
 import { isGestao } from "./perfis.js";
+import { telefoneReal } from "./agenda-util.js";
 import { exigirBarbearia, exigirGestao } from "./usuarios.js";
 
 export const CAMPOS_MENSAGEM = ["cliente", "data", "hora", "barbeiro", "servico", "barbearia"];
@@ -97,7 +98,7 @@ const CADASTROS = {
     unico: { col: "telefone", msg: "Já existe um cliente com esse telefone." },
     ordem: "ativo DESC, nome",
     publico: r => ({
-      id: r.id, nome: r.nome, telefone: r.telefone, observacao: r.observacao || null,
+      id: r.id, nome: r.nome, telefone: telefoneReal(r.telefone), observacao: r.observacao || null,
       aceiteLgpd: Boolean(r.aceite_lgpd), aceiteLgpdEm: r.aceite_lgpd_em || null,
       ativo: Boolean(r.ativo), motivoDesativacao: r.motivo_desativacao || null, criadoEm: r.criado_em
     }),
@@ -133,7 +134,7 @@ async function rotasCadastro(ctx, nome, def, path, method) {
     const busca = (url.searchParams.get("busca") || "").trim().slice(0, 60);
     if (busca && nome === "clientes") {
       const digitos = busca.replace(/\D/g, "");
-      sql += digitos.length >= 3 ? " AND (telefone LIKE ? OR nome LIKE ?)" : " AND nome LIKE ?";
+      sql += digitos.length >= 3 ? " AND ((telefone LIKE ? AND telefone NOT LIKE 'sem:%') OR nome LIKE ?)" : " AND nome LIKE ?";
       if (digitos.length >= 3) params.push(`%${digitos}%`);
       params.push(`%${busca.replace(/[%_]/g, "")}%`);
     }
@@ -175,6 +176,8 @@ async function rotasCadastro(ctx, nome, def, path, method) {
     const atual = await db.prepare(`SELECT * FROM ${def.tabela} WHERE id = ? AND barbearia_id = ?`).bind(input.id, ctx.barbeariaId).first();
     if (!atual) return fail("Registro não encontrado.", 404);
 
+    // Cliente marcado sem telefone: ao editar, pode continuar sem (o marcador fica).
+    if (nome === "clientes" && !telefoneReal(atual.telefone) && !String(input.telefone ?? "").replace(/\D/g, "")) delete input.telefone;
     const novo = {};
     const antes = {};
     for (const [api, c] of Object.entries(def.campos)) {

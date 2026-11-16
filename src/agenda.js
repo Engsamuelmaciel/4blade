@@ -9,7 +9,8 @@ import { isGestao, atende } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
 import {
   horaParaMin, exigirData, exigirMomento, somarDias, regrasDoDia, conferirHorario, momento, carregarRegras, diaSemana, janelaDoDia, livreNaJanela,
-  carregarModelos, linksWhatsapp, lerPagamentos, formaEfetiva, FORMAS
+  carregarModelos, linksWhatsapp, lerPagamentos, formaEfetiva, FORMAS,
+  telefoneReal, PREFIXO_SEM_TELEFONE
 } from "./agenda-util.js";
 
 export { FORMAS };
@@ -120,7 +121,7 @@ async function listarAgenda(ctx) {
       inicio: a.inicio.slice(11), fim: a.fim.slice(11), situacao: a.situacao, motivo: a.motivo || null,
       observacao: a.observacao || null,
       serie: a.serie_id ? { id: a.serie_id, intervaloSemanas: a.intervalo_semanas } : null,
-      cliente: { id: a.cliente_id, nome: a.cliente_nome, telefone: a.cliente_telefone },
+      cliente: { id: a.cliente_id, nome: a.cliente_nome, telefone: telefoneReal(a.cliente_telefone) },
       servicos: (servPor[a.id] || []).map(s => ({ id: s.servico_id, nome: s.nome, duracaoMin: s.duracao_min })),
       whatsapp: linksWhatsapp(a, modelos, user.barbearia_nome),
       mensagens: (msgPor[a.id] || []).map(m => ({ tipo: m.tipo, em: m.criado_em, por: m.nome })),
@@ -148,12 +149,29 @@ async function listarAgenda(ctx) {
 }
 
 // ---------- MARCAR ----------
-// Cliente sempre identificado pelo telefone: existe → usa; não existe → nasce aqui (com aceite LGPD).
+// Cliente identificado pelo telefone (existe → usa; não existe → nasce aqui com aceite LGPD) ou, sem telefone, pelo nome.
 // Põe em "comandos" o cadastro do cliente novo (para ir no mesmo lote) e devolve { id, nome, novo }.
 async function clienteDaMarcacao(ctx, c = {}, comandos, origem = "agenda") {
   const { db, user } = ctx;
+  const semTelefone = typeof c.telefone !== "string" || !c.telefone.replace(/\D/g, "");
+  if (semTelefone) {
+    // Telefone é opcional: sem ele o cliente é identificado pelo nome (mesmo nome sem telefone = mesmo cliente).
+    const nome = textoLimpo(c.nome, 2, 80);
+    if (!nome) erro("Informe o telefone ou o nome do cliente.");
+    const existente = await db.prepare(`SELECT id, nome, ativo FROM clientes WHERE barbearia_id = ? AND lower(nome) = lower(?)
+                                        AND telefone LIKE '${PREFIXO_SEM_TELEFONE}%' ORDER BY ativo DESC LIMIT 1`).bind(ctx.barbeariaId, nome).first();
+    if (existente && !existente.ativo) erro("Esse cliente está desativado. Peça ao gerente para reativar.", 409);
+    if (existente) return { id: existente.id, nome: existente.nome, novo: false };
+    const id = crypto.randomUUID();
+    comandos.push(
+      db.prepare(`INSERT INTO clientes (id, barbearia_id, nome, telefone, aceite_lgpd) VALUES (?, ?, ?, ?, 0)`)
+        .bind(id, ctx.barbeariaId, nome, PREFIXO_SEM_TELEFONE + id),
+      auditoria(ctx, "cliente_criado", id, { origem, depois: { nome, telefone: null } })
+    );
+    return { id, nome, novo: true };
+  }
   const telefone = normalizarTelefone(c.telefone);
-  if (!telefone) erro("Telefone do cliente inválido: DDD + número.");
+  if (!telefone) erro("Telefone do cliente inválido: DDD + número (ou deixe em branco).");
   const cliente = await db.prepare("SELECT id, nome, ativo FROM clientes WHERE barbearia_id = ? AND telefone = ?").bind(ctx.barbeariaId, telefone).first();
   if (cliente && !cliente.ativo) erro("Esse cliente está desativado. Peça ao gerente para reativar.", 409);
   if (cliente) return { id: cliente.id, nome: cliente.nome, novo: false };

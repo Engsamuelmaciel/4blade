@@ -4,7 +4,7 @@
 import { json, fail, HttpError, readJson, validCentavos, validDate, textoOpcional, exigirMotivo, auditoria, auditoriaSe, hojeBrasil } from "./util.js";
 import { isGestao } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
-import { FORMAS, formaEfetiva } from "./agenda-util.js";
+import { FORMAS, formaEfetiva, telefoneReal } from "./agenda-util.js";
 import { finalizarDados, atendimentoAvulso } from "./agenda.js";
 
 const erro = (msg, status = 400) => { throw new HttpError(msg, status); };
@@ -175,7 +175,7 @@ export async function rotasCaixa(ctx, path, method) {
       profissionais: profs.results,
       atendimentos: ags.results.map(a => ({
         id: a.id, inicio: a.inicio.slice(11), fim: a.fim.slice(11), situacao: a.situacao, barbeiroId: a.barbeiro_id, barbeiro: a.barbeiro,
-        cliente: { nome: a.cliente, telefone: a.telefone }, totalCentavos: a.total_centavos ?? null,
+        cliente: { nome: a.cliente, telefone: telefoneReal(a.telefone) }, totalCentavos: a.total_centavos ?? null,
         servicos: servs.results.filter(s => s.agendamento_id === a.id).map(s => ({ id: s.servico_id, nome: s.nome, precoCentavos: s.preco_centavos ?? 0 }))
       }))
     });

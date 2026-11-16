@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#24272c">
-  <meta name="description" content="4blade — gestão para barbearias">
+  <meta name="description" content="4blade — Gestão afiada para sua barbearia.">
   <title>4blade</title>
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/icons/icon-192.png" type="image/png">
@@ -26,9 +26,18 @@
   </header>
   <aside class="menu-lateral" id="menu" aria-label="Menu" hidden></aside>
   <div class="fundo-menu" id="fundo-menu" hidden></div>
-  <main id="app" tabindex="-1">
-    <p class="carregando">Carregando…</p>
-  </main>
+  <main id="app" tabindex="-1"></main>
+  <div class="carregador inicial" id="carregador" role="status" aria-live="polite">
+    <div class="carregador-centro">
+      <div class="carregador-simbolo" aria-hidden="true">
+        <span class="carregador-anel"></span>
+        <img src="/icons/marca.png" alt="" width="64" height="64">
+      </div>
+      <img class="carregador-logo" src="/icons/logo.png" alt="4blade" width="240" height="98">
+      <p class="carregador-frase">Gestão <span>afiada</span> para sua barbearia.</p>
+      <p class="carregador-texto">Carregando…</p>
+    </div>
+  </div>
   <div class="aviso-flutuante" id="aviso" role="status" aria-live="polite" hidden></div>
   <dialog id="janela" class="janela"></dialog>
 </body>

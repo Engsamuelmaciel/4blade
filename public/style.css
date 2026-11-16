@@ -114,7 +114,73 @@ h4 { margin: 14px 0 0; font-size: 13px; color: var(--destaque); text-transform: 
 
 .cartao { background: var(--cartao); border-radius: var(--raio); padding: 14px; box-shadow: var(--sombra); margin-bottom: 14px; }
 .cartao h2 { margin: 0 0 10px; font-size: 20px; }
-.logo-entrada { display: block; width: min(300px, 82%); height: auto; margin: 0 auto 14px; border-radius: 16px; }
+/* ---------- tela de entrada ---------- */
+body.tela-entrada .topo { display: none; }
+body.tela-entrada main { max-width: none; padding: 0; }
+.entrada { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+.entrada-hero {
+  background: var(--primaria); color: #fff; text-align: center;
+  padding: calc(44px + env(safe-area-inset-top)) 22px 70px;
+  border-bottom: 3px solid var(--dourado);
+}
+.logo-entrada { display: block; width: min(300px, 78%); height: auto; margin: 0 auto; }
+.slogan { margin: 18px auto 8px; max-width: 15ch; font-size: 28px; line-height: 1.15; font-weight: 800; letter-spacing: -.3px; }
+.slogan span { color: var(--dourado); }
+.entrada-sub { margin: 0 auto; max-width: 32ch; color: #aeb3ba; font-size: 14.5px; }
+.entrada-lado { flex: 1; display: flex; justify-content: center; align-items: flex-start; padding: 0 14px 30px; }
+.entrada-form { width: 100%; max-width: 400px; margin: -44px 0 0; padding: 20px; box-shadow: 0 10px 30px rgba(16, 24, 40, .14); }
+@media (min-width: 1024px) {
+  .entrada { flex-direction: row; }
+  .entrada-hero { flex: 1.15; display: flex; flex-direction: column; justify-content: center; padding: 40px; border-bottom: 0; border-right: 3px solid var(--dourado); }
+  .logo-entrada { width: 360px; }
+  .slogan { font-size: 40px; }
+  .entrada-sub { font-size: 16px; }
+  .entrada-lado { flex: 1; align-items: center; padding: 30px; }
+  .entrada-form { margin: 0; }
+}
+
+/* ---------- carregando: marca com anel dourado ---------- */
+.carregador {
+  position: fixed; inset: 0; z-index: 900;
+  display: grid; place-items: center;
+  background: rgba(243, 244, 246, .72); backdrop-filter: blur(2px);
+  animation: carregador-entra .2s ease;
+}
+.carregador-centro { display: grid; justify-items: center; gap: 10px; }
+.carregador-simbolo {
+  position: relative; width: 92px; height: 92px; border-radius: 24px;
+  display: grid; place-items: center; background: var(--primaria);
+  box-shadow: 0 12px 30px rgba(16, 24, 40, .25);
+}
+.carregador-simbolo img { width: 60px; height: 60px; animation: carregador-pulso 1.2s ease-in-out infinite; }
+.carregador-anel {
+  position: absolute; inset: -7px; border-radius: 30px;
+  border: 3px solid transparent; border-top-color: var(--dourado); border-right-color: var(--dourado);
+  animation: carregador-gira .9s linear infinite;
+}
+.carregador-logo, .carregador-frase { display: none; }
+.carregador-texto { margin: 6px 0 0; font-weight: 700; color: var(--suave); font-size: 14px; }
+/* abertura do app: tela cheia escura com a logo e a frase */
+.carregador.inicial { background: var(--primaria); backdrop-filter: none; animation: none; transition: opacity .25s ease; }
+.carregador.inicial.saindo { opacity: 0; }
+.carregador.inicial .carregador-simbolo { box-shadow: none; background: transparent; }
+.carregador.inicial .carregador-logo { display: block; width: 220px; height: auto; margin-top: 6px; }
+.carregador.inicial .carregador-frase { display: block; margin: 0; color: #fff; font-size: 20px; font-weight: 800; text-align: center; padding: 0 20px; }
+.carregador.inicial .carregador-frase span { color: var(--dourado); }
+.carregador.inicial .carregador-texto { color: #aeb3ba; }
+@keyframes carregador-gira { to { transform: rotate(360deg); } }
+@keyframes carregador-pulso { 50% { transform: scale(.9); opacity: .75; } }
+@keyframes carregador-entra { from { opacity: 0; } }
+/* botão de janela enquanto envia */
+.botao.ocupado { position: relative; color: transparent !important; }
+.botao.ocupado::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px;
+  border-radius: 50%; border: 2.5px solid rgba(255, 255, 255, .35); border-top-color: var(--dourado);
+  animation: carregador-gira .7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .carregador-anel, .carregador-simbolo img, .botao.ocupado::after { animation-duration: 2.5s; }
+}
 
 /* ---------- formulários ---------- */
 .campo { margin-top: 10px; }

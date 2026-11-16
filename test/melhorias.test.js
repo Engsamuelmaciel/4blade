@@ -145,3 +145,41 @@ describe("caixa como PDV: cobrar atendimento e atendimento sem horário", () => 
   });
 });
 void diaSemana;
+
+describe("telefone opcional na marcação (pedido de 16/11/2026)", () => {
+  test("sem telefone: exige o nome, reaproveita o mesmo cliente pelo nome e não gera WhatsApp", async () => {
+    const amb = await cenario();
+    const { post, get, barb, ger, cx, corte } = amb;
+    const semNome = await post("/api/agenda", barb.token, { data: AMANHA, hora: "09:00", servicoIds: [corte.id], cliente: { telefone: "" } });
+    assert.equal(semNome.status, 400);
+    assert.match(semNome.dados.erro, /telefone ou o nome/);
+    assert.equal((await post("/api/agenda", barb.token, { data: AMANHA, hora: "09:00", servicoIds: [corte.id], cliente: { telefone: "123", nome: "X Y" } })).status, 400, "telefone digitado errado continua recusado");
+    const r1 = await post("/api/agenda", barb.token, { data: AMANHA, hora: "09:00", servicoIds: [corte.id], cliente: { nome: "Seu Zé Sem Fone" } });
+    assert.equal(r1.status, 201, JSON.stringify(r1.dados));
+    const r2 = await post("/api/agenda", barb.token, { data: AMANHA, hora: "10:00", servicoIds: [corte.id], cliente: { telefone: "", nome: "seu zé sem fone" } });
+    assert.equal(r2.status, 201, JSON.stringify(r2.dados));
+    const ag = (await get(`/api/agenda?data=${AMANHA}`, barb.token)).dados.agendamentos;
+    assert.equal(ag.length, 2);
+    assert.equal(ag[0].cliente.id, ag[1].cliente.id, "mesmo nome sem telefone = mesmo cliente");
+    assert.equal(ag[0].cliente.telefone, null);
+    assert.equal(ag[0].whatsapp, null);
+    // lista de clientes: aparece sem telefone; pode renomear sem informar telefone; busca por número não o encontra
+    const lista = (await get("/api/clientes", ger.token)).dados.clientes;
+    const ze = lista.find(c => c.nome === "Seu Zé Sem Fone");
+    assert.equal(ze.telefone, null);
+    const ren = await post("/api/clientes/alterar", ger.token, { id: ze.id, nome: "Seu Zé Fictício", telefone: "", observacao: null, aceiteLgpd: false });
+    assert.equal(ren.status, 200, JSON.stringify(ren.dados));
+    assert.equal(ren.dados.cliente.telefone, null);
+    assert.equal((await get("/api/clientes?busca=123", ger.token)).dados.clientes.length, 0);
+    // depois pode ganhar telefone
+    const comFone = await post("/api/clientes/alterar", ger.token, { id: ze.id, telefone: "11 97777-1212", aceiteLgpd: true });
+    assert.equal(comFone.dados.cliente.telefone, "11977771212");
+    // caixa: atendimento sem horário também aceita sem telefone
+    await post("/api/caixa/abrir", cx.token, { trocoCentavos: 0 });
+    const av = await post("/api/caixa/atendimento-avulso", cx.token, { barbeiroId: barb.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }],
+      pagamentos: [{ forma: "pix", valorCentavos: 4000 }], cliente: { nome: "Passante Fictício" } });
+    assert.equal(av.status, 201, JSON.stringify(av.dados));
+    const fila = (await get("/api/caixa/atendimentos", cx.token)).dados.atendimentos;
+    assert.equal(fila.find(a => a.cliente.nome === "Passante Fictício").cliente.telefone, null);
+  });
+});

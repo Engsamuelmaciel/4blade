@@ -26,10 +26,40 @@ function el(tag, attrs = {}, ...filhos) {
 }
 
 function mostrar(...filhos) {
+  document.body.classList.remove("tela-entrada");
   app.replaceChildren(...filhos.flat().filter(Boolean));
   aplicarMascaras(app);
   app.focus({ preventScroll: true });
   window.scrollTo(0, 0);
+}
+
+// ---------- CARREGANDO (logo animada) ----------
+// Aparece só se a espera passar de 250 ms (evita piscar). A 1ª vez (abertura do app) é a tela cheia com a frase.
+const carga = { n: 0, timer: null, inicio: Date.now() };
+function carregadorEl() { return document.getElementById("carregador"); }
+function inicioCarga() {
+  if (carga.n++ === 0 && carregadorEl().hidden) carga.timer = setTimeout(() => { carregadorEl().hidden = false; }, 250);
+}
+function fimCarga() {
+  carga.n = Math.max(0, carga.n - 1);
+  if (carga.n) return;
+  clearTimeout(carga.timer);
+  const c = carregadorEl();
+  if (c.classList.contains("inicial")) {
+    // abertura: deixa a marca aparecer por um instante e some suave
+    const resta = Math.max(0, 700 - (Date.now() - carga.inicio));
+    setTimeout(() => {
+      if (carga.n) return;
+      c.classList.add("saindo");
+      setTimeout(() => { c.hidden = true; c.classList.remove("inicial", "saindo"); }, 250);
+    }, resta);
+    return;
+  }
+  c.hidden = true;
+}
+async function comCarga(fn) {
+  inicioCarga();
+  try { return await fn(); } finally { fimCarga(); }
 }
 
 let avisoTimer;
@@ -214,13 +244,14 @@ function erroForm(form, msg) {
 async function enviar(form, acao) {
   const btn = form.querySelector("button[type=submit]");
   erroForm(form, "");
-  if (btn) btn.disabled = true;
+  if (btn) { btn.disabled = true; btn.classList.add("ocupado"); }
+  const naJanela = Boolean(form.closest("dialog"));   // na janela, o próprio botão mostra que está carregando
   try {
-    await acao();
+    await (naJanela ? acao() : comCarga(acao));
   } catch (e) {
     if (e.message !== "Sessão encerrada") erroForm(form, e.message);
   } finally {
-    if (btn) btn.disabled = false;
+    if (btn) { btn.disabled = false; btn.classList.remove("ocupado"); }
   }
 }
 
@@ -288,8 +319,14 @@ function telaLogin(mensagem = "") {
       else irParaInicial();
     });
   });
-  mostrar(el("section", { class: "estreito" },
-    el("img", { class: "logo-entrada", src: "/icons/logo.png", alt: "4blade", width: "320", height: "130" }), form));
+  form.classList.add("entrada-form");
+  mostrar(el("section", { class: "entrada" },
+    el("div", { class: "entrada-hero" },
+      el("img", { class: "logo-entrada", src: "/icons/logo.png", alt: "4blade", width: "320", height: "130" }),
+      el("p", { class: "slogan", "data-teste": "slogan" }, "Gestão ", el("span", { text: "afiada" }), " para sua barbearia."),
+      el("p", { class: "entrada-sub", text: "Agenda, caixa, estoque e comissões num só lugar." })),
+    el("div", { class: "entrada-lado" }, form)));
+  document.body.classList.add("tela-entrada");
 }
 
 function telaTrocarSenha(senhaAtual = "") {
@@ -464,7 +501,7 @@ async function telaAgenda() {
   const qo = periodo ? new URLSearchParams({ inicio: periodo[0], fim: periodo[1], ...(gestao() && estadoAgenda.barbeiroId ? { barbeiroId: estadoAgenda.barbeiroId } : {}) }) : null;
   const [ag, oc] = await Promise.all([api(`/agenda?${q}`), qo ? api(`/agenda/ocupacao?${qo}`) : null, carregarServicos()]);
 
-  const irPara = (d, visao = v) => { estadoAgenda.data = d; estadoAgenda.visao = visao; telaAgenda(); };
+  const irPara = (d, visao = v) => { estadoAgenda.data = d; estadoAgenda.visao = visao; comCarga(telaAgenda).catch(e => avisar(e.message, "erro")); };
   const mover = n => irPara(v === "mes" ? `${somaMes(d0.slice(0, 7), n)}-01` : v === "ano" ? `${Number(d0.slice(0, 4)) + n}-01-01` : somaDias(d0, n * (v === "semana" ? 7 : 1)));
   const dataInput = el("input", { type: "date", value: d0, "aria-label": "Data", class: "data-agenda" });
   dataInput.addEventListener("change", () => dataInput.value && irPara(dataInput.value));
@@ -598,6 +635,7 @@ function cartaoBloqueio(b, ini, fim, mostrarNome) {
 
 // Abre o WhatsApp (link wa.me) e registra o envio (quem, quando, qual modelo).
 function botaoWhatsapp(a, tipo, rotulo) {
+  if (!a.whatsapp) return null;   // cliente sem telefone
   return el("a", {
     class: "botao pequeno whats", href: a.whatsapp[tipo], target: "_blank", rel: "noopener", "data-whats": tipo,
     onclick: () => {
@@ -621,7 +659,7 @@ function cartaoAgendamento(a, mostrarNome) {
       el("span", { class: `etiqueta ${COR_SITUACAO[a.situacao]}`, text: NOME_SITUACAO[a.situacao] }),
       a.serie ? el("span", { class: "etiqueta fixo", text: a.serie.intervaloSemanas === 1 ? "Fixo semanal" : `Fixo a cada ${a.serie.intervaloSemanas} sem.` }) : null,
       destaque ? el("span", { class: "etiqueta laranja", text: "Valor alterado" }) : null),
-    el("p", { class: "slot-cliente" }, el("strong", { text: a.cliente.nome }), ` · ${fone(a.cliente.telefone)}`),
+    el("p", { class: "slot-cliente" }, el("strong", { text: a.cliente.nome }), a.cliente.telefone ? ` · ${fone(a.cliente.telefone)}` : " · sem telefone"),
     el("p", { class: "suave", text: [mostrarNome ? a.barbeiroNome : null, a.servicos.map(s => s.nome).join(" + ")].filter(Boolean).join(" · ") }),
     a.observacao ? el("p", { class: "suave", text: `Obs.: ${a.observacao}` }) : null,
     a.motivo ? el("p", { class: "suave", text: `Motivo: ${a.motivo}` }) : null,
@@ -675,23 +713,28 @@ function campoProfissional(ag) {
 
 function janelaMarcar(ag) {
   const servicos = servicosCache || [];
-  const blocoNovo = el("div", { class: "cliente-novo" },
-    campo("Nome do cliente", { name: "cliNome", autocomplete: "off" }),
-    caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "cliLgpd" }));
-  blocoNovo.hidden = true;
+  // Sem profissional ou sem serviço não há como marcar: explica o que falta em vez de um formulário vazio.
+  if (gestao() && !ag.profissionais.length) return abrirJanela("Novo horário", el("p", { text: "Nenhum profissional com agenda. Cadastre um gerente ou barbeiro em Equipe e ajustes → Equipe (o proprietário não tem agenda própria)." }), { ok: "Entendi", semCancelar: true, aoConfirmar: () => true });
+  if (!servicos.length) return abrirJanela("Novo horário", el("p", { text: "Nenhum serviço cadastrado. Cadastre em Catálogo e estoque → Serviços (nome, preço e duração)." }), { ok: "Entendi", semCancelar: true, aoConfirmar: () => true });
+  // Telefone é opcional: sem ele, o cliente fica só com o nome (sem WhatsApp).
+  const nomeCampo = campo("Nome do cliente", { name: "cliNome", autocomplete: "off" });
+  const lgpd = caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "cliLgpd" });
+  const blocoNovo = el("div", { class: "cliente-novo" }, nomeCampo, lgpd);
+  lgpd.hidden = true;
   const achado = el("p", { class: "cliente-achado", role: "status" });
-  const tel = campo("Telefone do cliente (WhatsApp)", { name: "cliTel", inputmode: "tel", autocomplete: "off", placeholder: "(11) 91234-5678", required: true });
+  const tel = campo("Telefone do cliente (WhatsApp) — opcional", { name: "cliTel", inputmode: "tel", autocomplete: "off", placeholder: "(11) 91234-5678" },
+    "Sem telefone, o cliente fica só com o nome (sem lembrete pelo WhatsApp).");
   const buscar = async () => {
     const v = tel.querySelector("input").value.replace(/\D/g, "");
-    if (v.length < 10) { achado.textContent = ""; blocoNovo.hidden = true; return; }
+    if (v.length < 10) { achado.textContent = ""; blocoNovo.hidden = false; lgpd.hidden = true; return; }
     try {
       const r = await api(`/agenda/cliente?telefone=${encodeURIComponent(v)}`);
       if (r.cliente) { achado.textContent = `Cliente: ${r.cliente.nome}`; achado.className = "cliente-achado ok"; blocoNovo.hidden = true; }
-      else { achado.textContent = "Cliente novo: informe o nome."; achado.className = "cliente-achado novo"; blocoNovo.hidden = false; }
+      else { achado.textContent = "Cliente novo: informe o nome."; achado.className = "cliente-achado novo"; blocoNovo.hidden = false; lgpd.hidden = false; }
     } catch (e) { achado.textContent = e.message; }
   };
   tel.querySelector("input").addEventListener("change", buscar);
-  tel.querySelector("input").addEventListener("input", () => { if (tel.querySelector("input").value.replace(/\D/g, "").length >= 10) buscar(); });
+  tel.querySelector("input").addEventListener("input", buscar);
 
   setTimeout(() => {
     const f = janela.querySelector("form");
@@ -924,7 +967,7 @@ function mostrarAfetados(afetados) {
       ? el("ul", { class: "lista" }, afetados.map(a => el("li", { class: "item", "data-afetado": a.cliente },
         el("strong", { text: `${dataLonga(a.data)} ${a.hora} · ${a.cliente}` }),
         el("p", { class: "suave", text: `${a.barbeiro} · ${a.servicos}` }),
-        el("div", { class: "item-acoes" }, el("a", { class: "botao pequeno whats", href: a.whatsapp.proposta, target: "_blank", rel: "noopener", text: "Propor horário" })))))
+        a.whatsapp ? el("div", { class: "item-acoes" }, el("a", { class: "botao pequeno whats", href: a.whatsapp.proposta, target: "_blank", rel: "noopener", text: "Propor horário" })) : el("p", { class: "suave", text: "Cliente sem telefone: avise pessoalmente." }))))
       : el("p", { text: "Nenhum horário marcado nesse período." }),
     el("p", { class: "suave", text: "Remarque cada um pela agenda (cancele com o motivo e marque no novo horário)." })
   ], { ok: "Pronto", semCancelar: true, aoConfirmar: () => true });
@@ -1269,8 +1312,8 @@ function janelaAvulso(profissionais, recarregar) {
     campo("Quem atendeu", { tag: "select", name: "prof", opcoes: profissionais.map(p => [p.id, p.nome]) }),
     el("div", { class: "lista-servicos" }, linhas.map(l => l.el)),
     totalEl,
-    campo("Telefone do cliente (WhatsApp)", { name: "aTel", inputmode: "tel", required: true, autocomplete: "off" }),
-    campo("Nome do cliente", { name: "aNome", autocomplete: "off" }, "Obrigatório se for cliente novo."),
+    campo("Telefone do cliente (WhatsApp) — opcional", { name: "aTel", inputmode: "tel", autocomplete: "off" }),
+    campo("Nome do cliente", { name: "aNome", autocomplete: "off" }, "Obrigatório sem telefone ou se for cliente novo."),
     caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "aLgpd" }),
     ...pag.elementos
   ], {
@@ -2118,7 +2161,7 @@ async function telaClientes(busca = "") {
     aoSalvar: () => telaClientes(),
     campos: c => [
       campo("Nome", { name: "nome", required: true, value: c?.nome, autocomplete: "off" }),
-      campo("Telefone (WhatsApp)", { name: "telefone", required: true, inputmode: "tel", value: c ? fone(c.telefone) : "", placeholder: "(11) 91234-5678", autocomplete: "off" }),
+      campo(c && !c.telefone ? "Telefone (WhatsApp) — opcional" : "Telefone (WhatsApp)", { name: "telefone", required: !c || Boolean(c.telefone) || null, inputmode: "tel", value: c ? fone(c.telefone) : "", placeholder: "(11) 91234-5678", autocomplete: "off" }),
       campo("Observação (opcional)", { tag: "textarea", name: "obs", rows: "2", maxlength: "500", value: c?.observacao || "" }),
       caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "lgpd", checked: c?.aceiteLgpd || null })
     ],
@@ -2132,8 +2175,8 @@ async function telaClientes(busca = "") {
     ? el("ul", { class: "lista" }, clientes.map(c => el("li", { class: `item ${c.ativo ? "" : "inativo"}`, "data-cliente": c.nome },
       el("div", { class: "item-topo" }, el("strong", { text: c.nome }),
         c.ativo ? null : el("span", { class: "etiqueta vermelha", text: "Desativado" }),
-        c.aceiteLgpd ? el("span", { class: "etiqueta verde", text: "LGPD ok" }) : el("span", { class: "etiqueta amarela", text: "Sem aceite" })),
-      el("p", { class: "suave", text: fone(c.telefone) }),
+        !c.telefone ? null : c.aceiteLgpd ? el("span", { class: "etiqueta verde", text: "LGPD ok" }) : el("span", { class: "etiqueta amarela", text: "Sem aceite" })),
+      el("p", { class: "suave", text: c.telefone ? fone(c.telefone) : "Sem telefone" }),
       c.observacao ? el("p", { class: "suave", text: c.observacao }) : null,
       linhaAcoesCadastro("clientes", c, () => telaClientes(busca), () => editarEmJanela(`Editar ${c.nome}`, def, c)))))
     : el("p", { class: "vazio", text: busca ? "Nenhum cliente encontrado." : "Nenhum cliente ainda." });
@@ -2312,11 +2355,13 @@ async function rotear() {
   }
   const vez = ++vezRota;
   document.body.dataset.carregando = "1";   // a tela está sendo montada (usado também pelos testes)
+  inicioCarga();
   try {
     await rota.tela(parametro);
   } catch (e) {
     if (e.message !== "Sessão encerrada") mostrar(el("div", { class: "cartao" }, el("p", { class: "erro", text: e.message }), botao("Tentar de novo", rotear)));
   } finally {
+    fimCarga();
     if (vez === vezRota) delete document.body.dataset.carregando;
   }
 }
@@ -2340,12 +2385,17 @@ async function iniciar() {
   document.getElementById("fundo-menu").addEventListener("click", fecharMenu);
   document.addEventListener("keydown", e => { if (e.key === "Escape") fecharMenu(); });
   window.addEventListener("hashchange", rotear);
-  if (localStorage.getItem(CHAVE_TOKEN)) {
-    try {
-      usuario = (await api("/auth/me")).usuario;
-    } catch { /* api() já levou para o login */ return; }
+  inicioCarga();   // tela de abertura (logo + frase) até a 1ª tela ficar pronta
+  try {
+    if (localStorage.getItem(CHAVE_TOKEN)) {
+      try {
+        usuario = (await api("/auth/me")).usuario;
+      } catch { /* api() já levou para o login */ return; }
+    }
+    await rotear();
+  } finally {
+    fimCarga();
   }
-  rotear();
   if ("serviceWorker" in navigator && location.protocol === "https:") {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   }
