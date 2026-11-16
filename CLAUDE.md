@@ -131,7 +131,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 - 16/11/2026: **Promissória só para cliente cadastrado** (`MSG_NOTA_CADASTRO` em agenda.js; `atendimentoAvulso` recusa promissória sem `cliente.id`, antes de gravar; tela: `.aviso-nota` no `blocoPagamento` quando a forma é promissória + checagem no "Atendimento sem horário"). Testes: `test/melhorias.test.js` + `test/navegador-melhorias.mjs` (print `*-promissoria-avulso-recusada`).
   - Base de 30 min + horário compacto + promissória só para cadastrado publicados em 16/11/2026 (autorizado): oficial 43e97c8b, teste 5ca5da16 (conferido no forblade.com.br: sw `4blade-v15`).
 
-## Versão de teste publicada (Cloudflare)
+## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.
 - No ambiente do Claude o token fica como segredo de rede de api.cloudflare.com (usar `CLOUDFLARE_API_TOKEN=proxy-injected`); o envio de "assets" não passa pelo proxy, por isso a versão de teste usa `src/entrada-teste.js` (tela dentro do Worker).
@@ -142,7 +142,8 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 - Configuração: `wrangler.toml` (mesma entrada `src/entrada-teste.js`, tela dentro do Worker). Publicada a partir da ramificação `melhorias-layout` (todas as melhorias até o "Depois (11)" + mensagens prontas).
 - Banco nasceu vazio, com as migrações 0001–0010 aplicadas. 1º acesso: usuário `suporte` (perfil plataforma) criado direto no banco, senha provisória entregue ao responsável na conversa (troca obrigatória no 1º login). Sem segredo ADMIN_SETUP_TOKEN.
 - Endereço próprio: **https://forblade.com.br** (e www) — no ar desde 16/11/2026 13h19.
-- Publicar de novo / migrar o banco REAL: SEMPRE pedir confirmação antes (`npx wrangler deploy`; `npx wrangler d1 migrations apply 4blade-db --remote`). Testar primeiro na versão de teste.
+- Publicar de novo / migrar o banco REAL: SEMPRE pedir confirmação antes (`npx wrangler deploy`; `npx wrangler d1 migrations apply 4blade-db --remote`).
+- **Desde 16/11/2026 (decisão do responsável): publicar SÓ na oficial.** Não publicar mais na versão de teste (economizar tempo). Os testes automáticos e de navegador locais continuam antes de publicar.
 
 ## Pendências fora do código
 - Domínio **forblade.com.br**: ativo e ligado à oficial. Falta (se quiser) o e-mail suporte@forblade.com.br (Email Routing da Cloudflare). Conferir 4blade.com.br e a marca no INPI (classe 42).
