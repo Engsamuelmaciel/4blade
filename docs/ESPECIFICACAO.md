@@ -152,7 +152,7 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - Nomes técnicos em minúsculas: repositório e Worker `4blade`.
 
 ## 10. Ajustes pedidos pelo responsável após a fase 1 (16/11/2026)
-- **Menu lateral por categorias** (Visão geral, Atendimento, Financeiro, Catálogo e estoque, Equipe e ajustes; cada perfil vê só as suas). Tocar na categoria abre as opções; escolher uma fecha o menu (celular) e a tela ocupa a página toda. No computador o menu fica fixo à esquerda.
+- **Menu lateral por categorias** (Visão geral; Atendimento = agenda, caixa, clientes e mensagens; Financeiro; Catálogo e estoque; Equipe e ajustes; cada perfil vê só as suas). Tocar na categoria abre as opções; escolher uma fecha o menu (celular) e a tela ocupa a página toda. No computador o menu fica fixo à esquerda.
 - **Visual mais compacto e moderno** (menos rolagem); painel do gestor sem espaços vazios.
 - **Agenda em Dia, Semana, Mês e Ano.** Mês: calendário com a cor de cada dia — verde = horários livres, laranja = poucos horários (menos de 1/3 livre), vermelho = agenda cheia (não cabe nem o serviço mais curto), cinza = fechado/folga — e quantas vagas sobram. Ano: 12 mini calendários com as mesmas cores; tocar abre o mês, tocar no dia abre o dia.
 - **Horário fixo (recorrência):** ao marcar, "Repetir" toda semana ou a cada 2, 3 ou 4 semanas, até uma data (no máximo 6 meses). Datas sem vaga (ocupado, fechado, folga, bloqueio) ficam de fora e aparecem numa lista. O horário mostra o selo "Fixo". Ao cancelar dá para cancelar só aquele dia ou aquele e os próximos (encerra a série, com motivo).
