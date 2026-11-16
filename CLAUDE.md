@@ -94,7 +94,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 - 16/11/2026: **Landing page** na mesma ramificação (ESPECIFICACAO.md seção 13). NÃO publicada ainda.
   - Tela: `telaInicio` (rotas públicas `""` e `inicio`; classes `lp-*` no CSS), login em `#/entrar`, `blocoPlanos` usado pela landing e por `#/planos`; `GET /api/planos` devolve também `contato {whatsapp, email}` do suporte. Testes no navegador abrem em `#/entrar`; a landing é testada em `test/navegador-assinatura.mjs` (prints `docs/prints/assinatura/*-01-landing.png`).
   - Domínio: zona `forblade.com.br` criada pelo responsável na Cloudflare (id `79490ace4b817614d601aab55e36afdf`, nameservers brad/kiki.ns.cloudflare.com, trocados no registro.br em 16/11 ~11h). Token do Claude ganhou Zona:Ler, DNS:Editar, Rotas de Workers:Editar. Combinado: raiz + www → Worker `4blade` (oficial). O responsável NÃO quer teste.forblade.com.br. Versão de teste atualizada com esta ramificação em 16/11 (migrações 0011–0012 no 4blade-db-teste).
-  - **16/11/2026 ~13h: OFICIAL publicada a partir da `planos-assinatura`** (autorizada pelo responsável): migrações 0011–0012 aplicadas no 4blade-db (banco sem nenhuma barbearia), deploy do Worker `4blade` (versão 1bee84cb). Domínios personalizados do Worker criados: `forblade.com.br` e `www.forblade.com.br` → `4blade` (AAAA 100:: com proxy criados automaticamente). Zona ainda "pending" no momento da publicação; o token não tem permissão de activation_check. Assinatura on-line desligada (sem ASAAS_API_KEY) e contato do suporte ainda não preenchido no painel da plataforma.
+  - **16/11/2026 ~13h: OFICIAL publicada a partir da `planos-assinatura`** (autorizada pelo responsável): migrações 0011–0012 aplicadas no 4blade-db (banco sem nenhuma barbearia), deploy do Worker `4blade` (versão 1bee84cb). Domínios personalizados do Worker criados: `forblade.com.br` e `www.forblade.com.br` → `4blade` (AAAA 100:: com proxy criados automaticamente). Zona ativou às 13h12 de 16/11; https://forblade.com.br e www respondem 200 (print `docs/prints/forblade-no-ar.png`). Assinatura on-line desligada (sem ASAAS_API_KEY) e contato do suporte ainda não preenchido no painel da plataforma.
 
 ## Versão de teste publicada (Cloudflare)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
@@ -106,11 +106,11 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 - Endereço: https://4blade.terraplanagem.workers.dev (Worker `4blade`, banco D1 `4blade-db` id `e59dc06b-cf90-4e67-bc06-710165e45d5a`, região ENAM). Dados REAIS: nunca usar para testes.
 - Configuração: `wrangler.toml` (mesma entrada `src/entrada-teste.js`, tela dentro do Worker). Publicada a partir da ramificação `melhorias-layout` (todas as melhorias até o "Depois (11)" + mensagens prontas).
 - Banco nasceu vazio, com as migrações 0001–0010 aplicadas. 1º acesso: usuário `suporte` (perfil plataforma) criado direto no banco, senha provisória entregue ao responsável na conversa (troca obrigatória no 1º login). Sem segredo ADMIN_SETUP_TOKEN.
-- Endereço próprio: https://forblade.com.br (e www), quando a zona ficar ativa.
+- Endereço próprio: **https://forblade.com.br** (e www) — no ar desde 16/11/2026 13h19.
 - Publicar de novo / migrar o banco REAL: SEMPRE pedir confirmação antes (`npx wrangler deploy`; `npx wrangler d1 migrations apply 4blade-db --remote`). Testar primeiro na versão de teste.
 
 ## Pendências fora do código
-- Domínio **forblade.com.br**: na Cloudflare e ligado à oficial (falta só a zona ativar). Conferir 4blade.com.br e a marca no INPI (classe 42).
+- Domínio **forblade.com.br**: ativo e ligado à oficial. Falta (se quiser) o e-mail suporte@forblade.com.br (Email Routing da Cloudflare). Conferir 4blade.com.br e a marca no INPI (classe 42).
 - Termos de uso e política de privacidade (LGPD) antes de vender.
 - Forma de cobrança da mensalidade (boleto/Pix recorrente) — fora do sistema na fase 1.
 - Contador: CNAE, anexo do Simples (Fator R) e se as barbearias clientes usam a Lei do Salão-Parceiro.
