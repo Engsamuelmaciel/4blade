@@ -201,7 +201,7 @@ export async function rotasCaixa(ctx, path, method) {
                   ORDER BY a.inicio`).bind(ctx.barbeariaId, hoje, somarDias(hoje, -7), somarDias(hoje, -1)).all(),
       db.prepare(`SELECT s.agendamento_id, s.servico_id, s.nome, sv.preco_centavos FROM agendamento_servicos s JOIN agendamentos a ON a.id = s.agendamento_id
                   LEFT JOIN servicos sv ON sv.id = s.servico_id WHERE a.barbearia_id = ? AND a.data BETWEEN ? AND ? ORDER BY s.rowid`).bind(ctx.barbeariaId, somarDias(hoje, -7), hoje).all(),
-      db.prepare(`SELECT id, nome FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('gerente','barbeiro') ORDER BY nome`).bind(ctx.barbeariaId).all()
+      db.prepare(`SELECT id, nome FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('proprietario','gerente','barbeiro') ORDER BY nome`).bind(ctx.barbeariaId).all()
     ]);
     return json({
       profissionais: profs.results,

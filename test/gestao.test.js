@@ -135,7 +135,7 @@ describe("semana simulada (conferida à mão)", () => {
     assert.equal(c.custoProdutosCentavos, 8000);
     assert.equal(c.lucroCentavos, 27700, "semana não desconta contas");
     const com = Object.fromEntries(c.comissoesPorBarbeiro.map(x => [x.nome, x.comissaoCentavos]));
-    assert.deepEqual(com, { "Pessoa ana.alfa": 9450, "Pessoa beto.alfa": 8350, "Pessoa ger.alfa": 0 });
+    assert.deepEqual(com, { "Dono alfa": 0, "Pessoa ana.alfa": 9450, "Pessoa beto.alfa": 8350, "Pessoa ger.alfa": 0 }, "o dono também atende (0% de comissão por padrão)");
     // gráfico por dia: 02: 40+30 = 70 · 03: 70+45 = 115 · 04: 35 · 05: 40+90 = 130 · 06: 40+45 = 85 · 07: 30 · 08: 70
     assert.deepEqual(sem.faturamentoPorDia.map(d => d.valorCentavos), [7000, 11500, 3500, 13000, 8500, 3000, 7000]);
     assert.deepEqual(sem.ranking.slice(0, 2).map(r => [r.nome, r.faturamentoCentavos, r.atendimentosQtd]), [["Pessoa ana.alfa", 18000, 4], ["Pessoa beto.alfa", 17500, 4]]);

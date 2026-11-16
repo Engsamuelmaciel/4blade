@@ -266,7 +266,7 @@ describe("caixa como recepção: agenda de todos, clientes, mensagens e catálog
     // vê os dois, com o filtro por profissional, e a ocupação
     const ag = (await get(`/api/agenda?data=${AMANHA}`, cx.token)).dados;
     assert.equal(ag.agendamentos.length, 2);
-    assert.equal(ag.profissionais.length, 2);
+    assert.equal(ag.profissionais.length, 3, "dono + gerente + barbeiro (o dono também atende)");
     assert.equal((await get(`/api/agenda?data=${AMANHA}&barbeiroId=${barb.id}`, cx.token)).dados.agendamentos.length, 1);
     assert.equal((await get(`/api/agenda/ocupacao?inicio=${AMANHA}&fim=${AMANHA}`, cx.token)).status, 200);
     // lembrete e cancelamento em horário de outro dia

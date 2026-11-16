@@ -105,7 +105,7 @@ export function porBarbeiro(d, profissionais) {
 }
 
 async function profissionaisDa(db, barbeariaId) {
-  return (await db.prepare(`SELECT id, nome, perfil, ativo FROM usuarios WHERE barbearia_id = ? AND perfil IN ('gerente','barbeiro')
+  return (await db.prepare(`SELECT id, nome, perfil, ativo FROM usuarios WHERE barbearia_id = ? AND perfil IN ('proprietario','gerente','barbeiro')
                             ORDER BY ativo DESC, nome`).bind(barbeariaId).all()).results;
 }
 

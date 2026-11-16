@@ -79,7 +79,9 @@ const fone = d => {
   if (!d) return "";
   return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
 };
-const NOME_PERFIL = { plataforma: "Plataforma", proprietario: "Proprietário", gerente: "Gerente", barbeiro: "Barbeiro", caixa: "Caixa" };
+// O dono entra como gerente (também atende: agenda, horário, comissão, desempenho) e tem os poderes de proprietário.
+const NOME_PERFIL = { plataforma: "Plataforma", proprietario: "Gerente (dono)", gerente: "Gerente", barbeiro: "Barbeiro", caixa: "Caixa" };
+const atendePerfil = p => p === "proprietario" || p === "gerente" || p === "barbeiro";
 const NOME_PLANO = { basico: "Básico", standard: "Standard", pro: "Pro", profissional: "Pro" };
 const OPCOES_PLANO = [["basico", "Básico (até 2 barbeiros)"], ["standard", "Standard (até 4 barbeiros)"], ["pro", "Pro (até 10 barbeiros)"]];
 
@@ -944,7 +946,7 @@ const LP_DORES = [
   ["Quem não anota não sabe se lucrou.", "O painel mostra o que entrou, o que saiu e o lucro do dia, da semana e do mês."]
 ];
 const LP_PERFIS = [
-  ["Proprietário", "Vê o lucro, o painel e tudo o que acontece, de onde estiver."],
+  ["Dono (gerente)", "Atende com agenda própria e vê o lucro, o painel e tudo o que acontece, de onde estiver."],
   ["Gerente", "Organiza agenda, equipe, comissões e contas — e também atende."],
   ["Barbeiro", "Vê a própria agenda, finaliza atendimentos e acompanha quanto ganhou."],
   ["Caixa / recepção", "Marca horários para todos, cobra, vende e fecha o caixa."]
@@ -1420,7 +1422,7 @@ async function telaAgenda() {
   const profs = ag.profissionais.filter(p => !estadoAgenda.barbeiroId || p.id === estadoAgenda.barbeiroId);
   let corpo;
   if ((v === "dia" || v === "semana") && !profs.length) {
-    corpo = el("p", { class: "vazio", "data-teste": "sem-profissionais", text: "Nenhum profissional com agenda. Cadastre gerente ou barbeiro em Equipe e ajustes → Equipe (o proprietário não tem agenda própria)." });
+    corpo = el("p", { class: "vazio", "data-teste": "sem-profissionais", text: "Nenhum profissional com agenda. Cadastre gerente ou barbeiro em Equipe e ajustes → Equipe." });
   } else if (v === "dia") {
     // Dia: um profissional por coluna (gerente vê todos lado a lado).
     corpo = el("div", { class: `agenda-colunas ${profs.length > 1 ? "varias" : ""}` }, profs.map(p => {
@@ -1688,7 +1690,7 @@ function painelDisponibilidade() {
 function janelaMarcar(ag, pre = {}) {
   const servicos = servicosCache || [];
   // Sem profissional ou sem serviço não há como marcar: explica o que falta em vez de um formulário vazio.
-  if (veTodas() && !ag.profissionais.length) return abrirJanela("Novo horário", el("p", { text: "Nenhum profissional com agenda. Cadastre um gerente ou barbeiro em Equipe e ajustes → Equipe (o proprietário não tem agenda própria)." }), { ok: "Entendi", semCancelar: true, aoConfirmar: () => true });
+  if (veTodas() && !ag.profissionais.length) return abrirJanela("Novo horário", el("p", { text: "Nenhum profissional com agenda. Cadastre um gerente ou barbeiro em Equipe e ajustes → Equipe." }), { ok: "Entendi", semCancelar: true, aoConfirmar: () => true });
   if (!servicos.length) return abrirJanela("Novo horário", el("p", { text: "Nenhum serviço cadastrado. Cadastre em Catálogo e estoque → Serviços (nome, preço e duração)." }), { ok: "Entendi", semCancelar: true, aoConfirmar: () => true });
   // Cliente: da base (busca) ou novo/avulso. Telefone é opcional: sem ele, o cliente fica só com o nome (sem WhatsApp).
   const nomeCampo = campo("Nome do cliente", { name: "cliNome", autocomplete: "off" });
@@ -3098,11 +3100,13 @@ async function telaEquipe() {
       u.ativo ? null : el("span", { class: "etiqueta vermelha", text: "Desativado" }),
       u.ativo && u.trocaPendente ? el("span", { class: "etiqueta amarela", text: "Ainda não entrou" }) : null),
     el("p", { class: "suave", text: [`Usuário: ${u.login}`, u.telefone ? fone(u.telefone) : null].filter(Boolean).join(" · ") }),
-    u.perfil === "gerente" || u.perfil === "barbeiro"
+    atendePerfil(u.perfil)
       ? el("p", { class: "suave", text: `Comissão: ${pct(u.comissaoServicoBp)} em serviços · ${pct(u.comissaoProdutoBp)} em produtos` }) : null,
     !u.ativo && u.motivoDesativacao ? el("p", { class: "suave", text: `Motivo: ${u.motivoDesativacao}` }) : null,
-    !u.podeGerenciar && u.id === usuario.id && u.perfil === "gerente"
-      ? el("div", { class: "item-acoes" }, botao("Meu horário", () => janelaHorario(u), "pequeno")) : null,
+    !u.podeGerenciar && u.id === usuario.id && (u.perfil === "gerente" || u.perfil === "proprietario")
+      ? el("div", { class: "item-acoes" },
+        botao("Meu horário", () => janelaHorario(u), "pequeno"),
+        u.perfil === "proprietario" ? botao("Meus dados e comissão", () => janelaUsuario(u), "pequeno") : null) : null,
     u.podeGerenciar ? el("div", { class: "item-acoes" },
       botao("Editar", () => janelaUsuario(u), "pequeno"),
       (u.perfil === "gerente" || u.perfil === "barbeiro") && u.ativo ? botao("Horário", () => janelaHorario(u), "pequeno") : null,
@@ -3172,7 +3176,7 @@ function formUsuario(perfis) {
 }
 
 function janelaUsuario(u) {
-  const atendeAgenda = u.perfil === "gerente" || u.perfil === "barbeiro";
+  const atendeAgenda = atendePerfil(u.perfil);
   return abrirJanela(`Editar ${u.nome}`, [
     campo("Nome", { name: "nome", value: u.nome, required: true }),
     campo("Telefone", { name: "telefone", value: u.telefone ? fone(u.telefone) : "", inputmode: "tel" }),
@@ -3717,7 +3721,7 @@ function gruposDoPerfil(p) {
     { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
   ];
   return [
-    { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ...(p === "gerente" ? [["desempenho", "Meu desempenho", "grafico"]] : [])] },
+    { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ...(p === "gerente" || p === "proprietario" ? [["desempenho", "Meu desempenho", "grafico"]] : [])] },
     { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
     { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["comissoes", "Comissões e vales", "comissao"], ["notas", "Notas em aberto", "contas"], ["contas", "Contas a pagar", "contas"], ["contador", "Contador e dados", "contador"]] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"], ["estoque", "Estoque", "estoque"]] },
@@ -3783,7 +3787,7 @@ const ROTAS = {
   comissoes: { perfis: ["proprietario", "gerente"], tela: telaComissoes },
   contas: { perfis: ["proprietario", "gerente"], tela: telaContas },
   contador: { perfis: ["proprietario", "gerente"], tela: telaContador },
-  desempenho: { perfis: ["gerente", "barbeiro"], tela: telaDesempenho },
+  desempenho: { perfis: ["proprietario", "gerente", "barbeiro"], tela: telaDesempenho },
   "caixa-historico": { perfis: ["proprietario", "gerente"], tela: telaHistoricoCaixa },
   "caixa-dia": { perfis: ["proprietario", "gerente"], tela: data => telaCaixa(/^\d{4}-\d{2}-\d{2}$/.test(data || "") ? data : hojeLocal()) },
   equipe: { perfis: ["proprietario", "gerente"], tela: telaEquipe },

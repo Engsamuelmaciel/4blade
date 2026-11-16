@@ -114,6 +114,8 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 
 - 16/11/2026: **Instalar no iPhone/Android**: tutorial `instalar-app` (público para todos os perfis, sem rota de tela; print = site aberto no celular, gerado em `test/gerar-tutoriais.mjs`), dúvida frequente reforçando "no iPhone só pelo Safari", `index.html` com `apple-mobile-web-app-status-bar-style` e `mobile-web-app-capable`. 25 prints. Publicado em 16/11/2026 (autorizado): oficial 80b71388, teste 9dfceb9e.
 
+- 16/11/2026: **Dono entra como gerente** (ESPECIFICACAO.md seção 16): `atende()` em perfis.js inclui `proprietario`; SQL de profissionais `perfil IN ('proprietario','gerente','barbeiro')` (agenda, caixa, gestão, contador); `/usuarios/alterar` aceita o próprio dono (nome/telefone/comissão; desativar-se → 403); horário do dono só ele altera. Tela: `NOME_PERFIL.proprietario = "Gerente (dono)"`, `atendePerfil()`, "Meu horário" + "Meus dados e comissão" no cartão do dono, "Meu desempenho" no menu do dono. Testes ajustados (dono conta como profissional) + teste novo em `test/agenda.test.js`. `npm test` (130).
+
 ## Versão de teste publicada (Cloudflare)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.

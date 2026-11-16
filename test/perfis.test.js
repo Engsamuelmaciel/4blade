@@ -114,12 +114,13 @@ describe("quem cria quem", () => {
     }
   });
 
-  test("gerente não altera gerente nem proprietário; ninguém altera a si mesmo", async () => {
+  test("gerente não altera gerente nem proprietário; só o dono edita os próprios dados (e não se desativa)", async () => {
     const { env, post, prop, ger } = await cenario();
     const propId = env.DB.raw.prepare("SELECT id FROM usuarios WHERE login = 'dono.alfa'").get().id;
     assert.equal((await post("/api/usuarios/alterar", ger.token, { id: propId, nome: "Hack" })).status, 403);
     assert.equal((await post("/api/usuarios/alterar", ger.token, { id: ger.id, nome: "Eu Mesmo" })).status, 403);
-    assert.equal((await post("/api/usuarios/alterar", prop, { id: propId, nome: "Eu Mesmo" })).status, 403);
+    assert.equal((await post("/api/usuarios/alterar", prop, { id: propId, nome: "Dono Eu Mesmo", comissaoServicoBp: 5000 })).status, 200, "dono atende: edita nome e comissão dele");
+    assert.equal((await post("/api/usuarios/alterar", prop, { id: propId, ativo: false, motivo: "teste" })).status, 403, "dono não se desativa");
     assert.equal((await post("/api/usuarios/redefinir-senha", ger.token, { id: propId, motivo: "teste" })).status, 403);
     // proprietário altera gerente
     assert.equal((await post("/api/usuarios/alterar", prop, { id: ger.id, comissaoServicoBp: 4500 })).status, 200);

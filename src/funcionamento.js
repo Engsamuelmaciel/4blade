@@ -185,6 +185,7 @@ export async function rotasFuncionamento(ctx, path, method) {
     if (!alvo) return fail("Pessoa não encontrada.", 404);
     if (!atende(alvo.perfil)) return fail("Só gerente e barbeiro têm horário de trabalho.");
     if (alvo.perfil === "gerente" && user.perfil !== "proprietario" && alvo.id !== user.id) return fail("Só o proprietário altera o horário de outro gerente.", 403);
+    if (alvo.perfil === "proprietario" && alvo.id !== user.id) return fail("Só o próprio dono altera o horário dele.", 403);
     let linhas;
     try {
       linhas = lerDias(input.dias, { campoAberto: "trabalha", campoIni: "ini", campoFim: "fim", comIntervalo: false });

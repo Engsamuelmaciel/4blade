@@ -7,7 +7,7 @@
 window.AJUDA = {
   duvidas: [
     { cat: "Primeiros passos", p: "Por onde eu começo?", r: "Na ordem: 1) Equipe e ajustes → Funcionamento (dias e horários em que a barbearia abre); 2) Catálogo e estoque → Serviços (cortes, barba, preços e duração); 3) Equipe e ajustes → Equipe (barbeiros, gerente e caixa). A agenda só aceita horários depois que o funcionamento estiver salvo." },
-    { cat: "Primeiros passos", p: "Quem é quem no sistema?", r: "Proprietário: dono, vê e faz tudo. Gerente: cuida do dia a dia e também atende (tem agenda e comissão). Barbeiro: vê a própria agenda, finaliza seus atendimentos e acompanha o próprio desempenho. Caixa: recepção — marca horários para todos, cobra, vende e cuida do caixa." },
+    { cat: "Primeiros passos", p: "Quem é quem no sistema?", r: "Gerente (dono): quem assinou o 4blade. Entra como gerente — atende (agenda própria, horário, comissão e desempenho) e cuida de tudo: equipe, caixa, painel, comissões, contas e contador; só ele cria outro gerente. Gerente: mesmas funções do dia a dia, se você quiser cadastrar mais um. Barbeiro: vê a própria agenda, finaliza seus atendimentos e acompanha o próprio desempenho. Caixa: recepção — marca horários para todos, cobra, vende e cuida do caixa." },
     { cat: "Primeiros passos", p: "Dá para usar no celular? Como instalo o app?", r: "Sim, no iPhone e no Android, sem loja de aplicativos. iPhone: abra forblade.com.br no SAFARI (só funciona pelo Safari) → botão Compartilhar (quadrado com seta para cima) → \"Adicionar à Tela de Início\" → \"Adicionar\". Android: abra no Chrome → menu ⋮ → \"Instalar app\" ou \"Adicionar à tela inicial\". O ícone do 4blade aparece junto dos outros apps e abre em tela cheia. Passo a passo em Ajuda → Tutoriais → Instalar o 4blade no celular." },
     { cat: "Acesso e senha", p: "Esqueci a minha senha. E agora?", r: "Barbeiro e caixa: peça ao gerente ou ao proprietário, em Equipe → Nova senha. Gerente: peça ao proprietário. Proprietário: abra um chamado ou chame o suporte do 4blade no WhatsApp. A senha provisória é trocada no 1º acesso." },
     { cat: "Acesso e senha", p: "Alguém saiu da equipe. Apago o usuário?", r: "Não precisa apagar: em Equipe, toque em Desativar e informe o motivo. A pessoa não entra mais, a vaga do plano fica livre e todo o histórico (atendimentos, comissões) continua guardado." },
@@ -145,7 +145,7 @@ window.AJUDA = {
       passos: ["Salve uma vez o contato do contador (nome, WhatsApp, e-mail).", "Escolha o mês e toque em \"Gerar e enviar\": sai o PDF com o resumo e a planilha com tudo.", "No celular abre o Compartilhar; escolha WhatsApp ou e-mail.", "Em \"Cópia dos dados\", baixe todas as planilhas quando quiser."],
       exemplo: "Novembro/2026 → resumo-2026-11.pdf + lancamentos-2026-11.csv.",
       dica: "Se algo mudar depois do envio, aparece \"Alterado depois do envio\" para você mandar de novo." },
-    { id: "desempenho", titulo: "Meu desempenho (barbeiro e gerente)", perfis: ["gerente", "barbeiro"], rotas: ["desempenho"],
+    { id: "desempenho", titulo: "Meu desempenho (quem atende)", perfis: ["proprietario", "gerente", "barbeiro"], rotas: ["desempenho"],
       onde: "Menu → Meu trabalho → Meu desempenho.",
       passos: ["Escolha o período.", "Veja quantos atendimentos fez, quanto faturou e a comissão.", "Toque em \"Baixar extrato\" para ter o PDF e a planilha do mês."],
       exemplo: "Semana: 32 atendimentos · R$ 1.400 faturado · comissão R$ 700.",

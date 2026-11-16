@@ -45,7 +45,7 @@ export async function relatorioContador(ctx, per) {
                 ORDER BY c.data`).bind(b, per.ini, per.fim).all(),
     db.prepare(`SELECT f.*, u.nome AS barbeiro FROM fechamentos_comissao f JOIN usuarios u ON u.id = f.barbeiro_id
                 WHERE f.barbearia_id = ? AND f.pago_em BETWEEN ? AND ?`).bind(b, per.ini, per.fim).all(),
-    db.prepare(`SELECT id, nome, perfil, ativo FROM usuarios WHERE barbearia_id = ? AND perfil IN ('gerente','barbeiro') ORDER BY nome`).bind(b).all(),
+    db.prepare(`SELECT id, nome, perfil, ativo FROM usuarios WHERE barbearia_id = ? AND perfil IN ('proprietario','gerente','barbeiro') ORDER BY nome`).bind(b).all(),
     // estoque no fim do período = saldo de hoje − movimentos depois do fim
     db.prepare(`SELECT p.nome, p.custo_medio_centavos,
                   COALESCE(e.saldo, 0) - COALESCE((SELECT SUM(m.quantidade) FROM estoque_movimentos m WHERE m.produto_id = p.id AND ${dataLocal("m.criado_em")} > ?), 0) AS saldo_fim

@@ -46,8 +46,8 @@ export function podeGerenciarPerfil(user, perfilAlvo) {
 // Quem vê e marca na agenda de todos os profissionais: gestão e caixa (recepção). O caixa não vê comissão.
 export const veTodasAgendas = u => isGestao(u) || u.perfil === "caixa";
 
-// Quem atende (tem agenda e comissão).
-export const atende = perfil => perfil === "gerente" || perfil === "barbeiro";
+// Quem atende (tem agenda e comissão). O proprietário entra como gerente: também atende (pedido do responsável, 16/11/2026).
+export const atende = perfil => perfil === "proprietario" || perfil === "gerente" || perfil === "barbeiro";
 
 // Tela inicial de cada perfil (a tela usa isto para abrir direto no lugar certo).
 export const TELA_INICIAL = {

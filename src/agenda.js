@@ -77,7 +77,7 @@ async function listarAgenda(ctx) {
   const condA = `a.barbearia_id = ? AND a.data BETWEEN ? AND ?${filtro ? " AND a.barbeiro_id = ?" : ""}`;
   const pa = [ctx.barbeariaId, data, ate, ...(filtro ? [filtro] : [])];
   const [prof, ags, servs, fins, itens, pags, coms, msgs, estornos, blq, modelos, caixa] = await Promise.all([
-    db.prepare(`SELECT id, nome, perfil FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('gerente','barbeiro')
+    db.prepare(`SELECT id, nome, perfil FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('proprietario','gerente','barbeiro')
                 ${todas ? "" : "AND id = ?"} ORDER BY CASE perfil WHEN 'gerente' THEN 0 ELSE 1 END, nome`)
       .bind(ctx.barbeariaId, ...(todas ? [] : [user.id])).all(),
     db.prepare(`SELECT a.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone, u.nome AS barbeiro_nome,
@@ -625,7 +625,7 @@ async function disponibilidade(ctx) {
   if (filtro && !validId(filtro)) erro("Profissional inválido.");
   const durPedida = Number(url.searchParams.get("duracao") || 0);
   const [profsR, ags, blqs, minDur, regras] = await Promise.all([
-    db.prepare(`SELECT id, nome FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('gerente','barbeiro')${filtro ? " AND id = ?" : ""}
+    db.prepare(`SELECT id, nome FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('proprietario','gerente','barbeiro')${filtro ? " AND id = ?" : ""}
                 ORDER BY CASE perfil WHEN 'gerente' THEN 0 ELSE 1 END, nome`).bind(ctx.barbeariaId, ...(filtro ? [filtro] : [])).all(),
     db.prepare(`SELECT a.barbeiro_id, a.inicio, a.fim, a.situacao, c.nome AS cliente FROM agendamentos a JOIN clientes c ON c.id = a.cliente_id
                 WHERE a.barbearia_id = ? AND a.data = ? AND a.situacao IN ('agendado','finalizado') ORDER BY a.inicio`).bind(ctx.barbeariaId, data).all(),
@@ -681,7 +681,7 @@ async function ocupacao(ctx) {
   const filtro = veTodasAgendas(user) ? (url.searchParams.get("barbeiroId") || null) : user.id;
   if (filtro && !validId(filtro)) erro("Profissional inválido.");
   const [profsR, ags, blqs, minDur, regras] = await Promise.all([
-    db.prepare(`SELECT id, nome FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('gerente','barbeiro')${filtro ? " AND id = ?" : ""}`)
+    db.prepare(`SELECT id, nome FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('proprietario','gerente','barbeiro')${filtro ? " AND id = ?" : ""}`)
       .bind(ctx.barbeariaId, ...(filtro ? [filtro] : [])).all(),
     db.prepare(`SELECT barbeiro_id, data, inicio, fim FROM agendamentos WHERE barbearia_id = ? AND situacao IN ('agendado','finalizado') AND data BETWEEN ? AND ?`)
       .bind(ctx.barbeariaId, ini, fim).all(),

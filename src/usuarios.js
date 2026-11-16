@@ -115,10 +115,12 @@ export async function rotasUsuarios(ctx, path, method) {
   }
 
   // Busca o alvo SEMPRE dentro da barbearia da sessão: id de outra barbearia = "não encontrado".
-  async function alvoGerenciavel(id) {
+  async function alvoGerenciavel(id, { proprioDono = false } = {}) {
     if (!validId(id)) throw new HttpError("Pessoa inválida.", 400);
     const alvo = await db.prepare("SELECT * FROM usuarios WHERE id = ? AND barbearia_id = ?").bind(id, ctx.barbeariaId).first();
     if (!alvo) throw new HttpError("Pessoa não encontrada.", 404);
+    // O dono edita os PRÓPRIOS dados (nome, telefone e comissão, já que ele também atende); não se desativa.
+    if (proprioDono && alvo.id === user.id && user.perfil === "proprietario") return alvo;
     if (alvo.id === user.id || !podeGerenciarPerfil(user, alvo.perfil)) {
       throw new HttpError("Sem permissão para alterar esta pessoa.", 403);
     }
@@ -127,7 +129,8 @@ export async function rotasUsuarios(ctx, path, method) {
 
   if (path === "/usuarios/alterar" && method === "POST") {
     const input = await readJson(request);
-    const alvo = await alvoGerenciavel(input.id);
+    const alvo = await alvoGerenciavel(input.id, { proprioDono: true });
+    if (alvo.id === user.id && input.ativo !== undefined) return fail("Você não pode desativar o seu próprio acesso.", 403);
     const novo = {
       nome: alvo.nome,
       telefone: alvo.telefone,

@@ -104,7 +104,10 @@ async function rodar(tela) {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), tela.largura);
     await print("barbearia-nova-painel");
     await ir(page, "Agenda");
-    await page.waitForSelector("[data-teste=sem-profissionais]");
+    await page.waitForSelector(".barra-agenda");
+    await page.waitForFunction(() => !document.body.dataset.carregando);
+    assert.equal(await page.locator("[data-teste=sem-profissionais]").count(), 0, "o dono já tem agenda própria (entra como gerente)");
+    assert.match(await page.locator("main").innerText(), /vitor fictício/i);
     if (tela.movel) {
       const larg = async sel => (await page.locator(sel).first().boundingBox()).width;
       assert.ok(await larg(".barra-agenda .alterna") > tela.largura - 60, "botões Dia/Semana/Mês/Ano na largura toda");

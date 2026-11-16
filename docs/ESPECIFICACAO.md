@@ -217,3 +217,8 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - Com a cobrança desligada, o site oferece **"Solicitar teste grátis"** (landing, cartões dos planos; `#/teste-gratis[/plano]`): nome da barbearia, seu nome, WhatsApp, cidade, quantos barbeiros, plano de interesse (opcional), mensagem (opcional) e aceite de contato + política de privacidade.
 - O pedido vai para a **plataforma** (menu "Pedidos de teste"): situação Novo → Em contato → Cadastrada | Descartado (com motivo). Botão de WhatsApp com mensagem pronta e **"Cadastrar barbearia"** já preenchido com os dados do pedido (plano sugerido pelo nº de barbeiros); ao cadastrar, mostra a senha provisória do proprietário e o pedido sai da fila.
 - Mesmo WhatsApp com pedido em aberto nos últimos 30 dias não duplica; no máximo 3 pedidos por hora por aparelho. Tabela `solicitacoes_teste` (migração 0013), da plataforma (sem barbearia_id até virar cliente).
+
+## 16. O dono entra como gerente (16/11/2026, pedido do responsável)
+- Quem compra/recebe o 4blade (perfil `proprietario`, na tela "Gerente (dono)") já é gerente: além de tudo da gestão, **atende** — agenda própria (aparece entre os profissionais; caixa e gerente marcam para ele), horário de trabalho (só ele define o dele), finaliza os próprios atendimentos, comissão (começa em 0%; ele mesmo ajusta em Equipe → "Meus dados e comissão") e "Meu desempenho". Não precisa cadastrar um gerente para usar a agenda.
+- Continua exclusivo do dono: criar outro gerente, alterar horário de gerente, cancelar assinatura. Cadastrar mais gerentes é opcional (sem limite).
+- O dono edita os próprios dados (nome, telefone, comissão), mas não pode se desativar.

@@ -148,7 +148,7 @@ describe("agenda (4.1)", () => {
     assert.deepEqual(doBarb.profissionais.map(p => p.id), [barb.id]);
     const doGer = (await get(`/api/agenda?data=${HOJE}`, ger.token)).dados;
     assert.equal(doGer.agendamentos.length, 2);
-    assert.equal(doGer.profissionais.length, 3, "gerente + 2 barbeiros lado a lado");
+    assert.equal(doGer.profissionais.length, 4, "dono + gerente + 2 barbeiros lado a lado (o dono também atende)");
 
     const idOutro = doGer.agendamentos.find(a => a.barbeiroId === barb2.id).id;
     for (const [rota, corpo] of [
@@ -413,5 +413,32 @@ describe("isolamento da agenda entre barbearias", () => {
     assert.equal((await get("/api/agenda", p)).status, 403);
     assert.equal((await get("/api/caixa/hoje", p)).status, 403);
     assert.equal((await get("/api/funcionamento", p)).status, 403);
+  });
+});
+
+describe("o dono já entra como gerente: também atende (pedido de 16/11/2026)", () => {
+  test("agenda própria, horário de trabalho, finaliza o próprio atendimento e tem desempenho", async () => {
+    const amb = await cenario("dono");
+    const { post, get, prop, ger, barb, cx, corte, marcar } = amb;
+    const me = (await get("/api/auth/me", prop)).dados.usuario;
+    // aparece entre os profissionais e marca na própria agenda (sem escolher ninguém)
+    const ag = (await get(`/api/agenda?data=${HOJE}`, prop)).dados;
+    assert.ok(ag.profissionais.some(p => p.id === me.id), "dono na lista de profissionais");
+    const m = await marcar(prop, { hora: "10:00" });
+    assert.equal(m.status, 201, JSON.stringify(m.dados));
+    // caixa e gerente marcam para o dono
+    assert.equal((await marcar(cx.token, { hora: "11:00", barbeiroId: me.id })).status, 201);
+    // horário de trabalho: o próprio dono define; o gerente não mexe no do dono
+    const dias = [0, 1, 2, 3, 4, 5, 6].map(dia => ({ dia, trabalha: true, ini: "08:00", fim: "20:00" }));
+    assert.equal((await post("/api/horarios-trabalho", ger.token, { id: me.id, dias })).status, 403);
+    assert.equal((await post("/api/horarios-trabalho", prop, { id: me.id, dias })).status, 200);
+    // finaliza o próprio atendimento
+    assert.equal((await abrirCaixa(amb, cx.token)).status, 201);
+    const f = await finalizarSimples(amb, prop, m.dados.agendamento.id, [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], [{ forma: "pix", valorCentavos: 4000 }]);
+    assert.equal(f.status, 201, JSON.stringify(f.dados));
+    const d = await get("/api/desempenho?periodo=hoje", prop);
+    assert.equal(d.status, 200, JSON.stringify(d.dados));
+    // barbeiro continua sem ver a agenda do dono
+    assert.equal((await get(`/api/agenda?data=${HOJE}&barbeiroId=${me.id}`, barb.token)).dados.agendamentos.every(a => a.barbeiroId === barb.id), true);
   });
 });
