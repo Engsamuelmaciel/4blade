@@ -1533,7 +1533,7 @@ function calendarioAno(oc, ano, irPara) {
 // Horários e bloqueios de um profissional num dia, em ordem.
 function itensDoDia(ag, data, profId, mostrarNome = false) {
   const lista = [
-    ...ag.agendamentos.filter(a => a.data === data && a.barbeiroId === profId).map(a => ({ ordem: a.inicio, el: cartaoAgendamento(a, mostrarNome) })),
+    ...ag.agendamentos.filter(a => a.data === data && a.barbeiroId === profId).map(a => ({ ordem: a.inicio, el: cartaoAgendamento(a, mostrarNome, { recolhivel: true }) })),
     ...ag.bloqueios.filter(b => b.barbeiroId === profId && b.inicio.slice(0, 10) <= data && b.fim.slice(0, 10) >= data).map(b => {
       const ini = b.inicio.slice(0, 10) === data ? b.inicio.slice(11) : "00:00";
       const fim = b.fim.slice(0, 10) === data ? b.fim.slice(11) : "23:59";
@@ -1573,18 +1573,25 @@ function botaoWhatsapp(a, tipo, rotulo) {
   }, rotulo);
 }
 
-function cartaoAgendamento(a, mostrarNome) {
+// Horários abertos (expandidos) na agenda: continuam abertos quando a tela é montada de novo.
+const cartoesAbertos = new Set();
+// recolhivel: na agenda o cartão fica compacto (hora, situação, cliente e serviço); tocar abre as informações e as ações.
+function cartaoAgendamento(a, mostrarNome, { recolhivel = false } = {}) {
   const f = a.finalizacao;
   const destaque = gestao() && f?.valorAlterado;
   const ultimaMsg = a.mensagens.at(-1);
-  return el("article", { class: `slot ${a.situacao} ${destaque ? "destaque" : ""}`, "data-agendamento": a.cliente.nome },
+  const aberto = !recolhivel || cartoesAbertos.has(a.id);
+  const resumo = [
     el("div", { class: "slot-topo" },
       el("strong", { class: "slot-hora", text: `${a.inicio}–${a.fim}` }),
       el("span", { class: `etiqueta ${COR_SITUACAO[a.situacao]}`, text: NOME_SITUACAO[a.situacao] }),
       a.serie ? el("span", { class: "etiqueta fixo", text: a.serie.intervaloSemanas === 1 ? "Fixo semanal" : `Fixo a cada ${a.serie.intervaloSemanas} sem.` }) : null,
-      destaque ? el("span", { class: "etiqueta laranja", text: "Valor alterado" }) : null),
+      destaque ? el("span", { class: "etiqueta laranja", text: "Valor alterado" }) : null,
+      recolhivel ? el("span", { class: "slot-seta", "aria-hidden": "true" }) : null),
     el("p", { class: "slot-cliente" }, el("strong", { text: a.cliente.nome }), a.cliente.telefone ? ` · ${fone(a.cliente.telefone)}` : " · sem telefone"),
-    el("p", { class: "suave", text: [mostrarNome ? a.barbeiroNome : null, a.servicos.map(s => s.nome).join(" + ")].filter(Boolean).join(" · ") }),
+    el("p", { class: "suave", text: [mostrarNome ? a.barbeiroNome : null, a.servicos.map(s => s.nome).join(" + ")].filter(Boolean).join(" · ") })
+  ];
+  const detalhes = el("div", { class: "slot-detalhes", hidden: aberto ? null : true },
     a.observacao ? el("p", { class: "suave", text: `Obs.: ${a.observacao}` }) : null,
     a.motivo ? el("p", { class: "suave", text: `Motivo: ${a.motivo}` }) : null,
     f ? el("div", { class: "slot-final" },
@@ -1629,6 +1636,21 @@ function cartaoAgendamento(a, mostrarNome) {
         avisar("Atendimento reaberto."); telaAgenda();
       }, "Reabrir"), "pequeno") : null,
       a.situacao === "cancelado" || a.situacao === "faltou" ? botaoWhatsapp(a, "proposta", "Propor horário") : null));
+  const cartao = el("article", { class: `slot ${a.situacao} ${destaque ? "destaque" : ""} ${recolhivel ? "recolhivel" : ""} ${recolhivel && aberto ? "aberto" : ""}`, "data-agendamento": a.cliente.nome });
+  if (!recolhivel) { cartao.append(...resumo.filter(Boolean), detalhes); return cartao; }
+  const cabeca = el("div", { class: "slot-resumo", role: "button", tabindex: "0", "aria-expanded": String(aberto), "data-resumo": a.cliente.nome,
+    title: "Toque para ver as opções" }, ...resumo);
+  const alternar = () => {
+    const abrir = detalhes.hidden;
+    detalhes.hidden = !abrir;
+    cartao.classList.toggle("aberto", abrir);
+    cabeca.setAttribute("aria-expanded", String(abrir));
+    if (abrir) cartoesAbertos.add(a.id); else cartoesAbertos.delete(a.id);
+  };
+  cabeca.addEventListener("click", alternar);
+  cabeca.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); alternar(); } });
+  cartao.append(cabeca, detalhes);
+  return cartao;
 }
 
 // Ficha do atendimento (a partir da lista pequena da semana): tudo o que está registrado + as mesmas ações do cartão.

@@ -27,3 +27,14 @@ export async function ir(page, nome) {
     }
   }
 }
+
+// Agenda: os horários ficam compactos; abre (toca no resumo) para ver as ações. Sem nome = abre todos os da tela.
+export async function abrirHorarios(page, nome = null) {
+  const sel = `${nome ? `[data-agendamento="${nome}"]` : ".slot"}.recolhivel:not(.aberto) .slot-resumo`;
+  await page.waitForFunction(() => !document.body.dataset.carregando);
+  for (let i = 0; i < 60; i++) {
+    const r = page.locator(sel).first();
+    if (!(await r.count())) return;
+    await r.click();
+  }
+}

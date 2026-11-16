@@ -9,7 +9,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir } from "./navegacao.mjs";
+import { ir, abrirHorarios } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -168,6 +168,14 @@ async function rodar(tela) {
     await print("barbeiro-confirmacao-whatsapp");
     await page.click("dialog[open] button:has-text('Agora não')");
     await page.waitForSelector('[data-agendamento="Diego Cliente Fictício"]');
+    // o horário começa compacto (hora, situação, cliente, serviço); tocar abre as informações e as ações
+    assert.equal(await page.locator('[data-agendamento="Diego Cliente Fictício"] .slot-detalhes').isVisible(), false, "horário começa compacto");
+    assert.equal(await page.locator('[data-agendamento="Diego Cliente Fictício"] button:has-text("Finalizar")').isVisible(), false);
+    await print("barbeiro-agenda-compacta");
+    await page.click('[data-agendamento="Diego Cliente Fictício"] .slot-resumo');
+    assert.equal(await page.locator('[data-agendamento="Diego Cliente Fictício"] button:has-text("Finalizar")').isVisible(), true, "tocar abre as ações");
+    assert.equal(await page.getAttribute('[data-agendamento="Diego Cliente Fictício"] .slot-resumo', "aria-expanded"), "true");
+    await print("barbeiro-agenda-horario-aberto");
     assert.ok(await page.locator('[data-agendamento="Diego Cliente Fictício"] [data-whats="confirmacao"]').count(), "botão Confirmar horário no horário");
     // horário sobreposto é recusado
     await page.click("text=+ Novo horário");
@@ -189,6 +197,7 @@ async function rodar(tela) {
     await page.waitForSelector('[data-bloqueio="Dentista"]');
 
     passo("barbeiro envia lembrete pelo WhatsApp");
+    await abrirHorarios(page, "Diego Cliente Fictício");
     const [aba] = await Promise.all([
       contexto.waitForEvent("page"),
       page.click('[data-agendamento="Diego Cliente Fictício"] [data-whats=lembrete]')
@@ -202,6 +211,7 @@ async function rodar(tela) {
     await print("barbeiro-agenda-lembrete-enviado");
 
     passo("barbeiro finaliza com valor alterado em 2 formas");
+    await abrirHorarios(page, "Diego Cliente Fictício");
     await page.click('[data-agendamento="Diego Cliente Fictício"] button:has-text("Finalizar")');
     await page.fill("[aria-label='Valor cobrado de Corte masculino']", "35,00");
     await page.waitForSelector("dialog[open] [data-teste=total]:has-text('65,00')");

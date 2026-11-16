@@ -452,7 +452,8 @@ describe("tempo do serviço ajusta a agenda (pedido de 16/11/2026)", () => {
     assert.equal(m.status, 201, JSON.stringify(m.dados));
     const livres = (await get(`/api/agenda/disponibilidade?data=${AMANHA}&barbeiroId=${barb.id}&duracao=30`, ger.token)).dados.profissionais[0].livres;
     assert.ok(livres.includes("11:30"), livres.join(","));
-    assert.ok(!livres.includes("10:00") && !livres.includes("11:00"), "10:00 e 11:00 estão dentro da progressiva");
+    assert.ok(!livres.includes("10:00") && !livres.includes("10:30") && !livres.includes("11:00"), "10:00, 10:30 e 11:00 estão dentro da progressiva");
+    assert.ok(livres.includes("09:30") && livres.includes("11:30") && livres.includes("13:30") && !livres.includes("12:00"), "base de 30 em 30 minutos (12h–13h é intervalo)");
     // o servidor recusa marcar dentro do procedimento (10:30 ou 11:00) e aceita às 11:30
     assert.equal((await amb.marcar(ger.token, { barbeiroId: barb.id, data: AMANHA, hora: "11:00", servicoIds: [corte.id], cliente: { nome: "Outro Cliente" } })).status, 409);
     assert.equal((await amb.marcar(ger.token, { barbeiroId: barb.id, data: AMANHA, hora: "11:30", servicoIds: [corte.id], cliente: { nome: "Outro Cliente" } })).status, 201);

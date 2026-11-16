@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir } from "./navegacao.mjs";
+import { ir, abrirHorarios } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 
 const { chromium } = createRequire(import.meta.url)("playwright");
@@ -135,6 +135,7 @@ try {
 
   await entrar("barbeiro.demo", DEMO);
   await ir(page, "Minha agenda");
+  await abrirHorarios(page);
   await page.click("button:has-text('Finalizar') >> nth=0");
   await page.waitForSelector("dialog[open]");
   await foto("finalizar", { janela: true });

@@ -616,7 +616,7 @@ async function buscarClientes(ctx) {
 }
 
 // ---------- DISPONIBILIDADE DE UM DIA (para quem vai marcar): situação de cada profissional, ocupados e horários livres ----------
-// Livres = inícios de hora em hora (a partir da abertura) em que cabe a duração pedida; hoje, só a partir de agora.
+// Livres = inícios de 30 em 30 minutos (a partir da abertura) em que cabe a duração pedida; hoje, só a partir de agora.
 async function disponibilidade(ctx) {
   const { db, user, request } = ctx;
   const url = new URL(request.url);
@@ -654,7 +654,7 @@ async function disponibilidade(ctx) {
     let livres = [];
     if (janela) {
       const inicios = new Set();
-      for (let t = janela.ini; t < janela.fim; t += 60) inicios.add(t);   // de hora em hora (pedido de 16/11/2026)
+      for (let t = janela.ini; t < janela.fim; t += 30) inicios.add(t);   // de 30 em 30 minutos (pedido de 16/11/2026)
       // + logo depois de cada atendimento/bloqueio/intervalo: um serviço de 1h30 às 10:00 libera 11:30 (pedido de 16/11/2026)
       for (const o of ocupados) if (o.fim > janela.ini && o.fim < janela.fim) inicios.add(o.fim);
       livres = [...inicios].sort((a, b) => a - b).filter(t => t + duracao <= janela.fim

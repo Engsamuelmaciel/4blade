@@ -948,3 +948,12 @@ i.marca-saida { background: var(--serie-saida); }
 .chip-modelo.ativo { background: var(--dourado); border-color: var(--dourado); color: var(--sobre-dourado); font-weight: 700; }
 :root[data-tema="escuro"] .chip-modelo.ativo { color: #111317; }
 .escolha-modelos .limpar-modelo { justify-self: start; }
+
+/* Agenda: horário compacto; tocar abre informações e ações */
+.slot-resumo { cursor: pointer; border-radius: 6px; -webkit-tap-highlight-color: transparent; }
+.slot-resumo:hover .slot-hora { text-decoration: underline; text-decoration-color: var(--borda); }
+.slot-seta { width: 22px; height: 22px; flex: none; display: inline-grid; place-items: center; border-radius: 50%; background: var(--neutro); }
+.slot-seta::before { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--suave); border-bottom: 2px solid var(--suave); transform: translateY(-2px) rotate(45deg); transition: transform .15s; }
+.slot.aberto .slot-seta::before { transform: translateY(2px) rotate(-135deg); }
+.slot-detalhes { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--borda); }
+@media (prefers-reduced-motion: reduce) { .slot-seta::before { transition: none; } }

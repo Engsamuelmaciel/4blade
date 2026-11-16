@@ -126,6 +126,8 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 - 16/11/2026: Painel da plataforma: "Equipe ativa" conta o dono como gerente (`textoGerentes`: "1 gerente (o dono)" / "N gerentes (o dono + X)"). Testado em `test/navegador-e1.mjs`.
   - Mensagens por botões + contagem do dono publicados em 16/11/2026 (autorizado): oficial 10ef5ab0, teste b0fc7031 (conferido no forblade.com.br: sw `4blade-v14`).
 
+- 16/11/2026: **Agenda: base de 30 minutos + horário compacto** (ESPECIFICACAO.md seção 17). `disponibilidade`: inícios de 30 em 30 min (`t += 30`) + fim de cada ocupado. Tela: `cartaoAgendamento(a, mostrarNome, {recolhivel})` — na agenda (`itensDoDia`) o cartão mostra só o resumo (`.slot-resumo`, role=button, `aria-expanded`) e esconde `.slot-detalhes`; abertos ficam em `cartoesAbertos` (sobrevivem à remontagem); a ficha (`janelaAtendimento`) continua aberta. Testes: helper `abrirHorarios(page, nome?)` em `test/navegacao.mjs`; `test/navegador-e2.mjs` confere compacto/aberto (prints `*-05-barbeiro-agenda-compacta`, `*-06-...-horario-aberto`). Cache do sw `4blade-v15`.
+
 ## Versão de teste publicada (Cloudflare)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.

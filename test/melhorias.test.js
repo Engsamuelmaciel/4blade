@@ -371,14 +371,14 @@ describe("disponibilidade do dia e cliente da base (pedido de 16/11/2026)", () =
   test("mostra fechado/folga/bloqueio, ocupados e horários livres pela duração; barbeiro só a dele; isolamento", async () => {
     const amb = await cenario();
     const { post, get, ger, barb, cx, corte } = amb;
-    // dia normal: 09:00–12:00, um horário 10:00–10:30 → de hora em hora (09:00, 11:00) + logo depois do atendimento (10:30)
+    // dia normal: 09:00–12:00, um horário 10:00–10:30 → de 30 em 30 minutos (base única), menos o ocupado
     await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "10:00", servicoIds: [corte.id], cliente: { nome: "Ocupante Fictício" } });
     const d = (await get(`/api/agenda/disponibilidade?data=${AMANHA}&barbeiroId=${barb.id}&duracao=30`, cx.token)).dados;
     const p = d.profissionais[0];
     assert.equal(p.situacao, "aberto");
-    assert.deepEqual(p.livres, ["09:00", "10:30", "11:00"]);
+    assert.deepEqual(p.livres, ["09:00", "09:30", "10:30", "11:00", "11:30"]);
     assert.deepEqual(p.ocupados.map(o => [o.ini, o.fim, o.tipo, o.texto]), [["10:00", "10:30", "horario", "Ocupante Fictício"]]);
-    // duração de 90 min: 09:00 não cabe (bate às 10:00); 10:30 cabe (termina 12:00); 11:00 não cabe (fecha às 12:00)
+    // duração de 90 min: 09:00 e 09:30 não cabem (batem às 10:00); 10:30 cabe (termina 12:00); 11:00 não cabe (fecha às 12:00)
     assert.deepEqual((await get(`/api/agenda/disponibilidade?data=${AMANHA}&barbeiroId=${barb.id}&duracao=90`, cx.token)).dados.profissionais[0].livres, ["10:30"]);
     // dia fechado (balanço)
     await post("/api/funcionamento/datas-fechadas", ger.token, { dataIni: somarDias(AMANHA, 3), motivo: "Fechado pra balanço" });

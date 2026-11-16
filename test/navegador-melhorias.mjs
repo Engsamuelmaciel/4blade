@@ -9,7 +9,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir } from "./navegacao.mjs";
+import { ir, abrirHorarios } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -306,6 +306,7 @@ async function rodar(tela) {
     assert.ok(await page.locator('[data-prof="Ana Barbeira"]').isVisible(), "vê a agenda da Ana também");
     await print("caixa-agenda-todos");
     // remanejar: o horário das 17:00 vai para as 18:00 (mesmo dia e barbeiro)
+    await abrirHorarios(page, "Ivo Recepção Fictício");
     await page.click('[data-agendamento="Ivo Recepção Fictício"] button:has-text("Remarcar")');
     await page.waitForSelector('dialog[open] [data-teste=disponibilidade] [data-hora-livre="18:00"]');
     await page.click('dialog[open] [data-hora-livre="18:00"]');
