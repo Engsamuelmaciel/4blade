@@ -12,6 +12,7 @@ import {
 } from "./perfis.js";
 import { clienteAsaas, asaasConfigurado } from "./asaas.js";
 import { MODELOS_PADRAO } from "./cadastros.js";
+import { contatoSuporte } from "./suporte.js";
 
 export const TESTE_DIAS = 14;
 export const TOLERANCIA_DIAS = 5;
@@ -109,7 +110,8 @@ const descricaoAssinatura = (plano, ciclo, site) =>
 // ---------- rotas SEM sessão ----------
 export async function rotasPublicasAssinatura({ db, request, env, ipHash, limitar }, path, method) {
   if (path === "/planos" && method === "GET") {
-    return json({ ...planosPublicos(), assinaturaDisponivel: asaasConfigurado(env) });
+    const c = await contatoSuporte(db);
+    return json({ ...planosPublicos(), assinaturaDisponivel: asaasConfigurado(env), contato: { whatsapp: c.whatsapp, email: c.email } });
   }
 
   if (path === "/assinar" && method === "POST") {

@@ -78,7 +78,7 @@ async function rodar(tela) {
   const visao = async nome => { await page.click(`.barra-agenda .alterna button:has-text('${nome}')`); };
 
   try {
-    await page.goto(base);
+    await page.goto(`${base}/#/entrar`);
     passo("abertura com a logo e a frase; tela de entrada nova");
     await page.waitForSelector("[data-teste=slogan]");
     assert.equal((await page.textContent("[data-teste=slogan]")).trim(), "Gestão afiada para sua barbearia.");

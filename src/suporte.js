@@ -13,7 +13,7 @@ function textoMensagem(v) {
   return t.length >= 3 && t.length <= 3000 ? t : null;
 }
 
-async function contatoSuporte(db) {
+export async function contatoSuporte(db) {
   const r = await db.prepare("SELECT chave, valor FROM plataforma_config WHERE chave LIKE 'suporte_%'").all();
   const c = Object.fromEntries(r.results.map(x => [x.chave, x.valor]));
   return { whatsapp: c.suporte_whatsapp || null, email: c.suporte_email || null, horario: c.suporte_horario || null };

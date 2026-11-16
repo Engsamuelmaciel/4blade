@@ -106,7 +106,7 @@ async function rodar(tela) {
   const ok = () => page.click("dialog[open] button[type=submit]");
 
   try {
-    await page.goto(base);
+    await page.goto(`${base}/#/entrar`);
 
     // ---------- GERENTE: funcionamento ----------
     passo("gerente cadastra o funcionamento");

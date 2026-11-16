@@ -427,15 +427,7 @@ function cartaoPlano(p, info, ciclo) {
 
 async function telaPlanos() {
   const info = await carregarPlanos();
-  const area = el("div", { class: "planos" });
-  const alterna = el("div", { class: "alterna", role: "group", "aria-label": "Forma de pagamento" });
-  const desenhar = () => {
-    alterna.replaceChildren(...[["mensal", "Mensal"], ["anual", `Anual (paga ${info.mesesDoAnual} meses)`]].map(([c, t]) =>
-      el("button", { type: "button", class: `botao pequeno ${cicloPlanos === c ? "ativo" : ""}`, "data-ciclo": c, "aria-pressed": cicloPlanos === c ? "true" : "false", text: t,
-        onclick: () => { cicloPlanos = c; desenhar(); } })));
-    area.replaceChildren(...info.planos.map(p => cartaoPlano(p, info, cicloPlanos)));
-  };
-  desenhar();
+  const { alterna, area } = blocoPlanos(info);
   mostrar(el("section", { class: "publica" },
     el("div", { class: "publica-topo" },
       el("h2", { text: "Escolha o plano da sua barbearia" }),
@@ -861,6 +853,104 @@ async function telaChamados(id) {
       el("section", {}, chamados.length ? el("ul", { class: "lista" }, chamados.map(c => itemChamado(c, `#/chamados/${c.id}`, true)))
         : el("p", { class: "vazio", text: "Nenhum chamado aqui." })),
       el("section", {}, formContato)));
+}
+
+// ---------- LANDING PAGE (forblade.com.br, sem login) ----------
+const LP_RECURSOS = [
+  ["agenda", "Agenda que não se perde", "Horários livres de cada barbeiro na hora, cliente fixo toda semana, remarcar com um toque e visão do mês por cores."],
+  ["caixa", "Caixa sem erro", "Pix, dinheiro com troco, cartões e notas (fiado). Abertura, sangria, fechamento com diferença registrada."],
+  ["comissao", "Comissão automática", "Cada atendimento e venda já calcula a comissão. Vales descontados e fechamento do período sem planilha."],
+  ["estoque", "Estoque com custo médio", "Entrada, ajuste e inventário. Avisa o que precisa repor e o que está vencendo."],
+  ["mensagem", "WhatsApp pronto", "Lembrete, confirmação e promoções com o nome do cliente, abertos no seu WhatsApp. Sem custo por mensagem."],
+  ["contador", "Pronto para o contador", "Resumo do mês em PDF e planilha com tudo, enviados pelo celular. Seus dados sempre seus."]
+];
+const LP_PERFIS = [
+  ["Proprietário", "Vê o lucro, o painel e tudo o que acontece, de onde estiver."],
+  ["Gerente", "Organiza agenda, equipe, comissões e contas — e também atende."],
+  ["Barbeiro", "Vê a própria agenda, finaliza atendimentos e acompanha quanto ganhou."],
+  ["Caixa / recepção", "Marca horários para todos, cobra, vende e fecha o caixa."]
+];
+const LP_PRINTS = [["marcar-horario", "Novo horário mostra só o que está livre"], ["cobrar", "Caixa separado por forma de pagamento"], ["painel", "Painel com faturamento, comissões e lucro"]];
+const LP_DUVIDAS = ["Dá para usar no celular? Como instalo o app?", "Qual a diferença entre os planos?", "O que acontece se eu atrasar?", "Meus dados ficam salvos? Posso baixar tudo?"];
+
+function blocoPlanos(info) {
+  const area = el("div", { class: "planos" });
+  const alterna = el("div", { class: "alterna", role: "group", "aria-label": "Forma de pagamento" });
+  const desenhar = () => {
+    alterna.replaceChildren(...[["mensal", "Mensal"], ["anual", `Anual (paga ${info.mesesDoAnual} meses)`]].map(([c, t]) =>
+      el("button", { type: "button", class: `botao pequeno ${cicloPlanos === c ? "ativo" : ""}`, "data-ciclo": c, "aria-pressed": cicloPlanos === c ? "true" : "false", text: t,
+        onclick: () => { cicloPlanos = c; desenhar(); } })));
+    area.replaceChildren(...info.planos.map(p => cartaoPlano(p, info, cicloPlanos)));
+  };
+  desenhar();
+  return { alterna, area };
+}
+
+async function telaInicio() {
+  const info = await carregarPlanos();
+  const { alterna, area } = blocoPlanos(info);
+  const duvidas = AJUDA().duvidas.filter(d => LP_DUVIDAS.includes(d.p));
+  const contato = info.contato || {};
+  const whats = contato.whatsapp ? `https://wa.me/55${contato.whatsapp}?text=${encodeURIComponent("Olá! Quero conhecer o 4blade para a minha barbearia.")}` : null;
+  const cta = (classe = "") => el("div", { class: `lp-acoes ${classe}` },
+    el("a", { class: "botao lp-botao-principal", href: "#/planos", "data-teste": "lp-comecar", text: `Começar ${info.testeDias} dias grátis` }),
+    el("a", { class: "botao lp-botao-secundario", href: "#/entrar", "data-teste": "lp-entrar", text: "Já sou cliente: entrar" }));
+
+  mostrar(el("div", { class: "lp" },
+    el("header", { class: "lp-barra" },
+      el("img", { src: "/icons/logo.png", alt: "4blade", width: "110", height: "45" }),
+      el("nav", {}, el("a", { href: "#lp-planos", onclick: e => { e.preventDefault(); document.getElementById("lp-planos").scrollIntoView({ behavior: "smooth" }); }, text: "Planos" }),
+        el("a", { class: "botao pequeno", href: "#/entrar", text: "Entrar" }))),
+    el("section", { class: "lp-hero" },
+      el("div", { class: "lp-hero-texto" },
+        el("h1", {}, "Gestão ", el("span", { text: "afiada" }), " para sua barbearia."),
+        el("p", { class: "lp-sub", text: "Agenda, caixa, estoque, comissões e WhatsApp num só lugar. Funciona no celular e no computador, sem instalar nada." }),
+        cta(),
+        el("p", { class: "lp-miudo", text: "Sem cartão para testar · Cancele quando quiser · Seus dados são seus" })),
+      el("div", { class: "lp-hero-print" },
+        el("img", { src: "/tutoriais/agenda-dia.jpg", alt: "Agenda do 4blade no celular", width: "390", height: "760" }))),
+    el("section", { class: "lp-secao" },
+      el("h2", { text: "Feito para a rotina da barbearia" }),
+      el("p", { class: "lp-intro", text: "Chega de caderno, planilha e conta de cabeça no fim do dia." }),
+      el("div", { class: "lp-recursos" }, LP_RECURSOS.map(([ic, t, d]) => el("article", { class: "lp-recurso" },
+        el("span", { class: "lp-icone" }, icone(ic)), el("h3", { text: t }), el("p", { text: d }))))),
+    el("section", { class: "lp-secao lp-escura" },
+      el("h2", { text: "Veja por dentro" }),
+      el("div", { class: "lp-prints" }, LP_PRINTS.map(([id, leg]) => el("figure", {},
+        el("img", { src: `/tutoriais/${id}.jpg`, alt: leg, width: "390", height: "700", loading: "lazy" }),
+        el("figcaption", { text: leg })))),
+      el("p", { class: "lp-miudo centro", text: "Telas reais do sistema, com dados fictícios." })),
+    el("section", { class: "lp-secao" },
+      el("h2", { text: "Cada um vê o que precisa" }),
+      el("div", { class: "lp-perfis" }, LP_PERFIS.map(([t, d]) => el("div", { class: "lp-perfil" }, el("strong", { text: t }), el("p", { text: d })))),
+      el("p", { class: "lp-intro", text: "Cada pessoa tem o próprio usuário e senha. Tudo o que é feito fica registrado: quem, quando e o que mudou." })),
+    el("section", { class: "lp-secao lp-passos-secao" },
+      el("h2", { text: "Comece hoje, em 3 passos" }),
+      el("ol", { class: "lp-passos" },
+        el("li", {}, el("strong", { text: "Escolha o plano" }), el("span", { text: "e crie seu acesso em 2 minutos." })),
+        el("li", {}, el("strong", { text: "Cadastre o básico" }), el("span", { text: "horário de funcionamento, serviços e equipe. Os tutoriais mostram cada tela." })),
+        el("li", {}, el("strong", { text: "Use por 14 dias grátis" }), el("span", { text: "e só então decida. A 1ª mensalidade vence no fim do teste." })))),
+    el("section", { class: "lp-secao", id: "lp-planos" },
+      el("h2", { text: "Planos" }),
+      el("p", { class: "lp-intro", text: "Escolha pelo número de barbeiros. Gerentes e caixas sem limite em todos." }),
+      el("div", { class: "centro lp-alterna" }, alterna),
+      area),
+    el("section", { class: "lp-secao" },
+      el("h2", { text: "Dúvidas comuns" }),
+      el("div", { class: "lp-duvidas" }, duvidas.map(d => el("details", { class: "duvida" }, el("summary", { text: d.p }), el("p", { text: d.r })))),
+      el("p", { class: "centro" }, el("a", { href: "#/duvidas", text: "Ver todas as dúvidas frequentes" }))),
+    el("section", { class: "lp-final" },
+      el("h2", { text: "Sua barbearia organizada a partir de hoje." }),
+      cta("centro"),
+      whats ? el("p", {}, el("a", { class: "lp-whats", href: whats, target: "_blank", rel: "noopener", "data-teste": "lp-whats", text: "Prefere conversar? Chame no WhatsApp" })) : null),
+    el("footer", { class: "lp-rodape" },
+      el("img", { src: "/icons/logo.png", alt: "4blade", width: "86", height: "35" }),
+      el("nav", {},
+        el("a", { href: "#/planos", text: "Planos" }), el("a", { href: "#/duvidas", text: "Dúvidas" }),
+        el("a", { href: "#/termos", text: "Termos de uso" }), el("a", { href: "#/privacidade", text: "Privacidade" }), el("a", { href: "#/entrar", text: "Entrar" })),
+      contato.email ? el("p", {}, el("a", { href: `mailto:${contato.email}`, text: contato.email })) : null,
+      el("p", { class: "lp-miudo", text: `© ${new Date().getFullYear()} 4blade · Gestão para barbearias` }))));
+  document.body.classList.add("tela-entrada");
 }
 
 function atualizarTopo() {
@@ -3452,6 +3542,8 @@ const ROTAS = {
 };
 // Telas sem login (página de planos, assinar e textos legais).
 const ROTAS_PUBLICAS = {
+  "": telaInicio,
+  inicio: telaInicio,
   planos: telaPlanos,
   duvidas: telaDuvidas,
   assinar: plano => telaAssinar(plano),
@@ -3477,7 +3569,7 @@ async function rotear() {
   if (janela.open) janela.close();
   if (!usuario) {
     const [nomeP, parP] = location.hash.replace(/^#\/?/, "").split("/");
-    if (ROTAS_PUBLICAS[nomeP]) { atualizarTopo(); return montarTela(ROTAS_PUBLICAS[nomeP], parP); }
+    if (Object.hasOwn(ROTAS_PUBLICAS, nomeP)) { atualizarTopo(); return montarTela(ROTAS_PUBLICAS[nomeP], parP); }
     return telaLogin();
   }
   if (usuario.trocaObrigatoria) return telaTrocarSenha();
@@ -3509,7 +3601,7 @@ async function sairDoSistema() {
   origemEnvio = "dia";
   estadoMensagens.modelo = null;
   estadoNotas.aba = "abertas";
-  history.replaceState(null, "", "/");
+  history.replaceState(null, "", "/#/entrar");
   telaLogin("Você saiu do sistema.");
 }
 

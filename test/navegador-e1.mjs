@@ -105,7 +105,7 @@ async function rodar(tela) {
   try {
     // ---------- PLATAFORMA ----------
     passo("plataforma entra e cria a barbearia");
-    await page.goto(base);
+    await page.goto(`${base}/#/entrar`);
     await page.waitForSelector("text=Entrar");
     await print("login");
     await entrar("suporte", "Nova-suporte-senha");

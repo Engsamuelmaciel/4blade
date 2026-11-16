@@ -1,7 +1,7 @@
 {
   "name": "4blade — gestão para barbearias",
   "short_name": "4blade",
-  "start_url": "/",
+  "start_url": "/#/entrar",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",

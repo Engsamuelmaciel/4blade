@@ -86,7 +86,7 @@ async function rodar(tela) {
   };
 
   try {
-    await page.goto(base);
+    await page.goto(`${base}/#/entrar`);
 
     // ---------- PAINEL ----------
     passo("gerente vê o painel com os números conferidos à mão");

@@ -107,7 +107,7 @@ async function rodar(tela) {
   const texto = sel => page.textContent(sel);
 
   try {
-    await page.goto(base);
+    await page.goto(`${base}/#/entrar`);
 
     // ---------- GERENTE: entradas e ajuste ----------
     passo("gerente dá entrada no estoque e registra uma quebra");

@@ -91,6 +91,10 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - Tela: menu "Ajuda" (`gruposDoMenu` acrescenta a todos; `gruposDoPerfil` = menus antigos), `#/duvidas` (também pública), `#/tutoriais[/id]`, `#/suporte[/id]`, plataforma `#/chamados[/id]`; botão `#btn-ajuda` (? no topo, `ajudaDaTela` usa `rotas` de cada tutorial). Conteúdo em `public/ajuda.js` (window.AJUDA). Prints dos tutoriais: `public/tutoriais/*.jpg` gerados por `npm run tutoriais` (test/gerar-tutoriais.mjs, que também gera `src/arquivos-tutoriais.js` para o Worker). Tela mudou → rodar de novo. Cache do sw `4blade-v12`.
   - Testes: `npm test` (122) + `test/navegador-ajuda.mjs` (prints em `docs/prints/ajuda/`).
 
+- 16/11/2026: **Landing page** na mesma ramificação (ESPECIFICACAO.md seção 13). NÃO publicada ainda.
+  - Tela: `telaInicio` (rotas públicas `""` e `inicio`; classes `lp-*` no CSS), login em `#/entrar`, `blocoPlanos` usado pela landing e por `#/planos`; `GET /api/planos` devolve também `contato {whatsapp, email}` do suporte. Testes no navegador abrem em `#/entrar`; a landing é testada em `test/navegador-assinatura.mjs` (prints `docs/prints/assinatura/*-01-landing.png`).
+  - Domínio: zona `forblade.com.br` criada pelo responsável na Cloudflare (id `79490ace4b817614d601aab55e36afdf`, nameservers brad/kiki.ns.cloudflare.com, trocados no registro.br em 16/11 ~11h). Token do Claude ganhou Zona:Ler, DNS:Editar, Rotas de Workers:Editar. Combinado: raiz + www → Worker `4blade` (oficial); `teste.` → `4blade-teste`. Ligar só depois da zona "active" e de publicar esta ramificação (com confirmação).
+
 ## Versão de teste publicada (Cloudflare)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.
