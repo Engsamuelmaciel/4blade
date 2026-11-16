@@ -138,11 +138,16 @@ export function camposMensagem(ag, barbeariaNome) {
   };
 }
 
-export function linksWhatsapp(ag, modelos, barbeariaNome) {
-  if (!telefoneReal(ag.cliente_telefone)) return null;   // sem telefone: sem WhatsApp
+// semNumero: cliente sem telefone → link que abre o WhatsApp para a pessoa escolher o contato (wa.me/?text=).
+export function linksWhatsapp(ag, modelos, barbeariaNome, { semNumero = false } = {}) {
+  const tel = telefoneReal(ag.cliente_telefone);
+  if (!tel && !semNumero) return null;   // sem telefone: sem WhatsApp
   const campos = camposMensagem(ag, barbeariaNome);
   const r = {};
-  for (const [tipo, texto] of Object.entries(modelos)) r[tipo] = linkWhatsapp(ag.cliente_telefone, preencherModelo(texto, campos));
+  for (const [tipo, texto] of Object.entries(modelos)) {
+    const msg = preencherModelo(texto, campos);
+    r[tipo] = tel ? linkWhatsapp(tel, msg) : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  }
   return r;
 }
 

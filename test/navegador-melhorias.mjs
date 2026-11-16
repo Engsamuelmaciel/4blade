@@ -172,8 +172,23 @@ async function rodar(tela) {
     await page.fill("dialog[open] #c-cliNome", "Seu Zé Fictício");
     await ok();
     await page.waitForSelector('[data-agendamento="Seu Zé Fictício"] >> text=sem telefone');
-    assert.equal(await page.locator('[data-agendamento="Seu Zé Fictício"] [data-whats]').count(), 0, "sem telefone, sem botão de WhatsApp");
     await print("agenda-dia-com-fixo-e-sem-telefone");
+    // sem telefone: os botões do WhatsApp abrem para escolher o contato (wa.me/?text=), já com a mensagem
+    await abrirHorarios(page, "Seu Zé Fictício");
+    const hrefZe = await page.getAttribute('[data-agendamento="Seu Zé Fictício"] [data-whats=lembrete]', "href");
+    assert.match(hrefZe, /^https:\/\/wa\.me\/\?text=/);
+    await page.waitForSelector('[data-agendamento="Seu Zé Fictício"] [data-teste=whats-sem-numero]');
+    // "Outra mensagem": mensagens prontas da tela Mensagens, direto no WhatsApp
+    await page.click('[data-agendamento="Seu Zé Fictício"] button:has-text("Outra mensagem")');
+    await page.waitForSelector("dialog[open] [data-pronta=saudade]");
+    assert.match(decodeURIComponent(await page.getAttribute("dialog[open] [data-pronta=saudade]", "href")), /^https:\/\/wa\.me\/\?text=Olá, Seu! Faz tempo/);
+    await print("agenda-outra-mensagem-sem-telefone", false);
+    await page.keyboard.press("Escape");
+    // cliente com telefone: abre direto na conversa do número do cadastro
+    await abrirHorarios(page, "Fábio Fixo Fictício");
+    await page.click('[data-agendamento="Fábio Fixo Fictício"] button:has-text("Outra mensagem") >> nth=0');
+    assert.match(await page.getAttribute("dialog[open] [data-pronta=promocao]", "href"), /^https:\/\/wa\.me\/55\d{10,11}\?text=/);
+    await page.keyboard.press("Escape");
 
     // ---------- MÊS e ANO ----------
     passo("agenda em visão Mês (cores) e Ano");

@@ -1558,8 +1558,22 @@ function cartaoBloqueio(b, ini, fim, mostrarNome) {
 }
 
 // Abre o WhatsApp (link wa.me) e registra o envio (quem, quando, qual modelo).
+// Mensagem pronta (tela Mensagens) direto no WhatsApp: com o número do cadastro ou, sem telefone, escolhendo o contato.
+function linkWhatsappCliente(a, texto) {
+  const msg = texto.replace(/\{cliente\}/g, a.cliente.nome.split(" ")[0]).replace(/\{barbearia\}/g, usuario?.barbearia?.nome || "");
+  return a.cliente.telefone ? `https://wa.me/55${a.cliente.telefone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+}
+function janelaOutraMensagem(a) {
+  return abrirJanela(`Mensagem para ${a.cliente.nome}`, [
+    el("p", { class: "suave", text: a.cliente.telefone
+      ? `Toque na mensagem: o WhatsApp abre na conversa de ${fone(a.cliente.telefone)}, com o texto pronto.`
+      : "Cliente sem telefone: toque na mensagem e escolha no WhatsApp para quem enviar." }),
+    el("div", { class: "chips-modelo lista-outras" }, Object.entries(MENSAGENS_PRONTAS).map(([v, [t, texto]]) =>
+      el("a", { class: "chip-modelo", href: linkWhatsappCliente(a, texto), target: "_blank", rel: "noopener", "data-pronta": v, text: t })))
+  ], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
+}
 function botaoWhatsapp(a, tipo, rotulo) {
-  if (!a.whatsapp) return null;   // cliente sem telefone
+  if (!a.whatsapp) return null;   // sem link (ex.: horário sem mensagens)
   return el("a", {
     class: "botao pequeno whats", href: a.whatsapp[tipo], target: "_blank", rel: "noopener", "data-whats": tipo,
     onclick: () => {
@@ -1603,6 +1617,8 @@ function cartaoAgendamento(a, mostrarNome, { recolhivel = false } = {}) {
       f.comissaoCentavos !== undefined
         ? el("p", { class: "suave", "data-teste": "comissao", text: `${a.barbeiroId === usuario.id ? "Sua comissão" : "Comissão"}: ${reais(f.comissaoCentavos)} (${pct(f.comissaoBp)})` }) : null) : null,
     gestao() && a.reaberturas ? el("p", { class: "suave", text: `Reaberto ${a.reaberturas}x` }) : null,
+    a.situacao === "agendado" && a.whatsapp && a.whatsappComNumero === false
+      ? el("p", { class: "suave", "data-teste": "whats-sem-numero", text: "Sem telefone no cadastro: os botões do WhatsApp abrem para você escolher o contato." }) : null,
     ultimaMsg ? el("p", { class: "suave", text: `${{ lembrete: "Lembrete aberto", proposta: "Proposta aberta", confirmacao: "Confirmação aberta" }[ultimaMsg.tipo] || "Mensagem aberta"} no WhatsApp por ${ultimaMsg.por.split(" ")[0]} às ${horaLocal(ultimaMsg.em)}` }) : null,
     el("div", { class: "item-acoes" },
       a.situacao === "agendado" ? [
@@ -1611,6 +1627,7 @@ function cartaoAgendamento(a, mostrarNome, { recolhivel = false } = {}) {
         botaoWhatsapp(a, "confirmacao", "Confirmar horário"),
         botaoWhatsapp(a, "lembrete", "Enviar lembrete"),
         botaoWhatsapp(a, "proposta", "Propor horário"),
+        a.whatsapp ? botao("Outra mensagem", () => janelaOutraMensagem(a), "pequeno whats") : null,
         botao("Faltou", () => abrirJanela(`${a.cliente.nome} faltou?`, el("p", { text: "O horário fica registrado como falta." }), {
           ok: "Registrar falta", aoConfirmar: async () => {
             await api("/agenda/situacao", { metodo: "POST", corpo: { id: a.id, situacao: "faltou" } });

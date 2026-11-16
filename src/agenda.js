@@ -129,7 +129,8 @@ async function listarAgenda(ctx) {
       serie: a.serie_id ? { id: a.serie_id, intervaloSemanas: a.intervalo_semanas } : null,
       cliente: { id: a.cliente_id, nome: a.cliente_nome, telefone: telefoneReal(a.cliente_telefone) },
       servicos: (servPor[a.id] || []).map(s => ({ id: s.servico_id, nome: s.nome, duracaoMin: s.duracao_min })),
-      whatsapp: linksWhatsapp(a, modelos, user.barbearia_nome),
+      whatsapp: linksWhatsapp(a, modelos, user.barbearia_nome, { semNumero: true }),
+      whatsappComNumero: Boolean(telefoneReal(a.cliente_telefone)),
       mensagens: (msgPor[a.id] || []).map(m => ({ tipo: m.tipo, em: m.criado_em, por: m.nome })),
       reaberturas: estPor[a.id] || 0,
       finalizacao: f ? {
@@ -548,7 +549,7 @@ async function registrarMensagem(ctx) {
   const a = await agendamentoPermitido(ctx, input.id);
   if (!["lembrete", "proposta", "confirmacao"].includes(input.tipo)) erro("Tipo de mensagem inválido.");
   const modelos = await carregarModelos(db, ctx.barbeariaId);
-  const url = linksWhatsapp(a, { [input.tipo]: modelos[input.tipo] }, user.barbearia_nome)[input.tipo];
+  const url = linksWhatsapp(a, { [input.tipo]: modelos[input.tipo] }, user.barbearia_nome, { semNumero: true })[input.tipo];
   const id = crypto.randomUUID();
   await db.batch([
     db.prepare(`INSERT INTO ${input.tipo === "confirmacao" ? "mensagens_enviadas_adicionais" : "mensagens_enviadas"} (id, barbearia_id, agendamento_id, tipo, usuario_id) VALUES (?, ?, ?, ?, ?)`)

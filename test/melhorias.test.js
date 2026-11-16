@@ -147,7 +147,7 @@ describe("caixa como PDV: cobrar atendimento e atendimento sem horário", () => 
 void diaSemana;
 
 describe("telefone opcional na marcação (pedido de 16/11/2026)", () => {
-  test("sem telefone: exige o nome, reaproveita o mesmo cliente pelo nome e não gera WhatsApp", async () => {
+  test("sem telefone: exige o nome, reaproveita o mesmo cliente pelo nome e o WhatsApp abre para escolher o contato", async () => {
     const amb = await cenario();
     const { post, get, barb, ger, cx, corte } = amb;
     const semNome = await post("/api/agenda", barb.token, { data: AMANHA, hora: "09:00", servicoIds: [corte.id], cliente: { telefone: "" } });
@@ -162,7 +162,13 @@ describe("telefone opcional na marcação (pedido de 16/11/2026)", () => {
     assert.equal(ag.length, 2);
     assert.equal(ag[0].cliente.id, ag[1].cliente.id, "mesmo nome sem telefone = mesmo cliente");
     assert.equal(ag[0].cliente.telefone, null);
-    assert.equal(ag[0].whatsapp, null);
+    // sem telefone: o link abre o WhatsApp sem número (a pessoa escolhe para quem enviar), já com a mensagem
+    assert.equal(ag[0].whatsappComNumero, false);
+    assert.match(ag[0].whatsapp.lembrete, /^https:\/\/wa\.me\/\?text=/);
+    assert.match(decodeURIComponent(ag[0].whatsapp.confirmacao), /confirmado/);
+    const reg = await post("/api/agenda/mensagem", barb.token, { id: ag[0].id, tipo: "lembrete" });
+    assert.equal(reg.status, 201, JSON.stringify(reg.dados));
+    assert.match(reg.dados.url, /^https:\/\/wa\.me\/\?text=/, "registra o envio mesmo sem número");
     // lista de clientes: aparece sem telefone; pode renomear sem informar telefone; busca por número não o encontra
     const lista = (await get("/api/clientes", ger.token)).dados.clientes;
     const ze = lista.find(c => c.nome === "Seu Zé Sem Fone");
