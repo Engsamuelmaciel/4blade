@@ -1,6 +1,6 @@
 // Servidor LOCAL só para testar a tela no navegador: API (Worker) + arquivos de public/, banco SQLite em memória.
 // Aplica a mesma política de segurança (CSP) do arquivo public/_headers. Origem: FrotaZ.
-// Uso: node test/servidor-local.mjs [porta]   (plataforma de teste: usuário "suporte", senha "Nova-suporte-senha")
+// Uso: node test/servidor-local.mjs [porta] [--demo]   (plataforma de teste: usuário "suporte", senha "Nova-suporte-senha")
 import http from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { extname, join, dirname } from "node:path";
@@ -28,6 +28,11 @@ function estatico(caminho) {
 
 await amb.criarPlataforma("suporte");
 console.log("plataforma de teste pronta (usuário suporte, senha Nova-suporte-senha)");
+if (process.argv.includes("--demo")) {
+  const { semearDemonstracao, SENHA_DEMO } = await import("./demonstracao.mjs");
+  await semearDemonstracao(amb);
+  console.log(`demonstração pronta: dono.demo, gerente.demo, barbeiro.demo, rafael.demo, caixa.demo (senha ${SENHA_DEMO})`);
+}
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${porta}`);
