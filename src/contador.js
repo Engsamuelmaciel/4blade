@@ -23,6 +23,12 @@ export function lerReferencia(tipo, ref) {
 
 // Monta todos os números do período (base do PDF, da planilha e da "impressão digital" do envio).
 export async function relatorioContador(ctx, per) {
+  return (await relatorioComDados(ctx, per)).rel;
+}
+
+// Mesmo relatório + os dados brutos do período (usados pelo relatório financeiro; o relatório em si não muda,
+// porque a "impressão digital" dos envios ao contador depende dele).
+export async function relatorioComDados(ctx, per) {
   const { db } = ctx;
   const b = ctx.barbeariaId;
   const [d, formas, compras, sangrias, pagos, profs, estoque, lancs, notasLanc, notasReceb] = await Promise.all([
@@ -85,7 +91,7 @@ export async function relatorioContador(ctx, per) {
   for (const c of d.contasPagas) contasPorCategoria[c.categoria] += c.valor_centavos;
   const comprasTotal = compras.results.reduce((t, m) => t + m.quantidade * m.custo_unit_centavos, 0);
 
-  return {
+  const rel = {
     periodo: { tipo: per.tipo, referencia: per.ref, ini: per.ini, fim: per.fim, titulo: per.titulo },
     entradas: {
       servicosPorForma: entradas.servico, produtosPorForma: entradas.produto,
@@ -124,6 +130,7 @@ export async function relatorioContador(ctx, per) {
       ...pagos.results.map(f => ({ data: f.pago_em, tipo: "Comissão paga", descricao: `${f.barbeiro} (${dataCsv(f.data_ini)} a ${dataCsv(f.data_fim)})`, forma: f.pago_com_caixa ? "dinheiro" : "", valorCentavos: -f.a_pagar_centavos }))
     ].sort((x, y) => String(x.data).localeCompare(String(y.data)))
   };
+  return { rel, d, profissionais: profs.results };
 }
 
 export const impressaoDigital = rel => sha256(JSON.stringify(rel));

@@ -2817,6 +2817,310 @@ async function telaPainel() {
         p.ranking.length ? graficoRanking(p.ranking) : el("p", { class: "vazio", text: "Sem atendimentos no período." }))));
 }
 
+// ---------- RELATÓRIO FINANCEIRO (gestão): entradas e saídas por dia, semana, mês e ano ----------
+// Cores das séries: --serie-entrada (azul) e --serie-saida (laranja), validadas para daltonismo e nos dois temas.
+const estadoFin = { periodo: "mes", data: null, filtroMov: "todos", movVisiveis: 30 };
+const NOME_ANTERIOR = { dia: "o dia anterior", semana: "a semana anterior", mes: "o mês anterior", ano: "o ano anterior" };
+const NO_ANTERIOR = { dia: "no dia anterior", semana: "na semana anterior", mes: "no mês anterior", ano: "no ano anterior" };
+const AO_ANTERIOR = { dia: "ao dia anterior", semana: "à semana anterior", mes: "ao mês anterior", ano: "ao ano anterior" };
+const graficoLargo = () => window.matchMedia("(min-width: 700px)").matches;
+const MESES_CURTO = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const NOME_FORMA_FIN = { dinheiro: "Dinheiro", pix: "Pix", debito: "Débito", credito: "Crédito", promissoria: "Nota (a receber)" };
+
+function moverData(data, tipo, n) {
+  const d = new Date(`${data}T12:00:00Z`);
+  if (tipo === "dia") d.setUTCDate(d.getUTCDate() + n);
+  else if (tipo === "semana") d.setUTCDate(d.getUTCDate() + 7 * n);
+  else if (tipo === "mes") { d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); }
+  else d.setUTCFullYear(d.getUTCFullYear() + n);
+  return d.toISOString().slice(0, 10);
+}
+const rotuloChave = (chave, porMes) => (porMes ? `${MESES[Number(chave.slice(5, 7)) - 1]} de ${chave.slice(0, 4)}` : `${DIAS_CURTO[diaDaSemana(chave)]} ${dataBR(chave)}`);
+
+// Variação contra o período anterior: seta + texto (a cor só reforça; "bom" depende do número).
+function variacao(atual, anterior, tipo, subirEhBom = true) {
+  if (!anterior && !atual) return el("span", { class: "variacao", text: `Igual a ${NOME_ANTERIOR[tipo]}` });
+  if (!anterior) return el("span", { class: "variacao", text: `Sem movimento ${NO_ANTERIOR[tipo]}` });
+  const pct = Math.round(((atual - anterior) / Math.abs(anterior)) * 100);
+  if (pct === 0) return el("span", { class: "variacao", text: `Igual a ${NOME_ANTERIOR[tipo]}` });
+  const bom = (pct > 0) === subirEhBom;
+  return el("span", { class: `variacao ${bom ? "var-boa" : "var-ruim"}`, "data-variacao": String(pct),
+    text: `${pct > 0 ? "▲" : "▼"} ${Math.abs(pct)}% em relação ${AO_ANTERIOR[tipo]}` });
+}
+function cartaoFin(titulo, valor, detalhe, varEl, teste, classe = "") {
+  return el("div", { class: `cartao-num fin-cartao ${classe}`, "data-cartao": teste },
+    el("span", { class: "cartao-tit", text: titulo }), el("strong", { text: valor }),
+    detalhe ? el("span", { class: "suave", text: detalhe }) : null, varEl || null);
+}
+
+// Barras com cantos de cima arredondados (4 px) e base reta no eixo.
+function caminhoBarra(x, yBase, w, h) {
+  if (h <= 0) return "";
+  const r = Math.min(4, w / 2, h);
+  return `M${x},${yBase}V${yBase - h + r}Q${x},${yBase - h} ${x + r},${yBase - h}H${x + w - r}Q${x + w},${yBase - h} ${x + w},${yBase - h + r}V${yBase}Z`;
+}
+// Escala "bonita" para o eixo: 0 até um teto redondo, com 4 divisões.
+function escala(max) {
+  if (max <= 0) return { teto: 100, passo: 25 };
+  const bruto = max / 4;
+  const pot = 10 ** Math.floor(Math.log10(bruto));
+  const passo = [1, 2, 2.5, 5, 10].map(m => m * pot).find(p => p >= bruto);
+  return { teto: passo * 4, passo };
+}
+const eixoReais = c => (Math.abs(c) >= 100000 ? `${(c / 100000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mil` : (c / 100).toLocaleString("pt-BR", { maximumFractionDigits: 0 }));
+
+// Leitura do ponto tocado/apontado (fica abaixo do gráfico: funciona igual no celular e no computador).
+function leituraGrafico() {
+  return el("div", { class: "fin-leitura", "aria-live": "polite", "data-teste": "leitura" },
+    el("span", { class: "suave", text: "Toque ou passe o mouse nas barras para ver os valores." }));
+}
+
+function graficoEntradasSaidas(serie, periodo, aoEscolher) {
+  const pts = serie.pontos;
+  const largo = graficoLargo();
+  const L = largo ? 1000 : 520, A = largo ? 290 : 300, ME = largo ? 58 : 66, MD = 8, MT = 12, MB = 32;
+  const max = Math.max(1, ...pts.flatMap(p => [p.entradasCentavos, p.saidasCentavos]));
+  const { teto, passo } = escala(max);
+  const larg = (L - ME - MD) / pts.length;
+  const w = Math.max(2, Math.min(22, (larg - 6) / 2));
+  const y = v => A - MB - ((A - MB - MT) * v) / teto;
+  const muitos = pts.length > 12;
+  const leitura = leituraGrafico();
+  const faixas = [];
+  const mostrarPonto = (i) => {
+    const p = pts[i];
+    faixas.forEach((f, j) => f.classList.toggle("ativa", i === j));
+    leitura.replaceChildren(...[
+      el("strong", { text: rotuloChave(p.chave, serie.porMes) }),
+      el("span", { class: "fin-leg-item" }, el("i", { class: "marca-entrada" }), `Entradas ${reais(p.entradasCentavos)}`),
+      el("span", { class: "fin-leg-item" }, el("i", { class: "marca-saida" }), `Saídas ${reais(p.saidasCentavos)}`),
+      el("span", { class: "fin-leg-item", text: `Saldo ${reais(p.entradasCentavos - p.saidasCentavos)}` }),
+      aoEscolher && !(periodo.tipo === "dia" && p.chave === periodo.ini)
+        ? botao(serie.porMes ? "Ver este mês" : "Ver este dia", () => aoEscolher(p.chave), "pequeno") : null
+    ].filter(Boolean));
+  };
+  const grade = [];
+  for (let v = 0; v <= teto; v += passo) {
+    grade.push(svg("line", { x1: ME, y1: y(v), x2: L - MD, y2: y(v), class: v ? "grade" : "eixo" }));
+    grade.push(svg("text", { x: ME - 6, y: y(v) + 5, "text-anchor": "end", class: "rotulo" }, eixoReais(v)));
+  }
+  const g = svg("svg", { viewBox: `0 0 ${L} ${A}`, class: "grafico grafico-fin", role: "img", "aria-label": "Entradas e saídas por período; os valores estão também na tabela abaixo" },
+    ...grade,
+    ...pts.flatMap((p, i) => {
+      const x0 = ME + i * larg;
+      const meio = x0 + larg / 2;
+      const faixa = svg("rect", { x: x0, y: MT, width: larg, height: A - MB - MT, class: "faixa", "data-ponto": p.chave });
+      faixa.addEventListener("pointerenter", () => mostrarPonto(i));
+      faixa.addEventListener("click", () => mostrarPonto(i));
+      faixas.push(faixa);
+      const rotulo = serie.porMes ? MESES_CURTO[Number(p.chave.slice(5, 7)) - 1]
+        : muitos ? (i % 5 === 0 || i === pts.length - 1 ? p.chave.slice(8) : null)
+          : `${DIAS_CURTO[diaDaSemana(p.chave)]} ${p.chave.slice(8)}`;
+      const escolhido = periodo.tipo === "dia" && p.chave === periodo.ini;
+      return [
+        faixa,
+        svg("path", { d: caminhoBarra(meio - w - 1, A - MB, w, A - MB - y(p.entradasCentavos)), class: "barra-entrada" }),
+        svg("path", { d: caminhoBarra(meio + 1, A - MB, w, A - MB - y(p.saidasCentavos)), class: "barra-saida" }),
+        rotulo ? svg("text", { x: meio, y: A - MB + 20, "text-anchor": "middle", class: `rotulo ${escolhido ? "rotulo-forte" : ""}` }, rotulo) : null
+      ];
+    }));
+  return el("div", { class: "fin-grafico" },
+    el("div", { class: "fin-legenda" },
+      el("span", { class: "fin-leg-item" }, el("i", { class: "marca-entrada" }), "Entradas"),
+      el("span", { class: "fin-leg-item" }, el("i", { class: "marca-saida" }), "Saídas")),
+    g, leitura);
+}
+
+// Saldo acumulado (entradas − saídas somadas dia a dia / mês a mês), até hoje.
+function graficoSaldo(serie, hoje) {
+  const pts = [];
+  let acum = 0;
+  for (const p of serie.pontos) {
+    if ((serie.porMes ? `${p.chave}-01` : p.chave) > hoje) break;
+    acum += p.entradasCentavos - p.saidasCentavos;
+    pts.push({ chave: p.chave, valor: acum });
+  }
+  if (pts.length < 2) return null;
+  const largo = graficoLargo();
+  const L = largo ? 1000 : 520, A = largo ? 240 : 260, ME = largo ? 58 : 66, MD = 12, MT = 14, MB = 16;
+  const n = serie.pontos.length;
+  const minV = Math.min(0, ...pts.map(p => p.valor)), maxV = Math.max(0, ...pts.map(p => p.valor));
+  const { passo } = escala(Math.max(1, maxV - minV));
+  const baixo = Math.floor(minV / passo) * passo, alto = Math.max(baixo + passo, Math.ceil(maxV / passo) * passo);
+  const y = v => A - MB - ((A - MB - MT) * (v - baixo)) / (alto - baixo);
+  const x = i => ME + ((L - ME - MD) * (i + 0.5)) / n;
+  const grade = [];
+  for (let v = baixo; v <= alto; v += passo) {
+    grade.push(svg("line", { x1: ME, y1: y(v), x2: L - MD, y2: y(v), class: v === 0 ? "eixo" : "grade" }));
+    grade.push(svg("text", { x: ME - 6, y: y(v) + 5, "text-anchor": "end", class: "rotulo" }, eixoReais(v)));
+  }
+  const leitura = leituraGrafico();
+  leitura.firstChild.textContent = `Saldo no fim: ${reais(pts[pts.length - 1].valor)}. Toque ou passe o mouse na linha para ver cada ${serie.porMes ? "mês" : "dia"}.`;
+  const marcador = svg("circle", { r: 6, class: "ponto-saldo", cx: -20, cy: -20 });
+  const mostrar = i => {
+    marcador.setAttribute("cx", x(i)); marcador.setAttribute("cy", y(pts[i].valor));
+    leitura.replaceChildren(el("strong", { text: `Até ${rotuloChave(pts[i].chave, serie.porMes)}` }), el("span", { text: `Saldo acumulado ${reais(pts[i].valor)}` }));
+  };
+  const ultimo = pts[pts.length - 1];
+  return el("div", { class: "fin-grafico" },
+    svg("svg", { viewBox: `0 0 ${L} ${A}`, class: "grafico grafico-fin", role: "img", "aria-label": `Saldo acumulado: ${reais(ultimo.valor)} no fim` },
+      ...grade,
+      svg("polyline", { points: pts.map((p, i) => `${x(i)},${y(p.valor)}`).join(" "), class: "linha-saldo" }),
+      marcador,
+      ...pts.map((p, i) => {
+        const r = svg("rect", { x: x(i) - (L - ME - MD) / n / 2, y: MT, width: (L - ME - MD) / n, height: A - MB - MT, class: "faixa" });
+        r.addEventListener("pointerenter", () => mostrar(i));
+        r.addEventListener("click", () => mostrar(i));
+        return r;
+      })),
+    leitura);
+}
+
+function tabelaSerie(serie) {
+  return el("details", { class: "fin-tabela" },
+    el("summary", { text: "Ver os números em tabela" }),
+    el("div", { class: "rolagem-x" }, el("table", { class: "tabela" },
+      el("thead", {}, el("tr", {}, ...["Período", "Entradas", "Saídas", "Saldo"].map(t => el("th", { text: t })))),
+      el("tbody", {}, ...serie.pontos.map(p => el("tr", {},
+        el("td", { text: serie.porMes ? `${MESES_CURTO[Number(p.chave.slice(5, 7)) - 1]}/${p.chave.slice(0, 4)}` : `${DIAS_CURTO[diaDaSemana(p.chave)]} ${dataBR(p.chave)}` }),
+        el("td", { class: "num", text: reais(p.entradasCentavos) }), el("td", { class: "num", text: reais(p.saidasCentavos) }),
+        el("td", { class: "num", text: reais(p.entradasCentavos - p.saidasCentavos) })))))));
+}
+
+// Lista de partes com barra proporcional (progress: sem estilo inline).
+function listaPartes(itens, classe, total) {
+  const max = Math.max(1, ...itens.map(i => i.valor));
+  const soma = total ?? itens.reduce((t, i) => t + i.valor, 0);
+  return el("ul", { class: `fin-partes ${classe}` }, itens.map(i => el("li", { "data-parte": i.nome },
+    el("div", { class: "ranking-topo" }, el("span", { text: i.nome }),
+      el("strong", { text: `${reais(i.valor)}${soma ? ` · ${Math.round((i.valor / soma) * 100)}%` : ""}` })),
+    i.detalhe ? el("span", { class: "suave pequeno", text: i.detalhe }) : null,
+    el("progress", { max: String(max), value: String(Math.max(0, i.valor)), "aria-label": i.nome }))));
+}
+
+async function telaFinanceiro() {
+  estadoFin.data ||= hojeLocal();
+  const e = estadoFin;
+  const f = await api(`/financeiro?periodo=${e.periodo}&data=${e.data}`);
+  const t = f.totais, a = f.anterior, tipo = f.periodo.tipo;
+  const ir = async (periodo, data) => {
+    Object.assign(estadoFin, { periodo, data, movVisiveis: 30 });
+    document.body.dataset.carregando = "1";   // tela sendo montada (os testes esperam por isto)
+    try { await comCarga(telaFinanceiro); } catch (erro) { avisar(erro.message, "erro"); } finally { delete document.body.dataset.carregando; }
+  };
+  const ehAtual = f.periodo.ini <= f.periodo.hoje && f.periodo.hoje <= f.periodo.fim;
+  const nomePer = { dia: "Dia", semana: "Semana", mes: "Mês", ano: "Ano" };
+
+  const controles = el("div", { class: "fin-controles" },
+    el("div", { class: "alterna", role: "group", "aria-label": "Período" },
+      Object.entries(nomePer).map(([v, txt]) => botao(txt, () => ir(v, ehAtual ? f.periodo.hoje : e.data), `pequeno ${tipo === v ? "ativo" : ""}`))),
+    el("div", { class: "fin-navega" },
+      botao("‹", () => ir(tipo, moverData(e.data, tipo, -1)), "pequeno", ),
+      el("strong", { class: "rotulo-periodo fin-titulo", "data-teste": "periodo-fin", text: tipo === "mes" ? f.periodo.titulo.replace(/^./, c => c.toUpperCase()) : f.periodo.titulo }),
+      botao("›", () => ir(tipo, moverData(e.data, tipo, 1)), "pequeno"),
+      ehAtual ? null : botao("Hoje", () => ir(tipo, hojeLocal()), "pequeno")));
+  controles.querySelectorAll(".fin-navega .botao").forEach(b => {
+    if (b.textContent === "‹") b.setAttribute("aria-label", "Período anterior");
+    if (b.textContent === "›") b.setAttribute("aria-label", "Próximo período");
+  });
+
+  const sd = f.saidas, en = f.entradas, ds = f.destaques;
+  const cartoes = el("div", { class: "cartoes fin-cartoes" },
+    cartaoFin("Entradas", reais(t.entradasCentavos), "Dinheiro que entrou no caixa", variacao(t.entradasCentavos, a.entradasCentavos, tipo), "entradas", "fin-entrada"),
+    cartaoFin("Saídas", reais(t.saidasCentavos), "Contas, compras, vales, comissões e retiradas", variacao(t.saidasCentavos, a.saidasCentavos, tipo, false), "saidas", "fin-saida"),
+    cartaoFin("Saldo do período", reais(t.saldoCentavos), "Entradas − saídas", variacao(t.saldoCentavos, a.saldoCentavos, tipo), "saldo", t.saldoCentavos < 0 ? "negativo" : "positivo"),
+    cartaoFin("Resultado (lucro)", reais(t.resultadoCentavos), "Faturamento − comissões − custo dos produtos − contas", variacao(t.resultadoCentavos, a.resultadoCentavos, tipo), "resultado", t.resultadoCentavos < 0 ? "negativo" : "positivo"),
+    cartaoFin("Faturamento", reais(t.faturamentoCentavos), `Serviços ${reais(en.servicosCentavos)} · produtos ${reais(en.produtosCentavos)}`, variacao(t.faturamentoCentavos, a.faturamentoCentavos, tipo), "faturamento"),
+    cartaoFin("Atendimentos", String(t.atendimentosQtd), `Ticket médio ${reais(ds.ticketMedioCentavos)}`, variacao(t.atendimentosQtd, a.atendimentosQtd, tipo), "atendimentos"),
+    tipo === "dia" ? cartaoFin("Vendas de produtos", String(t.vendasQtd), reais(en.produtosCentavos), variacao(t.vendasQtd, a.vendasQtd, tipo), "vendas")
+      : tipo === "ano" ? cartaoFin("Média de entradas por mês", reais(Math.round(t.entradasCentavos / (ehAtual ? Number(f.periodo.hoje.slice(5, 7)) : 12))), ehAtual ? "Até este mês" : "No ano", null, "media")
+        : cartaoFin("Média de entradas por dia", reais(ds.mediaPorDiaCentavos), ehAtual ? "Até hoje" : "No período", null, "media"),
+    tipo === "dia" ? cartaoFin("Notas (a receber)", reais(en.notasLancadasCentavos), `Recebidas no dia ${reais(en.notasRecebidasCentavos)}`, null, "notas")
+      : cartaoFin(tipo === "ano" ? "Melhor mês" : "Melhor dia", ds.melhor ? reais(ds.melhor.entradasCentavos) : "—",
+        ds.melhor ? rotuloChave(ds.melhor.chave, f.serie.porMes) : "Sem entradas ainda", null, "melhor"));
+
+  const tituloGrafico = tipo === "dia" ? "Entradas e saídas nos últimos 7 dias" : tipo === "ano" ? "Entradas e saídas por mês" : "Entradas e saídas por dia";
+  const temSerie = f.serie.pontos.some(p => p.entradasCentavos || p.saidasCentavos);
+  const aoEscolher = (chave) => (f.serie.porMes ? ir("mes", `${chave}-01`) : ir("dia", chave));
+  const saldo = tipo === "dia" ? null : graficoSaldo(f.serie, f.periodo.hoje);
+
+  const formas = Object.entries(en.porForma).map(([forma, v]) => ({ nome: NOME_FORMA_FIN[forma], valor: v.servicosCentavos + v.produtosCentavos + v.notasCentavos,
+    detalhe: [v.servicosCentavos && `serviços ${reais(v.servicosCentavos)}`, v.produtosCentavos && `produtos ${reais(v.produtosCentavos)}`, v.notasCentavos && `notas recebidas ${reais(v.notasCentavos)}`].filter(Boolean).join(" · ") }))
+    .filter(x => x.valor).sort((x, y) => y.valor - x.valor);
+  const origens = [["Serviços (atendimentos)", en.servicosCentavos], ["Venda de produtos", en.produtosCentavos], ["Notas recebidas", en.notasRecebidasCentavos]]
+    .map(([nome, valor]) => ({ nome, valor })).filter(x => x.valor);
+  const saidas = [
+    ...sd.contasPorCategoria.map(c => ({ nome: `Conta: ${c.nome}`, valor: c.valorCentavos })),
+    { nome: "Compra de mercadoria", valor: sd.comprasMercadoriaCentavos },
+    { nome: "Comissões pagas", valor: sd.comissoesPagasCentavos },
+    { nome: "Vales (adiantamentos)", valor: sd.valesCentavos },
+    { nome: "Retiradas do caixa (sangrias avulsas)", valor: sd.retiradasCentavos }
+  ].filter(x => x.valor).sort((x, y) => y.valor - x.valor);
+
+  const r = f.resultado;
+  const linhaRes = (txt, v, cls = "") => el("tr", { class: cls }, el("td", { text: txt }), el("td", { class: "num", text: reais(v) }));
+  const demonstrativo = el("table", { class: "tabela fin-demonstrativo", "data-teste": "demonstrativo" },
+    el("tbody", {},
+      linhaRes("Faturamento (serviços + produtos)", r.brutoCentavos),
+      linhaRes("− Comissões da equipe", -r.comissoesCentavos),
+      linhaRes("− Custo dos produtos vendidos", -r.custoProdutosVendidosCentavos),
+      linhaRes("− Contas pagas", -r.contasPagasCentavos),
+      linhaRes("= Resultado (lucro)", r.resultadoCentavos, `forte ${r.resultadoCentavos < 0 ? "negativo" : "positivo"}`)));
+
+  const profs = f.profissionais.length ? el("div", { class: "rolagem-x" }, el("table", { class: "tabela", "data-teste": "fin-profissionais" },
+    el("thead", {}, el("tr", {}, ...["Profissional", "Atend.", "Serviços", "Produtos", "Comissão"].map(x => el("th", { text: x })))),
+    el("tbody", {}, ...f.profissionais.map(p => el("tr", {}, el("td", { text: p.nome }), el("td", { class: "num", text: String(p.atendimentosQtd) }),
+      el("td", { class: "num", text: reais(p.servicosCentavos) }), el("td", { class: "num", text: reais(p.produtosCentavos) }), el("td", { class: "num", text: reais(p.comissaoCentavos) }))))))
+    : el("p", { class: "vazio", text: "Sem atendimentos no período." });
+  const top = (lista, un) => (lista.length ? el("ol", { class: "fin-top" }, lista.map(x => el("li", {},
+    el("span", { text: x.nome }), el("span", { class: "suave", text: `${x.qtd} ${un}` }), el("strong", { text: reais(x.totalCentavos) }))))
+    : el("p", { class: "vazio", text: "Nada no período." }));
+
+  // Movimentos (mais recentes primeiro), com filtro
+  const listaMov = el("div", { class: "fin-movs" });
+  const desenharMov = () => {
+    const filtrados = f.movimentos.filter(m => e.filtroMov === "todos" || m.classe === (e.filtroMov === "entradas" ? "entrada" : "saida"));
+    const vis = filtrados.slice(0, e.movVisiveis);
+    listaMov.replaceChildren(...[
+      el("div", { class: "alterna", role: "group", "aria-label": "Filtrar movimentos" },
+        [["todos", "Todos"], ["entradas", "Entradas"], ["saidas", "Saídas"]].map(([v, txt]) =>
+          botao(txt, () => { e.filtroMov = v; e.movVisiveis = 30; desenharMov(); }, `pequeno ${e.filtroMov === v ? "ativo" : ""}`))),
+      vis.length ? el("ul", { class: "fin-mov-lista" }, vis.map(m => el("li", { class: `mov-${m.classe}`, "data-mov": m.tipo },
+        el("div", { class: "mov-linha" }, el("strong", { text: m.tipo }), el("strong", { class: "mov-valor", text: `${m.valorCentavos > 0 ? "+" : m.valorCentavos < 0 ? "−" : ""} ${reais(Math.abs(m.valorCentavos))}` })),
+        el("span", { class: "suave", text: [dataBR(m.data), m.descricao, m.forma ? NOME_FORMA_FIN[m.forma] || m.forma : null, m.classe === "outro" ? "não entra no saldo" : null].filter(Boolean).join(" · ") }))))
+        : el("p", { class: "vazio", text: "Nenhum movimento." }),
+      filtrados.length > vis.length ? botao(`Mostrar mais (${filtrados.length - vis.length})`, () => { e.movVisiveis += 50; desenharMov(); }, "pequeno") : null,
+      f.movimentosTotal > f.movimentos.length ? el("p", { class: "suave", text: `Mostrando os ${f.movimentos.length} mais recentes de ${f.movimentosTotal}. A lista completa está em Contador e dados (planilha).` }) : null
+    ].filter(Boolean));
+  };
+  desenharMov();
+
+  const secao = (titulo, ...filhos) => el("section", { class: "cartao" }, el("h3", { text: titulo }), ...filhos);
+  mostrar(
+    cabecalho("Relatório financeiro", "Entradas, saídas e resultado da barbearia"),
+    controles,
+    cartoes,
+    secao(tituloGrafico, temSerie ? graficoEntradasSaidas(f.serie, f.periodo, aoEscolher) : el("p", { class: "vazio", text: "Sem entradas nem saídas neste período." }), temSerie ? tabelaSerie(f.serie) : null),
+    saldo ? secao("Saldo acumulado no período", saldo) : null,
+    el("div", { class: "duas-colunas iguais" },
+      secao("De onde veio o dinheiro",
+        formas.length ? listaPartes(formas, "partes-entrada") : el("p", { class: "vazio", text: "Sem entradas no período." }),
+        origens.length ? el("h4", { text: "Por origem" }) : null, origens.length ? listaPartes(origens, "partes-entrada") : null,
+        en.notasLancadasCentavos ? el("p", { class: "suave", text: `Vendido em nota (a receber depois): ${reais(en.notasLancadasCentavos)}. Entra no faturamento, mas só vira entrada quando o cliente paga.` }) : null),
+      secao("Para onde foi o dinheiro",
+        saidas.length ? listaPartes(saidas, "partes-saida") : el("p", { class: "vazio", text: "Sem saídas no período." }))),
+    el("div", { class: "duas-colunas iguais" },
+      secao("Resultado do período", demonstrativo,
+        el("p", { class: "suave", text: "Entradas e saídas mostram o dinheiro que passou pelo caixa. O resultado mostra se a barbearia ganhou ou perdeu no período." }),
+        ds.diferencasCaixa.length ? el("ul", { class: "lista-avisos" }, ds.diferencasCaixa.map(x => el("li", { class: "aviso-vermelha",
+          text: `Diferença no caixa de ${dataBR(x.data)}: ${x.diferencaCentavos > 0 ? "sobra" : "falta"} de ${reais(Math.abs(x.diferencaCentavos))}` }))) : null),
+      secao("Por profissional", profs)),
+    el("div", { class: "duas-colunas iguais" },
+      secao("Serviços que mais faturaram", top(f.maisVendidos.servicos, "vez(es)")),
+      secao("Produtos mais vendidos", top(f.maisVendidos.produtos, "un."))),
+    secao("Movimentos do período", listaMov));
+}
+
 // ---------- DESEMPENHO DO BARBEIRO (só dele) + EXTRATO ----------
 let periodoDesempenho = "semana";
 async function telaDesempenho() {
@@ -3747,7 +4051,7 @@ function gruposDoPerfil(p) {
   return [
     { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ...(p === "gerente" || p === "proprietario" ? [["desempenho", "Meu desempenho", "grafico"]] : [])] },
     { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
-    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["comissoes", "Comissões e vales", "comissao"], ["notas", "Notas em aberto", "contas"], ["contas", "Contas a pagar", "contas"], ["contador", "Contador e dados", "contador"]] },
+    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["comissoes", "Comissões e vales", "comissao"], ["notas", "Notas em aberto", "contas"], ["contas", "Contas a pagar", "contas"], ["contador", "Contador e dados", "contador"]] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"], ["estoque", "Estoque", "estoque"]] },
     { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"], ["assinatura", "Meu plano", "dinheiro"]] }
   ];
@@ -3811,6 +4115,7 @@ const ROTAS = {
   comissoes: { perfis: ["proprietario", "gerente"], tela: telaComissoes },
   contas: { perfis: ["proprietario", "gerente"], tela: telaContas },
   contador: { perfis: ["proprietario", "gerente"], tela: telaContador },
+  financeiro: { perfis: ["proprietario", "gerente"], tela: telaFinanceiro },
   desempenho: { perfis: ["proprietario", "gerente", "barbeiro"], tela: telaDesempenho },
   "caixa-historico": { perfis: ["proprietario", "gerente"], tela: telaHistoricoCaixa },
   "caixa-dia": { perfis: ["proprietario", "gerente"], tela: data => telaCaixa(/^\d{4}-\d{2}-\d{2}$/.test(data || "") ? data : hojeLocal()) },

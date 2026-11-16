@@ -163,6 +163,11 @@ try {
   await page.click("button:has-text('Semana')").catch(() => {});
   await pronto();
   await foto("painel");
+  await ir(page, "Relatório financeiro");
+  await page.click(".fin-controles button:has-text('Semana')");
+  await pronto();
+  await page.waitForSelector(".grafico-fin");
+  await foto("financeiro");
   await ir(page, "Comissões e vales"); await foto("comissoes");
   await ir(page, "Contas a pagar"); await foto("contas");
   await ir(page, "Contador e dados"); await foto("contador");
