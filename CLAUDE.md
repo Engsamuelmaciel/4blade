@@ -132,6 +132,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - Base de 30 min + horário compacto + promissória só para cadastrado publicados em 16/11/2026 (autorizado): oficial 43e97c8b, teste 5ca5da16 (conferido no forblade.com.br: sw `4blade-v15`).
 
 - 16/11/2026: **WhatsApp direto do horário**: `linksWhatsapp(..., {semNumero:true})` na agenda e em `registrarMensagem` (sem telefone → `https://wa.me/?text=`; agendamento leva `whatsappComNumero`). Tela: botão "Outra mensagem" (`janelaOutraMensagem`, `linkWhatsappCliente` com `MENSAGENS_PRONTAS`) + aviso `[data-teste=whats-sem-numero]`. Testes: `test/melhorias.test.js` + `test/navegador-melhorias.mjs` (print `*-agenda-outra-mensagem-sem-telefone`). Cache do sw `4blade-v16`.
+  - Publicado em 16/11/2026 (autorizado, só oficial): versão 08f8bc89 (conferido no forblade.com.br: sw `4blade-v16`).
 
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
