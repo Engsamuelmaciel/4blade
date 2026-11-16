@@ -832,3 +832,10 @@ a.botao.largo { display: flex; justify-content: center; align-items: center; wid
   .lp-acoes .botao { flex: 0 0 auto; width: auto; }
   .lp-hero-print img { max-height: 560px; }
 }
+.lp-kicker { margin: 0 0 10px; color: var(--dourado); font-weight: 700; letter-spacing: .3px; text-transform: uppercase; font-size: 13px; }
+.lp-dores { display: grid; gap: 12px; grid-template-columns: 1fr; max-width: 980px; margin: 0 auto; }
+.lp-dor { background: var(--cartao); border-radius: var(--raio); padding: 16px; box-shadow: var(--sombra); border-top: 3px solid var(--erro); }
+.lp-dor strong { display: block; font-size: 17px; }
+.lp-dor p { margin: 6px 0 0; color: var(--suave); }
+.lp-dor p::before { content: "✓ "; color: var(--ok); font-weight: 800; }
+@media (min-width: 720px) { .lp-dores { grid-template-columns: repeat(2, 1fr); } }

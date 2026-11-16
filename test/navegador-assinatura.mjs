@@ -75,6 +75,7 @@ async function rodar(tela) {
     await page.waitForFunction(() => [...document.querySelectorAll(".lp img")].slice(0, 2).every(i => i.complete && i.naturalWidth > 0));
     assert.equal(await page.locator('.lp [data-plano]').count(), 3, "planos na landing");
     assert.equal(await page.locator(".lp .duvida").count(), 4, "dúvidas comuns na landing");
+    assert.equal(await page.locator("[data-teste=lp-caderno] .lp-dor").count(), 4, "seção do caderninho");
     await print("landing");
     await page.click("[data-teste=lp-entrar]");
     await page.waitForSelector("[data-teste=link-planos]");

@@ -864,6 +864,12 @@ const LP_RECURSOS = [
   ["mensagem", "WhatsApp pronto", "Lembrete, confirmação e promoções com o nome do cliente, abertos no seu WhatsApp. Sem custo por mensagem."],
   ["contador", "Pronto para o contador", "Resumo do mês em PDF e planilha com tudo, enviados pelo celular. Seus dados sempre seus."]
 ];
+const LP_DORES = [
+  ["O que fica de cabeça, fica pelo caminho.", "Cada horário, atendimento e venda fica registrado na hora, no celular."],
+  ["Comissão anotada à mão é comissão discutida.", "O sistema calcula a comissão de cada atendimento. O barbeiro vê o mesmo número que você."],
+  ["Estoque de memória acaba na hora errada.", "O 4blade avisa o que precisa repor antes de faltar na prateleira."],
+  ["Quem não anota não sabe se lucrou.", "O painel mostra o que entrou, o que saiu e o lucro do dia, da semana e do mês."]
+];
 const LP_PERFIS = [
   ["Proprietário", "Vê o lucro, o painel e tudo o que acontece, de onde estiver."],
   ["Gerente", "Organiza agenda, equipe, comissões e contas — e também atende."],
@@ -903,15 +909,21 @@ async function telaInicio() {
         el("a", { class: "botao pequeno", href: "#/entrar", text: "Entrar" }))),
     el("section", { class: "lp-hero" },
       el("div", { class: "lp-hero-texto" },
+        el("p", { class: "lp-kicker", text: "Da cadeira ao caixa, sem erro." }),
         el("h1", {}, "Gestão ", el("span", { text: "afiada" }), " para sua barbearia."),
         el("p", { class: "lp-sub", text: "Agenda, caixa, estoque, comissões e WhatsApp num só lugar. Funciona no celular e no computador, sem instalar nada." }),
         cta(),
         el("p", { class: "lp-miudo", text: "Sem cartão para testar · Cancele quando quiser · Seus dados são seus" })),
       el("div", { class: "lp-hero-print" },
         el("img", { src: "/tutoriais/agenda-dia.jpg", alt: "Agenda do 4blade no celular", width: "390", height: "760" }))),
+    el("section", { class: "lp-secao", "data-teste": "lp-caderno" },
+      el("h2", { text: "Ainda no caderninho?" }),
+      el("p", { class: "lp-intro", text: "Anotar à mão funciona até o dia em que não funciona." }),
+      el("div", { class: "lp-dores" }, LP_DORES.map(([dor, solucao]) => el("div", { class: "lp-dor" },
+        el("strong", { text: dor }), el("p", { text: solucao }))))),
     el("section", { class: "lp-secao" },
       el("h2", { text: "Feito para a rotina da barbearia" }),
-      el("p", { class: "lp-intro", text: "Chega de caderno, planilha e conta de cabeça no fim do dia." }),
+      el("p", { class: "lp-intro", text: "Menos papel, menos conta de cabeça, mais tempo na cadeira." }),
       el("div", { class: "lp-recursos" }, LP_RECURSOS.map(([ic, t, d]) => el("article", { class: "lp-recurso" },
         el("span", { class: "lp-icone" }, icone(ic)), el("h3", { text: t }), el("p", { text: d }))))),
     el("section", { class: "lp-secao lp-escura" },
@@ -940,7 +952,7 @@ async function telaInicio() {
       el("div", { class: "lp-duvidas" }, duvidas.map(d => el("details", { class: "duvida" }, el("summary", { text: d.p }), el("p", { text: d.r })))),
       el("p", { class: "centro" }, el("a", { href: "#/duvidas", text: "Ver todas as dúvidas frequentes" }))),
     el("section", { class: "lp-final" },
-      el("h2", { text: "Sua barbearia organizada a partir de hoje." }),
+      el("h2", { text: "Corte certo nos números da sua barbearia." }),
       cta("centro"),
       whats ? el("p", {}, el("a", { class: "lp-whats", href: whats, target: "_blank", rel: "noopener", "data-teste": "lp-whats", text: "Prefere conversar? Chame no WhatsApp" })) : null),
     el("footer", { class: "lp-rodape" },
