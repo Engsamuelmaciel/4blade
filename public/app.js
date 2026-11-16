@@ -2514,7 +2514,13 @@ async function telaClientes(busca = "") {
       el("div", { class: "item-acoes" },
         c.ativo ? botao("Marcar horário", () => { marcarParaCliente = { id: c.id, nome: c.nome, telefone: c.telefone }; estadoAgenda.visao = "dia"; location.hash = "#/agenda"; }, "pequeno principal") : null,
         ehCaixa() ? botao("Editar", () => editarEmJanela(`Editar ${c.nome}`, def, c), "pequeno")
-          : linhaAcoesCadastro("clientes", c, () => telaClientes(busca), () => editarEmJanela(`Editar ${c.nome}`, def, c))))))
+          : linhaAcoesCadastro("clientes", c, () => telaClientes(busca), () => editarEmJanela(`Editar ${c.nome}`, def, c)),
+        botao("Excluir", () => pedirMotivo(`Excluir ${c.nome}`,
+          "O cliente sai da lista, da busca e da agenda, e o telefone fica livre para outro cadastro. O histórico (atendimentos, vendas e notas) continua guardado.",
+          async motivo => {
+            await api("/clientes/excluir", { metodo: "POST", corpo: { id: c.id, motivo } });
+            avisar("Cliente excluído."); telaClientes(busca);
+          }, "Excluir cliente"), "pequeno perigo")))))
     : el("p", { class: "vazio", text: busca ? "Nenhum cliente encontrado." : "Nenhum cliente ainda." });
   mostrar(cabecalho("Clientes", "Na agenda o cliente também é cadastrado na hora de marcar (pelo telefone ou só pelo nome)."),
     el("div", { class: "duas-colunas" }, el("section", {}, buscaForm, lista), el("section", {}, formCadastro(def))));

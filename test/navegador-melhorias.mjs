@@ -309,8 +309,17 @@ async function rodar(tela) {
     await print("remarcar-horario", false);
     await ok();
     await page.waitForSelector('[data-prof="Beto Barbeiro"] [data-agendamento="Ivo Recepção Fictício"] >> text=18:00');
+    const tokCaixa = (await chamar("/auth/login", { login: "caixa.semana", senha: SENHA })).token;
+    await chamar("/clientes", { nome: "Duplicado Fictício", aceiteLgpd: true, telefone: "11 93210-0000" }, tokCaixa);
     await ir(page, "Clientes");
     await page.waitForSelector('[data-cliente="Ivo Recepção Fictício"]');
+    // excluir um cadastro duplicado (sem histórico): pede motivo e some da lista
+    await page.click('[data-cliente="Duplicado Fictício"] button:has-text("Excluir")');
+    await page.fill("dialog[open] #c-motivo", "Cadastro duplicado");
+    await print("excluir-cliente", false);
+    await ok();
+    await page.waitForSelector("text=Cliente excluído");
+    assert.equal(await page.locator('[data-cliente="Duplicado Fictício"]').count(), 0);
     assert.equal(await page.locator('[data-cliente="Ivo Recepção Fictício"] button:has-text("Desativar")').count(), 0);
     // da tela Clientes direto para a agenda, já com o cliente escolhido
     await page.click('[data-cliente="Ivo Recepção Fictício"] button:has-text("Marcar horário")');

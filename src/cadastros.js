@@ -139,6 +139,7 @@ async function rotasCadastro(ctx, nome, def, path, method) {
     let sql = def.selectLista || `SELECT * FROM ${def.tabela} WHERE barbearia_id = ?`;
     const params = [ctx.barbeariaId];
     if (!gestao) sql += def.selectLista ? " AND p.ativo = 1" : " AND ativo = 1";
+    if (nome === "clientes") { sql += " AND id NOT IN (SELECT cliente_id FROM clientes_excluidos WHERE barbearia_id = ?)"; params.push(ctx.barbeariaId); }
     const busca = (url.searchParams.get("busca") || "").trim().slice(0, 60);
     if (busca && nome === "clientes") {
       const digitos = busca.replace(/\D/g, "");
@@ -179,6 +180,35 @@ async function rotasCadastro(ctx, nome, def, path, method) {
     return json({ [def.singular]: def.publico(novo) }, 201);
   }
 
+  // Excluir cliente: sai das listas/busca/marcação; histórico guardado; telefone liberado. Gestão: qualquer um.
+  // Caixa: só cadastro sem histórico (ex.: duplicado por engano). Com nota (promissória) em aberto: ninguém.
+  if (nome === "clientes" && path === "/clientes/excluir" && method === "POST") {
+    exigirEdicao(ctx, nome);
+    const input = await readJson(request);
+    if (!validId(input.id)) return fail("Cliente inválido.");
+    const motivo = exigirMotivo(input.motivo);
+    const c = await db.prepare("SELECT * FROM clientes WHERE id = ? AND barbearia_id = ?").bind(input.id, ctx.barbeariaId).first();
+    if (!c) return fail("Cliente não encontrado.", 404);
+    if (await db.prepare("SELECT 1 FROM clientes_excluidos WHERE cliente_id = ?").bind(c.id).first()) return fail("Esse cliente já foi excluído.", 409);
+    if (await db.prepare("SELECT 1 FROM promissorias WHERE cliente_id = ? AND barbearia_id = ? AND situacao = 'aberta'").bind(c.id, ctx.barbeariaId).first()) {
+      return fail("Esse cliente tem nota (promissória) em aberto: receba ou cancele a nota antes de excluir.", 409);
+    }
+    if (!isGestao(user)) {
+      const hist = await db.prepare(`SELECT (SELECT COUNT(*) FROM agendamentos WHERE cliente_id = ?1 AND barbearia_id = ?2)
+                                          + (SELECT COUNT(*) FROM vendas WHERE cliente_id = ?1 AND barbearia_id = ?2)
+                                          + (SELECT COUNT(*) FROM promissorias WHERE cliente_id = ?1 AND barbearia_id = ?2) AS n`).bind(c.id, ctx.barbeariaId).first();
+      if (Number(hist.n) > 0) return fail("Esse cliente já tem atendimentos ou vendas: só o gerente ou o proprietário pode excluir.", 403);
+    }
+    await db.batch([
+      db.prepare(`INSERT INTO clientes_excluidos (cliente_id, barbearia_id, nome, telefone_original, motivo, excluido_por) VALUES (?, ?, ?, ?, ?, ?)`)
+        .bind(c.id, ctx.barbeariaId, c.nome, telefoneReal(c.telefone), motivo, user.id),
+      db.prepare(`UPDATE clientes SET ativo = 0, motivo_desativacao = ?, telefone = 'sem:' || id, atualizado_em = CURRENT_TIMESTAMP
+                  WHERE id = ? AND barbearia_id = ?`).bind(`Excluído: ${motivo}`, c.id, ctx.barbeariaId),
+      auditoria(ctx, "cliente_excluido", c.id, { motivo, antes: { nome: c.nome, telefone: telefoneReal(c.telefone), ativo: c.ativo }, depois: { excluido: true } })
+    ]);
+    return json({ mensagem: "Cliente excluído." });
+  }
+
   if (path === `${base}/alterar` && method === "POST") {
     exigirEdicao(ctx, nome);
     const input = await readJson(request);
@@ -187,6 +217,7 @@ async function rotasCadastro(ctx, nome, def, path, method) {
     // Sempre dentro da barbearia da sessão: id de outra barbearia = "não encontrado".
     const atual = await db.prepare(`SELECT * FROM ${def.tabela} WHERE id = ? AND barbearia_id = ?`).bind(input.id, ctx.barbeariaId).first();
     if (!atual) return fail("Registro não encontrado.", 404);
+    if (nome === "clientes" && await db.prepare("SELECT 1 FROM clientes_excluidos WHERE cliente_id = ?").bind(atual.id).first()) return fail("Cliente excluído não pode ser alterado.", 409);
 
     // Cliente marcado sem telefone: ao editar, pode continuar sem (o marcador fica).
     if (nome === "clientes" && !telefoneReal(atual.telefone) && !String(input.telefone ?? "").replace(/\D/g, "")) delete input.telefone;

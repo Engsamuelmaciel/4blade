@@ -588,3 +588,40 @@ describe("remarcar horário e concluir atendimento no caixa (pedido de 16/11/202
     assert.equal((await post("/api/caixa/cobrar", cx.token, { id: fut.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], pagamentos: [{ forma: "pix", valorCentavos: 4000 }] })).status, 403);
   });
 });
+
+describe("excluir cliente (pedido de 16/11/2026)", () => {
+  test("some da lista/busca/marcação, histórico fica, telefone liberado; caixa só sem histórico; nota em aberto bloqueia; isolamento", async () => {
+    const amb = await cenario();
+    const { post, get, ger, barb, cx, corte } = amb;
+    const dup = (await post("/api/clientes", cx.token, { nome: "Duplicado Fictício", telefone: "11 93333-0001", aceiteLgpd: true })).dados.cliente;
+    const comHist = (await post("/api/clientes", ger.token, { nome: "Com Histórico Fictício", telefone: "11 93333-0002", aceiteLgpd: true })).dados.cliente;
+    const m = (await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "09:00", servicoIds: [corte.id], cliente: { id: comHist.id } })).dados.agendamento;
+    // motivo obrigatório; caixa exclui o duplicado (sem histórico)
+    assert.equal((await post("/api/clientes/excluir", cx.token, { id: dup.id })).status, 400);
+    const ex = await post("/api/clientes/excluir", cx.token, { id: dup.id, motivo: "Cadastro duplicado" });
+    assert.equal(ex.status, 200, JSON.stringify(ex.dados));
+    assert.ok(!(await get("/api/clientes", ger.token)).dados.clientes.some(c => c.id === dup.id), "some da lista");
+    assert.equal((await get("/api/agenda/clientes?busca=Duplicado", cx.token)).dados.clientes.length, 0, "some da busca");
+    assert.equal((await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "10:00", servicoIds: [corte.id], cliente: { id: dup.id } })).status, 409);
+    assert.equal((await post("/api/clientes/excluir", ger.token, { id: dup.id, motivo: "De novo" })).status, 409);
+    assert.equal((await post("/api/clientes/alterar", ger.token, { id: dup.id, ativo: true })).status, 409);
+    // telefone liberado para um novo cadastro
+    assert.equal((await post("/api/clientes", cx.token, { nome: "Novo Dono do Número", telefone: "11 93333-0001", aceiteLgpd: true })).status, 201);
+    const reg = amb.env.DB.raw.prepare("SELECT telefone_original, motivo FROM clientes_excluidos WHERE cliente_id = ?").get(dup.id);
+    assert.deepEqual([reg.telefone_original, reg.motivo], ["11933330001", "Cadastro duplicado"]);
+    assert.ok(amb.env.DB.raw.prepare("SELECT 1 FROM auditoria WHERE acao = 'cliente_excluido' AND alvo = ?").get(dup.id));
+    // com histórico: caixa não; gerente sim, e o horário continua na agenda
+    assert.equal((await post("/api/clientes/excluir", cx.token, { id: comHist.id, motivo: "Não volta mais" })).status, 403);
+    assert.equal((await post("/api/clientes/excluir", ger.token, { id: comHist.id, motivo: "Pediu para sair" })).status, 200);
+    assert.ok((await get(`/api/agenda?data=${AMANHA}`, cx.token)).dados.agendamentos.some(a => a.id === m.id), "histórico continua");
+    // nota em aberto bloqueia
+    const deve = (await post("/api/clientes", ger.token, { nome: "Deve Fictício", telefone: "11 93333-0003", aceiteLgpd: true })).dados.cliente;
+    await post("/api/caixa/abrir", cx.token, { trocoCentavos: 0 });
+    await post("/api/caixa/atendimento-avulso", cx.token, { barbeiroId: barb.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], pagamentos: [{ forma: "promissoria", valorCentavos: 4000 }], cliente: { id: deve.id } });
+    assert.equal((await post("/api/clientes/excluir", ger.token, { id: deve.id, motivo: "Teste" })).status, 409);
+    // barbeiro não; outra barbearia não acha
+    assert.equal((await post("/api/clientes/excluir", barb.token, { id: deve.id, motivo: "Teste" })).status, 403);
+    const outra = await cenario("beta", amb, amb.p);
+    assert.equal((await post("/api/clientes/excluir", outra.ger.token, { id: deve.id, motivo: "Invasão" })).status, 404);
+  });
+});

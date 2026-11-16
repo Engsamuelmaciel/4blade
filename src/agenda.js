@@ -172,7 +172,8 @@ async function clienteDaMarcacao(ctx, c = {}, comandos, origem = "agenda") {
     const nome = textoLimpo(c.nome, 2, 80) || (origem === "caixa" ? CLIENTE_NAO_IDENTIFICADO : null);
     if (!nome) erro("Informe o telefone ou o nome do cliente.");
     const existente = await db.prepare(`SELECT id, nome, ativo FROM clientes WHERE barbearia_id = ? AND lower(nome) = lower(?)
-                                        AND telefone LIKE '${PREFIXO_SEM_TELEFONE}%' ORDER BY ativo DESC LIMIT 1`).bind(ctx.barbeariaId, nome).first();
+                                        AND telefone LIKE '${PREFIXO_SEM_TELEFONE}%' AND id NOT IN (SELECT cliente_id FROM clientes_excluidos WHERE barbearia_id = ?)
+                                        ORDER BY ativo DESC LIMIT 1`).bind(ctx.barbeariaId, nome, ctx.barbeariaId).first();
     if (existente && !existente.ativo) erro("Esse cliente está desativado. Peça ao gerente para reativar.", 409);
     if (existente) return { id: existente.id, nome: existente.nome, novo: false };
     const id = crypto.randomUUID();
