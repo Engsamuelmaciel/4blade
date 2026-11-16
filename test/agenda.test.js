@@ -442,3 +442,19 @@ describe("o dono já entra como gerente: também atende (pedido de 16/11/2026)",
     assert.equal((await get(`/api/agenda?data=${HOJE}&barbeiroId=${me.id}`, barb.token)).dados.agendamentos.every(a => a.barbeiroId === barb.id), true);
   });
 });
+
+describe("tempo do serviço ajusta a agenda (pedido de 16/11/2026)", () => {
+  test("procedimento de 1h30 às 10:00: próximo horário livre é 11:30 e não dá para marcar antes", async () => {
+    const amb = await cenario("tempo");
+    const { post, get, ger, barb, corte } = amb;
+    const prog = (await post("/api/servicos", ger.token, { nome: "Progressiva", precoCentavos: 8000, duracaoMin: 90 })).dados.servico;
+    const m = await amb.marcar(ger.token, { barbeiroId: barb.id, data: AMANHA, hora: "10:00", servicoIds: [prog.id] });
+    assert.equal(m.status, 201, JSON.stringify(m.dados));
+    const livres = (await get(`/api/agenda/disponibilidade?data=${AMANHA}&barbeiroId=${barb.id}&duracao=30`, ger.token)).dados.profissionais[0].livres;
+    assert.ok(livres.includes("11:30"), livres.join(","));
+    assert.ok(!livres.includes("10:00") && !livres.includes("11:00"), "10:00 e 11:00 estão dentro da progressiva");
+    // o servidor recusa marcar dentro do procedimento (10:30 ou 11:00) e aceita às 11:30
+    assert.equal((await amb.marcar(ger.token, { barbeiroId: barb.id, data: AMANHA, hora: "11:00", servicoIds: [corte.id], cliente: { nome: "Outro Cliente" } })).status, 409);
+    assert.equal((await amb.marcar(ger.token, { barbeiroId: barb.id, data: AMANHA, hora: "11:30", servicoIds: [corte.id], cliente: { nome: "Outro Cliente" } })).status, 201);
+  });
+});

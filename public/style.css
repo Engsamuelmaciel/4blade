@@ -851,3 +851,18 @@ a.botao.largo { display: flex; justify-content: center; align-items: center; wid
 }
 .olho-senha:hover { background: var(--neutro-2); color: var(--texto); }
 .olho-senha .icone { width: 22px; height: 22px; }
+/* Agenda — semana em lista pequena; dia aberto mostra os cartões completos */
+.dia-semana { background: var(--cartao); border-radius: var(--raio); box-shadow: var(--sombra); padding: 0 10px; margin-bottom: 8px; }
+.dia-semana-titulo { width: 100%; display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 6px 2px; border: 0; background: none; color: var(--texto); font: inherit; cursor: pointer; text-align: left; }
+.dia-semana-titulo strong { flex: 1; color: var(--destaque); text-transform: uppercase; font-size: 13px; letter-spacing: .3px; }
+.dia-semana-titulo .seta { transition: transform .15s; }
+.dia-semana.aberto .dia-semana-titulo .seta { transform: rotate(90deg); }
+.dia-semana.aberto { padding-bottom: 10px; }
+.etiqueta.neutra { background: transparent; color: var(--suave); font-weight: 600; }
+.mini-lista { list-style: none; margin: 0 0 8px; padding: 0; }
+.mini-horario { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 4px; border: 0; border-top: 1px solid var(--borda); background: none; color: var(--texto); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.mini-horario span:not(.etiqueta) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--suave); }
+.mini-horario strong { min-width: 44px; }
+.mini-horario.cancelado span:not(.etiqueta), .mini-horario.faltou span:not(.etiqueta) { text-decoration: line-through; }
+.mini-horario:hover { background: var(--neutro-2); }
+.janela .slot { box-shadow: none; padding: 0; }

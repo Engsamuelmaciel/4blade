@@ -1347,7 +1347,7 @@ const NOME_SITUACAO = { agendado: "Agendado", finalizado: "Finalizado", faltou: 
 const COR_SITUACAO = { agendado: "", finalizado: "verde", faltou: "amarela", cancelado: "vermelha" };
 
 // ---------- AGENDA ----------
-const estadoAgenda = { data: null, visao: "dia", barbeiroId: "" };
+const estadoAgenda = { data: null, visao: "dia", barbeiroId: "", diasAbertos: new Set() };
 let marcarParaCliente = null;
 let ultimaAgenda = null;   // profissionais da agenda aberta (usados ao remarcar)   // cliente escolhido na tela Clientes → abre o "Novo horário" já com ele
 let servicosCache = null;
@@ -1433,12 +1433,31 @@ async function telaAgenda() {
         itens.length ? itens : el("p", { class: "vazio", text: "Nenhum horário." }));
     }));
   } else if (v === "semana") {
+    // Semana: cada dia é uma lista pequena (hora · cliente · serviço); tocar no dia abre todos os horários completos;
+    // tocar num horário abre a ficha do atendimento (pedido de 16/11/2026). Hoje já vem aberto.
+    const varios = profs.length > 1;
+    const idsProfs = new Set(profs.map(p => p.id));
+    if (!estadoAgenda.diasAbertos.size && ag.hoje >= d0 && ag.hoje <= somaDias(d0, 6)) estadoAgenda.diasAbertos.add(ag.hoje);
     corpo = el("div", { class: "agenda-semana" }, [0, 1, 2, 3, 4, 5, 6].map(i => {
       const d = somaDias(d0, i);
-      const itens = profs.flatMap(p => itensDoDia(ag, d, p.id, profs.length > 1));
-      return el("section", { class: "dia-semana" },
-        el("h3", { text: `${DIAS[diaDaSemana(d)]} ${dataBR(d).slice(0, 5)}${d === ag.hoje ? " (hoje)" : ""}` }),
-        itens.length ? itens : el("p", { class: "suave", text: "Sem horários." }));
+      const doDia = ag.agendamentos.filter(a => a.data === d && idsProfs.has(a.barbeiroId)).sort((x, y) => x.inicio.localeCompare(y.inicio));
+      const ativos = doDia.filter(a => a.situacao === "agendado" || a.situacao === "finalizado").length;
+      const aberto = estadoAgenda.diasAbertos.has(d);
+      const titulo = el("button", { type: "button", class: "dia-semana-titulo", "aria-expanded": aberto ? "true" : "false", "data-dia": d,
+        onclick: () => { if (aberto) estadoAgenda.diasAbertos.delete(d); else estadoAgenda.diasAbertos.add(d); telaAgenda(); } },
+        el("strong", { text: `${DIAS[diaDaSemana(d)]} ${dataBR(d).slice(0, 5)}${d === ag.hoje ? " (hoje)" : ""}` }),
+        el("span", { class: `etiqueta ${ativos ? "" : "neutra"}`, text: ativos ? `${ativos} horário(s)` : "livre" }),
+        svg("svg", { viewBox: "0 0 24 24", class: "icone seta", "aria-hidden": "true" }, svg("path", { d: ICONES.seta })));
+      const conteudo = aberto
+        ? (() => { const itens = profs.flatMap(p => itensDoDia(ag, d, p.id, varios)); return itens.length ? itens : [el("p", { class: "suave", text: "Sem horários." })]; })()
+        : doDia.length
+          ? [el("ul", { class: "mini-lista" }, doDia.map(a => el("li", {},
+            el("button", { type: "button", class: `mini-horario ${a.situacao}`, "data-mini": a.cliente.nome, onclick: () => janelaAtendimento(a, varios) },
+              el("strong", { text: a.inicio }),
+              el("span", { text: [a.cliente.nome, varios ? a.barbeiroNome?.split(" ")[0] : null, a.servicos.map(s => s.nome).join(" + ")].filter(Boolean).join(" · ") }),
+              a.situacao !== "agendado" ? el("span", { class: `etiqueta ${COR_SITUACAO[a.situacao]}`, text: NOME_SITUACAO[a.situacao] }) : null))))]
+          : [];
+      return el("section", { class: `dia-semana ${aberto ? "aberto" : ""}` }, titulo, ...conteudo);
     }));
   } else {
     const legenda = el("p", { class: "legenda" },
@@ -1604,6 +1623,11 @@ function cartaoAgendamento(a, mostrarNome) {
         avisar("Atendimento reaberto."); telaAgenda();
       }, "Reabrir"), "pequeno") : null,
       a.situacao === "cancelado" || a.situacao === "faltou" ? botaoWhatsapp(a, "proposta", "Propor horário") : null));
+}
+
+// Ficha do atendimento (a partir da lista pequena da semana): tudo o que está registrado + as mesmas ações do cartão.
+function janelaAtendimento(a, mostrarNome = true) {
+  return abrirJanela(`${dataLonga(a.data)} · ${a.inicio}–${a.fim}`, [cartaoAgendamento(a, mostrarNome)], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
 }
 
 function campoProfissional(ag, escolhido = null) {

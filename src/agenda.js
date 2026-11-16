@@ -654,7 +654,9 @@ async function disponibilidade(ctx) {
     let livres = [];
     if (janela) {
       const inicios = new Set();
-      for (let t = janela.ini; t < janela.fim; t += 60) inicios.add(t);   // 1 atendimento a cada hora (pedido de 16/11/2026)
+      for (let t = janela.ini; t < janela.fim; t += 60) inicios.add(t);   // de hora em hora (pedido de 16/11/2026)
+      // + logo depois de cada atendimento/bloqueio/intervalo: um serviço de 1h30 às 10:00 libera 11:30 (pedido de 16/11/2026)
+      for (const o of ocupados) if (o.fim > janela.ini && o.fim < janela.fim) inicios.add(o.fim);
       livres = [...inicios].sort((a, b) => a - b).filter(t => t + duracao <= janela.fim
         && !(data === hoje && t < agoraMin) && data >= hoje
         && !ocupados.some(o => t < o.fim && t + duracao > o.ini));

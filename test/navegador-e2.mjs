@@ -244,8 +244,19 @@ async function rodar(tela) {
     assert.match(cg, /Comissão: R\$\s?32,50/);
     await print("gerente-agenda-valor-alterado-destacado");
     await page.click("button:has-text('Semana')");
-    await page.waitForSelector('[data-agendamento="Elias Cliente Fictício"]');
+    // semana em lista pequena: hoje aberto; amanhã fechado mostra só "hora · cliente · serviço"
+    await page.waitForSelector('[data-mini="Elias Cliente Fictício"]');
     await print("gerente-agenda-semana");
+    // tocar no horário abre a ficha do atendimento
+    await page.click('[data-mini="Elias Cliente Fictício"]');
+    await page.waitForSelector('dialog[open] [data-agendamento="Elias Cliente Fictício"]');
+    assert.match(await page.textContent("dialog[open]"), /Elias Cliente Fictício[\s\S]*Finalizar|Remarcar/);
+    await print("gerente-agenda-semana-ficha", false);
+    await page.click("dialog[open] button[type=submit]");
+    // tocar no dia abre todos os horários completos
+    await page.click(`[data-dia="${AMANHA}"]`);
+    await page.waitForSelector('.agenda-semana [data-agendamento="Elias Cliente Fictício"]');
+    await print("gerente-agenda-semana-dia-aberto");
 
     passo("gerente fecha amanhã e recebe a lista para remarcar");
     await ir(page, "Funcionamento");

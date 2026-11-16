@@ -116,6 +116,8 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 
 - 16/11/2026: **Dono entra como gerente** (ESPECIFICACAO.md seção 16): `atende()` em perfis.js inclui `proprietario`; SQL de profissionais `perfil IN ('proprietario','gerente','barbeiro')` (agenda, caixa, gestão, contador); `/usuarios/alterar` aceita o próprio dono (nome/telefone/comissão; desativar-se → 403); horário do dono só ele altera. Tela: `NOME_PERFIL.proprietario = "Gerente (dono)"`, `atendePerfil()`, "Meu horário" + "Meus dados e comissão" no cartão do dono, "Meu desempenho" no menu do dono. Testes ajustados (dono conta como profissional) + teste novo em `test/agenda.test.js`. `npm test` (130).
 
+- 16/11/2026: **Agenda: semana compacta e tempo do serviço** (ESPECIFICACAO.md seção 17). `disponibilidade` em agenda.js soma aos inícios de hora em hora o fim de cada ocupado (`inicios.add(o.fim)`). Tela: visão Semana com `.dia-semana-titulo` (`data-dia`), `estadoAgenda.diasAbertos` (hoje aberto), lista `.mini-horario` (`data-mini`) e `janelaAtendimento(a)` (ficha = `cartaoAgendamento` na janela). Testes: `test/agenda.test.js` (1h30 às 10:00 → 11:30) + `test/navegador-e2.mjs`. `npm test` (131).
+
 ## Versão de teste publicada (Cloudflare)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.
