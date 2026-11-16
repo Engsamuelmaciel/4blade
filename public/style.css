@@ -965,3 +965,10 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
   border: 1px solid var(--borda); border-radius: 8px; background: var(--cartao); color: var(--suave); cursor: pointer; }
 .botao-lixeira:hover { color: var(--erro); border-color: var(--erro); }
 .botao-lixeira .icone { width: 18px; height: 18px; }
+/* Semana: barra do dia com marcados/livres; lista ao abrir; ficha ao tocar no horário */
+.dia-semana-titulo .contagens { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.dia-semana:has(.dia-semana-titulo.hoje) { box-shadow: var(--sombra), inset 3px 0 0 var(--dourado); }
+.mini-horario .seta-mini { width: 16px; height: 16px; color: var(--suave); flex: none; }
+.mini-horario strong { min-width: 92px; white-space: nowrap; }
+.acoes-dia-semana { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 8px; border-top: 1px solid var(--borda); }
+@media (max-width: 699px) { .mini-horario strong { min-width: 0; } .acoes-dia-semana .botao { flex: 1; } }

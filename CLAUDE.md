@@ -136,6 +136,8 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 
 - 16/11/2026: **Editar/desfazer/excluir horário**: `migrations/0014_agenda_editar_excluir.sql` (agendamento_servicos_removidos — serviço trocado não é apagado, toda leitura de agendamento_servicos filtra com NOT EXISTS; agendamentos_excluidos — listarAgenda esconde). API: `POST /agenda/editar` (servicoIds, cliente?, observacao), `POST /agenda/desfazer` (faltou/cancelado → agendado), `POST /agenda/excluir` (motivo; não finalizado). Tela: botões "Editar" (`janelaEditarHorario`), "Desfazer falta/cancelamento" e `.botao-lixeira` (ícone `lixeira`). Testes: `test/agenda.test.js` + `test/navegador-melhorias.mjs`. Cache do sw `4blade-v17`. **Migração 0014 ainda NÃO aplicada no banco real.**
 
+- 16/11/2026: **Semana enxuta**: `iniciosLivres` em agenda.js (usado por disponibilidade e ocupação; ocupação devolve `livres` por dia); tela Semana busca `/agenda/ocupacao` da semana; barra `[data-dia]` com `[data-marcados]`/`[data-livres]`, todos fechados por padrão; aberto = `.mini-lista` + `.acoes-dia-semana`. Testado em `test/navegador-e2.mjs`. Cache do sw `4blade-v18`.
+
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.

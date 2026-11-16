@@ -709,6 +709,18 @@ async function buscarClientes(ctx) {
 
 // ---------- DISPONIBILIDADE DE UM DIA (para quem vai marcar): situação de cada profissional, ocupados e horários livres ----------
 // Livres = inícios de 30 em 30 minutos (a partir da abertura) em que cabe a duração pedida; hoje, só a partir de agora.
+// Horários livres de um profissional num dia: de 30 em 30 minutos (pedido de 16/11/2026) + logo depois de cada
+// atendimento/bloqueio/intervalo (um serviço de 1h30 às 10:00 libera 11:30), onde cabe a duração; hoje, só a partir de agora.
+function iniciosLivres(janela, ocupados, duracao, data, hoje, agoraMin) {
+  if (data < hoje) return [];
+  const inicios = new Set();
+  for (let t = janela.ini; t < janela.fim; t += 30) inicios.add(t);
+  for (const o of ocupados) if (o.fim > janela.ini && o.fim < janela.fim) inicios.add(o.fim);
+  return [...inicios].sort((a, b) => a - b).filter(t => t + duracao <= janela.fim
+    && !(data === hoje && t < agoraMin)
+    && !ocupados.some(o => t < o.fim && t + duracao > o.ini));
+}
+
 async function disponibilidade(ctx) {
   const { db, user, request } = ctx;
   const url = new URL(request.url);
@@ -743,16 +755,7 @@ async function disponibilidade(ctx) {
       ...blqs.results.filter(b => b.barbeiro_id === p.id).map(b => ({ ini: minDoDia(b.inicio), fim: minDoDia(b.fim), tipo: "bloqueio", texto: b.motivo || "Bloqueado" })),
       ...(janela?.intervalo ? [{ ini: janela.intervalo[0], fim: janela.intervalo[1], tipo: "intervalo", texto: "Intervalo" }] : [])
     ].sort((a, b) => a.ini - b.ini);
-    let livres = [];
-    if (janela) {
-      const inicios = new Set();
-      for (let t = janela.ini; t < janela.fim; t += 30) inicios.add(t);   // de 30 em 30 minutos (pedido de 16/11/2026)
-      // + logo depois de cada atendimento/bloqueio/intervalo: um serviço de 1h30 às 10:00 libera 11:30 (pedido de 16/11/2026)
-      for (const o of ocupados) if (o.fim > janela.ini && o.fim < janela.fim) inicios.add(o.fim);
-      livres = [...inicios].sort((a, b) => a - b).filter(t => t + duracao <= janela.fim
-        && !(data === hoje && t < agoraMin) && data >= hoje
-        && !ocupados.some(o => t < o.fim && t + duracao > o.ini));
-    }
+    const livres = janela ? iniciosLivres(janela, ocupados, duracao, data, hoje, agoraMin) : [];
     const diaInteiroBloqueado = janela && ocupados.some(o => o.tipo === "bloqueio" && o.ini <= janela.ini && o.fim >= janela.fim);
     if (diaInteiroBloqueado) { situacao = "bloqueado"; motivo = ocupados.find(o => o.tipo === "bloqueio").texto; }
     return {
@@ -790,9 +793,10 @@ async function ocupacao(ctx) {
   const agsPor = {};
   for (const a of ags.results) (agsPor[`${a.barbeiro_id}|${a.data}`] ||= []).push(a);
   const hoje = hojeBrasil();
+  const agoraMin = (() => { const x = new Date(Date.now() - 3 * 3600 * 1000); return x.getUTCHours() * 60 + x.getUTCMinutes(); })();
   const dias = [];
   for (let d = ini; d <= fim; d = somarDias(d, 1)) {
-    let total = 0, livre = 0, maior = 0, agendados = 0, trabalham = 0;
+    let total = 0, livre = 0, maior = 0, agendados = 0, trabalham = 0, livres = 0;
     for (const p of profs) {
       const janela = janelaDoDia(regras(d, p.id));
       const doDia = agsPor[`${p.id}|${d}`] || [];
@@ -805,9 +809,11 @@ async function ocupacao(ctx) {
       ];
       const l = livreNaJanela(janela, ocup);
       total += l.totalMin; livre += l.livreMin; maior = Math.max(maior, l.maiorLivreMin);
+      livres += iniciosLivres(janela, [...ocup.map(([i, f]) => ({ ini: i, fim: f })), ...(janela.intervalo ? [{ ini: janela.intervalo[0], fim: janela.intervalo[1] }] : [])],
+        duracaoMinima, d, hoje, agoraMin).length;
     }
     const status = !trabalham ? "fechado" : maior < duracaoMinima ? "cheio" : livre / Math.max(total, 1) < 0.34 ? "poucos" : "livre";
-    dias.push({ data: d, status, passado: d < hoje, livreMin: livre, totalMin: total, agendados, horariosLivres: Math.floor(livre / duracaoMinima) });
+    dias.push({ data: d, status, passado: d < hoje, livreMin: livre, totalMin: total, agendados, horariosLivres: Math.floor(livre / duracaoMinima), livres });
   }
   return json({ inicio: ini, fim, duracaoMinima, profissionais: profs.map(p => ({ id: p.id, nome: p.nome })), dias });
 }

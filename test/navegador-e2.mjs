@@ -254,19 +254,27 @@ async function rodar(tela) {
     assert.match(cg, /Comissão: R\$\s?32,50/);
     await print("gerente-agenda-valor-alterado-destacado");
     await page.click("button:has-text('Semana')");
-    // semana em lista pequena: hoje aberto; amanhã fechado mostra só "hora · cliente · serviço"
-    await page.waitForSelector('[data-mini="Elias Cliente Fictício"]');
+    // semana: cada dia só com a barra "marcados · livres"; os horários ficam ocultos
+    await page.waitForSelector(`[data-dia="${AMANHA}"]`);
+    assert.equal(await page.locator('[data-mini="Elias Cliente Fictício"]').count(), 0, "horários ocultos até tocar no dia");
+    assert.match(await page.textContent(`[data-dia="${AMANHA}"]`), /1 marcado/);
+    assert.match(await page.textContent(`[data-dia="${AMANHA}"] [data-livres]`), /\d+ livres?/);
     await print("gerente-agenda-semana");
-    // tocar no horário abre a ficha do atendimento
+    // tocar no dia: lista do dia (hora · cliente · serviço) + atalhos
+    await page.click(`[data-dia="${AMANHA}"]`);
+    await page.waitForSelector('[data-mini="Elias Cliente Fictício"]');
+    assert.ok(await page.locator("button:has-text('Ver o dia completo')").count());
+    await print("gerente-agenda-semana-dia-aberto");
+    // tocar no horário abre a ficha com todas as opções
     await page.click('[data-mini="Elias Cliente Fictício"]');
     await page.waitForSelector('dialog[open] [data-agendamento="Elias Cliente Fictício"]');
-    assert.match(await page.textContent("dialog[open]"), /Elias Cliente Fictício[\s\S]*Finalizar|Remarcar/);
+    assert.match(await page.textContent("dialog[open]"), /Remarcar/);
+    assert.ok(await page.locator("dialog[open] button:has-text('Editar')").count(), "ficha tem Editar");
     await print("gerente-agenda-semana-ficha", false);
     await page.click("dialog[open] button[type=submit]");
-    // tocar no dia abre todos os horários completos
-    await page.click(`[data-dia="${AMANHA}"]`);
-    await page.waitForSelector('.agenda-semana [data-agendamento="Elias Cliente Fictício"]');
-    await print("gerente-agenda-semana-dia-aberto");
+    // "Ver o dia completo" leva para a visão Dia daquela data
+    await page.click(`[data-dia="${AMANHA}"] ~ .acoes-dia-semana button:has-text('Ver o dia completo')`);
+    await page.waitForSelector('.coluna-prof [data-agendamento="Elias Cliente Fictício"]');
 
     passo("gerente fecha amanhã e recebe a lista para remarcar");
     await ir(page, "Funcionamento");
