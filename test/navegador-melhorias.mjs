@@ -246,6 +246,25 @@ async function rodar(tela) {
     assert.match(await page.textContent("[data-teste=desconto-lancamento]"), /Desconto de 10%/);
     await print("caixa-lancamentos");
 
+    passo("caixa lança atendimento na promissória para cliente da base e depois dá baixa na nota");
+    await page.click(".pdv-barra .alterna button:has-text('Cobrar')");
+    await page.click("button:has-text('+ Atendimento sem horário')");
+    await page.check("dialog[open] input[name=aserv] >> nth=0");
+    await page.fill("#av-cli-busca", "Fábio");
+    await page.click('dialog[open] [data-cliente-opcao="Fábio Fixo Fictício"]');
+    await page.selectOption("dialog[open] #c-forma1", "promissoria");
+    await ok();
+    await page.waitForSelector("[data-teste=notas-lancadas]");
+    await page.click(".pdv-acoes a:has-text('Notas em aberto')");
+    await page.waitForSelector('[data-nota-cliente="Fábio Fixo Fictício"]');
+    await print("notas-em-aberto");
+    await page.click('[data-nota-cliente="Fábio Fixo Fictício"] button:has-text("Receber")');
+    await page.selectOption("dialog[open] #c-forma1", "pix");
+    await ok();
+    await page.waitForSelector('[data-recebimento="Fábio Fixo Fictício"] >> text=Pago');
+    assert.equal(await page.locator('[data-nota-cliente="Fábio Fixo Fictício"]').count(), 0, "nota quitada sai da lista");
+    await print("nota-recebida");
+
     passo("caixa (recepção) vê a agenda de todos, marca para um barbeiro e acessa clientes, mensagens e catálogo");
     const gruposCaixa = await page.locator("#menu .grupo-titulo").allInnerTexts();
     assert.ok(gruposCaixa.some(t => /Atendimento/.test(t)) && gruposCaixa.some(t => /Catálogo/.test(t)), `menu do caixa: ${gruposCaixa}`);
@@ -257,7 +276,11 @@ async function rodar(tela) {
     assert.ok(nomesProf.includes("Ana Barbeira") && nomesProf.includes("Beto Barbeiro"), `profissionais: ${nomesProf}`);
     await page.selectOption("dialog[open] #c-prof", { label: "Beto Barbeiro" });
     await page.fill("dialog[open] #c-data", AMANHA);
-    await page.fill("dialog[open] #c-hora", "17:00");
+    await page.locator("dialog[open] #c-data").dispatchEvent("change");
+    // o dia do barbeiro aparece antes de marcar: livres/ocupados (17:00 está livre)
+    await page.waitForSelector('dialog[open] [data-teste=disponibilidade] [data-hora-livre="17:00"]');
+    await page.click('dialog[open] [data-hora-livre="17:00"]');
+    assert.equal(await page.inputValue("dialog[open] #c-hora"), "17:00", "tocar no horário livre preenche a hora");
     await page.check("dialog[open] input[name=serv] >> nth=0");
     await page.fill("dialog[open] #c-cliNome", "Ivo Recepção Fictício");
     await ok();
@@ -268,6 +291,21 @@ async function rodar(tela) {
     await ir(page, "Clientes");
     await page.waitForSelector('[data-cliente="Ivo Recepção Fictício"]');
     assert.equal(await page.locator('[data-cliente="Ivo Recepção Fictício"] button:has-text("Desativar")').count(), 0);
+    // da tela Clientes direto para a agenda, já com o cliente escolhido
+    await page.click('[data-cliente="Ivo Recepção Fictício"] button:has-text("Marcar horário")');
+    await page.waitForSelector('dialog[open] [data-teste=cli-escolhido] >> text=Ivo Recepção Fictício');
+    await page.selectOption("dialog[open] #c-prof", { label: "Ana Barbeira" });
+    await page.fill("dialog[open] #c-data", AMANHA);
+    await page.locator("dialog[open] #c-data").dispatchEvent("change");
+    await page.check("dialog[open] input[name=serv] >> nth=0");
+    await page.waitForSelector('dialog[open] [data-teste=disponibilidade] [data-hora-livre]');
+    assert.ok(await page.locator('dialog[open] .disp-ocupados >> text=Fábio Fixo Fictício').count(), "mostra o horário ocupado do dia");
+    await print("marcar-com-disponibilidade-e-cliente-da-base", false);
+    await page.click('dialog[open] [data-hora-livre="11:00"]');
+    await ok();
+    await page.waitForSelector('[data-prof="Ana Barbeira"] [data-agendamento="Ivo Recepção Fictício"]');
+    await page.waitForSelector("[data-teste=resumo-dia] [data-livre]");
+    await print("agenda-dia-horarios-livres");
     await ir(page, "Mensagens");
     await page.waitForSelector("h3:has-text('Modelos de mensagem')");
     await ir(page, "Serviços");

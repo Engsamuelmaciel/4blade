@@ -25,7 +25,7 @@ export function lerReferencia(tipo, ref) {
 export async function relatorioContador(ctx, per) {
   const { db } = ctx;
   const b = ctx.barbeariaId;
-  const [d, formas, compras, sangrias, pagos, profs, estoque, lancs] = await Promise.all([
+  const [d, formas, compras, sangrias, pagos, profs, estoque, lancs, notasLanc, notasReceb] = await Promise.all([
     dadosPeriodo(db, b, per.ini, per.fim),
     db.prepare(`
       SELECT 'servico' AS origem, l.forma, SUM(l.valor_centavos) AS total FROM caixa_lancamentos l JOIN caixas c ON c.id = l.caixa_id
@@ -63,8 +63,17 @@ export async function relatorioContador(ctx, per) {
         m.forma, m.valor_centavos
       FROM caixa_movimentos m JOIN caixas c ON c.id = m.caixa_id
       WHERE m.barbearia_id = ?1 AND c.data BETWEEN ?2 AND ?3
-      ORDER BY 1, 2`).bind(b, per.ini, per.fim).all()
+      ORDER BY 1, 2`).bind(b, per.ini, per.fim).all(),
+    // Promissórias: lançadas no período (o cliente paga depois) e recebidas no período (entraram no caixa).
+    db.prepare(`SELECT p.valor_centavos, p.descricao, p.origem, p.criado_em, cx.data, c.nome AS cliente FROM promissorias p
+                JOIN caixas cx ON cx.id = p.caixa_id JOIN clientes c ON c.id = p.cliente_id
+                WHERE p.barbearia_id = ? AND p.situacao <> 'estornada' AND cx.data BETWEEN ? AND ? ORDER BY cx.data, p.criado_em`).bind(b, per.ini, per.fim).all(),
+    db.prepare(`SELECT pp.forma, pp.valor_centavos, r.criado_em, cx.data, c.nome AS cliente FROM promissoria_pagamentos pp
+                JOIN promissoria_recebimentos r ON r.id = pp.recebimento_id JOIN caixas cx ON cx.id = pp.caixa_id JOIN clientes c ON c.id = r.cliente_id
+                WHERE pp.barbearia_id = ? AND r.situacao = 'ativo' AND cx.data BETWEEN ? AND ? ORDER BY cx.data, r.criado_em`).bind(b, per.ini, per.fim).all()
   ]);
+  const notasRecebidasPorForma = Object.fromEntries(FORMAS.map(f => [f, 0]));
+  for (const r of notasReceb.results) notasRecebidasPorForma[r.forma] += r.valor_centavos;
 
   const entradas = { servico: Object.fromEntries(FORMAS.map(f => [f, 0])), produto: Object.fromEntries(FORMAS.map(f => [f, 0])) };
   for (const x of formas.results) entradas[x.origem][x.forma] += Number(x.total);
@@ -88,6 +97,11 @@ export async function relatorioContador(ctx, per) {
       sangriasAvulsas: sangrias.results.map(s => ({ data: s.data, valorCentavos: -s.valor_centavos, motivo: s.motivo })),
       sangriasAvulsasCentavos: sangrias.results.reduce((t, s) => t - s.valor_centavos, 0)
     },
+    promissorias: {
+      lancadasCentavos: notasLanc.results.reduce((t, n) => t + n.valor_centavos, 0),
+      recebidasPorForma: notasRecebidasPorForma,
+      recebidasCentavos: notasReceb.results.reduce((t, n) => t + n.valor_centavos, 0)
+    },
     comissoes: {
       porBarbeiro: barbeiros.map(x => ({ nome: x.nome, servicoCentavos: x.comissaoServicoCentavos, produtoCentavos: x.comissaoProdutoCentavos, totalCentavos: x.comissaoCentavos, valesCentavos: x.valesCentavos, pagoCentavos: x.pagoCentavos })),
       totalCentavos: res.comissoesCentavos
@@ -102,6 +116,8 @@ export async function relatorioContador(ctx, per) {
     diferencasCaixa: d.diferencasCaixa.map(x => ({ data: x.data, diferencaCentavos: x.diferenca_centavos, observacao: x.observacao })),
     lancamentos: [
       ...lancs.results.map(l => ({ data: l.data, tipo: l.tipo, descricao: l.descricao, forma: l.forma, valorCentavos: l.valor })),
+      ...notasLanc.results.map(n => ({ data: n.data, tipo: "Promissória (a receber)", descricao: `${n.cliente} - ${n.descricao}`, forma: "promissoria", valorCentavos: n.valor_centavos })),
+      ...notasReceb.results.map(n => ({ data: n.data, tipo: "Promissória recebida", descricao: n.cliente, forma: n.forma, valorCentavos: n.valor_centavos })),
       ...d.contasPagas.map(c => ({ data: c.pago_em, tipo: `Conta paga (${CATEGORIAS[c.categoria]})`, descricao: c.descricao, forma: c.caixa_movimento_id ? "dinheiro" : "", valorCentavos: -c.valor_centavos })),
       ...compras.results.map(m => ({ data: m.dia, tipo: "Compra de mercadoria", descricao: `${m.quantidade}x ${m.produto}${m.fornecedor ? ` (${m.fornecedor})` : ""}`, forma: "", valorCentavos: -(m.quantidade * m.custo_unit_centavos) })),
       ...d.vales.map(v => ({ data: v.data, tipo: "Vale", descricao: `${v.barbeiro}${v.descricao ? ` - ${v.descricao}` : ""}`, forma: "", valorCentavos: -v.valor_centavos })),
@@ -120,6 +136,10 @@ function arquivos(rel, barbeariaNome) {
   t("Entradas (valor bruto)", { tamanho: 12, negrito: true, espaco: 10 });
   for (const f of FORMAS) t(`${NOME_FORMA[f]}: serviços ${reais(rel.entradas.servicosPorForma[f])} · produtos ${reais(rel.entradas.produtosPorForma[f])}`);
   t(`Total: serviços ${reais(rel.entradas.servicosCentavos)} + produtos ${reais(rel.entradas.produtosCentavos)} = ${reais(rel.entradas.totalCentavos)}`, { negrito: true });
+  if (rel.promissorias.lancadasCentavos || rel.promissorias.recebidasCentavos) {
+    t(`Promissórias (notas): lançadas no período ${reais(rel.promissorias.lancadasCentavos)} (já incluídas no total acima, sem entrada de dinheiro) · recebidas no período ${reais(rel.promissorias.recebidasCentavos)}`);
+    t(`Recebidas por forma: ${FORMAS.map(f => `${NOME_FORMA[f]} ${reais(rel.promissorias.recebidasPorForma[f])}`).join(" · ")}`);
+  }
   t("Saídas", { tamanho: 12, negrito: true, espaco: 10 });
   for (const [k, v] of Object.entries(rel.saidas.contasPagasPorCategoria)) if (v) t(`Contas pagas - ${CATEGORIAS[k]}: ${reais(v)}`);
   t(`Total de contas pagas: ${reais(rel.saidas.contasPagasCentavos)}`);

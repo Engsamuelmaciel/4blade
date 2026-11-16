@@ -92,7 +92,7 @@ describe("dia simulado completo (conferido à mão)", () => {
     assert.deepEqual(c.totais, {
       porForma: { dinheiro: 25350, pix: 12850, debito: 3000, credito: 8500 },
       atendimentosCentavos: 28500, vendasCentavos: 21200, entradasCentavos: 49700,
-      sangriasCentavos: 15000, suprimentosCentavos: 5000, dinheiroEsperadoCentavos: 25350
+      sangriasCentavos: 15000, suprimentosCentavos: 5000, dinheiroEsperadoCentavos: 25350, notasLancadasCentavos: 0, notasRecebidasCentavos: 0
     });
     // tela de fechamento: todos os atendimentos (7 linhas: o nº 5 tem 2 formas) e vendas (4 linhas: a 3ª tem 2 formas) + sangria + suprimento
     const tipos = c.lancamentos.map(l => l.tipo);

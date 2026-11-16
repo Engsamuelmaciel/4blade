@@ -7,6 +7,7 @@ import {
 import { isGestao, atende } from "./perfis.js";
 import { exigirBarbearia, exigirGestao } from "./usuarios.js";
 import { lerPagamentos, formaEfetiva, somarDias } from "./agenda-util.js";
+import { exigirClienteDaNota } from "./agenda.js";
 
 const erro = (msg, status = 400) => { throw new HttpError(msg, status); };
 export const MOTIVOS_AJUSTE = { perda: "Perda", vencimento: "Vencimento", quebra: "Quebra", uso_interno: "Uso interno", correcao: "Correção de contagem" };
@@ -243,7 +244,17 @@ async function vender(ctx) {
   }
   const descontoCentavos = Math.round((bruto * descontoBp) / 10000);
   const total = bruto - descontoCentavos;
-  const pagamentos = lerPagamentos(input.pagamentos, total);
+  const pagamentos = lerPagamentos(input.pagamentos, total, { promissoria: true });
+  // Cliente da venda: do horário (agenda) ou escolhido no caixa (obrigatório na promissória).
+  if (input.clienteId !== undefined && input.clienteId !== null) {
+    if (!validId(input.clienteId)) erro("Cliente inválido.");
+    const c = await db.prepare("SELECT id FROM clientes WHERE id = ? AND barbearia_id = ?").bind(input.clienteId, ctx.barbeariaId).first();
+    if (!c) erro("Cliente não encontrado.", 404);
+    clienteId = c.id;
+  }
+  const nota = pagamentos.find(p => p.forma === "promissoria") || null;
+  const pagCaixa = pagamentos.filter(p => p.forma !== "promissoria");
+  if (nota) await exigirClienteDaNota(ctx, clienteId);
 
   const id = crypto.randomUUID();
   const existe = ["EXISTS (SELECT 1 FROM vendas WHERE id = ?)", [id]];
@@ -273,9 +284,12 @@ async function vender(ctx) {
     ...(descontoBp ? [db.prepare(`INSERT INTO venda_descontos (venda_id, barbearia_id, bruto_centavos, percentual_bp, valor_centavos, criado_por)
                   SELECT ?, ?, ?, ?, ?, ? WHERE ${existe[0]}`)
       .bind(id, ctx.barbeariaId, bruto, descontoBp, descontoCentavos, user.id, ...existe[1])] : []),
-    ...pagamentos.map(pg => db.prepare(`INSERT INTO caixa_movimentos (id, barbearia_id, caixa_id, tipo, forma, valor_centavos, venda_id, criado_por)
+    ...pagCaixa.map(pg => db.prepare(`INSERT INTO caixa_movimentos (id, barbearia_id, caixa_id, tipo, forma, valor_centavos, venda_id, criado_por)
                   SELECT ?, ?, ?, 'venda', ?, ?, ?, ? WHERE ${existe[0]}`)
       .bind(crypto.randomUUID(), ctx.barbeariaId, caixa.id, pg.forma, pg.valorCentavos, id, user.id, ...existe[1])),
+    ...(nota ? [db.prepare(`INSERT INTO promissorias (id, barbearia_id, cliente_id, origem, venda_id, caixa_id, valor_centavos, descricao, criado_por)
+                  SELECT ?, ?, ?, 'venda', ?, ?, ?, ?, ? WHERE ${existe[0]}`)
+      .bind(crypto.randomUUID(), ctx.barbeariaId, clienteId, id, caixa.id, nota.valorCentavos, itens.map(i => `${i.q}x ${i.p.nome}`).join(", "), user.id, ...existe[1])] : []),
     auditoriaSe(ctx, ...existe, "venda_registrada", id, {
       total, ...(descontoBp ? { bruto, descontoBp, descontoCentavos } : {}), vendedor: vendedorId, itens: itens.map(i => ({ produto: i.p.nome, quantidade: i.q, preco: i.preco })), pagamentos
     })
@@ -297,6 +311,9 @@ async function cancelarVenda(ctx) {
   if (!v) erro("Venda não encontrada.", 404);
   if (v.situacao !== "ativa") erro("Essa venda já foi cancelada.", 409);
   if (v.caixa_situacao !== "aberto") erro("O caixa dessa venda já foi fechado: o gerente precisa reabrir o caixa antes.", 409);
+  if (await db.prepare("SELECT 1 FROM promissorias WHERE venda_id = ? AND situacao = 'quitada'").bind(v.id).first()) {
+    erro("Essa venda foi na promissória e a nota já foi paga: estorne o recebimento da nota antes de cancelar.", 409);
+  }
   if (await db.prepare(`SELECT 1 FROM comissoes_produto c JOIN fechamento_comissao_itens i ON i.tipo = 'produto' AND i.ref_id = c.id
                         WHERE c.venda_id = ?`).bind(v.id).first()) {
     erro("A comissão dessa venda já entrou num fechamento de comissão: não dá para cancelar.", 409);
@@ -307,8 +324,11 @@ async function cancelarVenda(ctx) {
   const feito = ["EXISTS (SELECT 1 FROM vendas WHERE id = ? AND cancelada_por = ? AND cancelada_em = ?)", [v.id, user.id, momento]];
   await db.batch([
     db.prepare(`UPDATE vendas SET situacao = 'cancelada', motivo_cancelamento = ?, cancelada_por = ?, cancelada_em = ?
-                WHERE id = ? AND barbearia_id = ? AND situacao = 'ativa' AND EXISTS (SELECT 1 FROM caixas WHERE id = ? AND situacao = 'aberto')`)
-      .bind(motivo, user.id, momento, v.id, ctx.barbeariaId, v.caixa_id),
+                WHERE id = ? AND barbearia_id = ? AND situacao = 'ativa' AND EXISTS (SELECT 1 FROM caixas WHERE id = ? AND situacao = 'aberto')
+                  AND NOT EXISTS (SELECT 1 FROM promissorias WHERE venda_id = ? AND situacao = 'quitada')`)
+      .bind(motivo, user.id, momento, v.id, ctx.barbeariaId, v.caixa_id, v.id),
+    db.prepare(`UPDATE promissorias SET situacao = 'estornada', motivo_estorno = ? WHERE venda_id = ? AND situacao = 'aberta' AND ${feito[0]}`)
+      .bind(`Venda cancelada: ${motivo}`, v.id, ...feito[1]),
     // devolve o estoque
     ...itens.flatMap(i => [
       garantirLinhaEstoque(ctx, i.produto_id),

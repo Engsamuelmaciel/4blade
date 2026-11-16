@@ -366,3 +366,132 @@ describe("enviar mensagem pelo WhatsApp para clientes do dia (pedido de 16/11/20
     assert.equal((await post("/api/mensagens/envios/aberto", outra.cx.token, { destinoId: d2.id })).status, 404);
   });
 });
+
+describe("disponibilidade do dia e cliente da base (pedido de 16/11/2026)", () => {
+  test("mostra fechado/folga/bloqueio, ocupados e horários livres pela duração; barbeiro só a dele; isolamento", async () => {
+    const amb = await cenario();
+    const { post, get, ger, barb, cx, corte } = amb;
+    // dia normal: 09:00–12:00, um horário 10:00–10:30 → livres de 30 min: 09:00, 09:30, 10:30, 11:00, 11:30
+    await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "10:00", servicoIds: [corte.id], cliente: { nome: "Ocupante Fictício" } });
+    const d = (await get(`/api/agenda/disponibilidade?data=${AMANHA}&barbeiroId=${barb.id}&duracao=30`, cx.token)).dados;
+    const p = d.profissionais[0];
+    assert.equal(p.situacao, "aberto");
+    assert.deepEqual(p.livres, ["09:00", "09:30", "10:30", "11:00", "11:30"]);
+    assert.deepEqual(p.ocupados.map(o => [o.ini, o.fim, o.tipo, o.texto]), [["10:00", "10:30", "horario", "Ocupante Fictício"]]);
+    // duração de 60 min: 09:00 cabe (09–10), 09:30 não (bate às 10:00)
+    assert.deepEqual((await get(`/api/agenda/disponibilidade?data=${AMANHA}&barbeiroId=${barb.id}&duracao=60`, cx.token)).dados.profissionais[0].livres, ["09:00", "10:30", "11:00"]);
+    // dia fechado (balanço)
+    await post("/api/funcionamento/datas-fechadas", ger.token, { dataIni: somarDias(AMANHA, 3), motivo: "Fechado pra balanço" });
+    const f = (await get(`/api/agenda/disponibilidade?data=${somarDias(AMANHA, 3)}`, cx.token)).dados.profissionais;
+    assert.ok(f.every(x => x.situacao === "fechado" && /balanço/.test(x.motivo) && x.livres.length === 0));
+    // dia todo bloqueado para o barbeiro
+    const dB = somarDias(AMANHA, 1);
+    await post("/api/agenda/bloqueios", ger.token, { barbeiroId: barb.id, inicio: `${dB}T00:00`, fim: `${dB}T23:59`, motivo: "Folga (fictícia)" });
+    const b = (await get(`/api/agenda/disponibilidade?data=${dB}&barbeiroId=${barb.id}`, ger.token)).dados.profissionais[0];
+    assert.equal(b.situacao, "bloqueado");
+    assert.equal(b.livres.length, 0);
+    // barbeiro vê só a própria, mesmo pedindo outra
+    const sóDele = (await get(`/api/agenda/disponibilidade?data=${AMANHA}&barbeiroId=${ger.id}`, barb.token)).dados.profissionais;
+    assert.deepEqual(sóDele.map(x => x.id), [barb.id]);
+    // isolamento: outra barbearia não vê os horários desta
+    const outra = await cenario("beta", amb, amb.p);
+    const o = (await get(`/api/agenda/disponibilidade?data=${AMANHA}`, outra.cx.token)).dados.profissionais;
+    assert.ok(!JSON.stringify(o).includes("Ocupante Fictício"));
+    assert.ok(o.every(x => x.id !== barb.id));
+  });
+
+  test("marca para cliente escolhido da base (por id); busca por nome/telefone; outra barbearia não usa o cliente", async () => {
+    const amb = await cenario();
+    const { post, get, ger, barb, cx, corte } = amb;
+    const c = (await post("/api/clientes", ger.token, { nome: "Gilberto Base Fictício", telefone: "11 96666-0000", aceiteLgpd: true })).dados.cliente;
+    const achou = (await get("/api/agenda/clientes?busca=gilb", cx.token)).dados.clientes;
+    assert.deepEqual(achou.map(x => x.nome), ["Gilberto Base Fictício"]);
+    assert.equal((await get("/api/agenda/clientes?busca=96666", barb.token)).dados.clientes[0].id, c.id, "busca por telefone, também pelo barbeiro");
+    const m = await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "09:00", servicoIds: [corte.id], cliente: { id: c.id } });
+    assert.equal(m.status, 201, JSON.stringify(m.dados));
+    const ag = (await get(`/api/agenda?data=${AMANHA}`, cx.token)).dados.agendamentos;
+    assert.equal(ag[0].cliente.id, c.id);
+    // caixa: atendimento sem horário para cliente da base
+    await post("/api/caixa/abrir", cx.token, { trocoCentavos: 0 });
+    const av = await post("/api/caixa/atendimento-avulso", cx.token, { barbeiroId: barb.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }],
+      pagamentos: [{ forma: "pix", valorCentavos: 4000 }], cliente: { id: c.id } });
+    assert.equal(av.status, 201, JSON.stringify(av.dados));
+    // desativado não pode
+    await post("/api/clientes/alterar", ger.token, { id: c.id, ativo: false, motivo: "Mudou de cidade" });
+    assert.equal((await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "10:00", servicoIds: [corte.id], cliente: { id: c.id } })).status, 409);
+    assert.equal((await get("/api/agenda/clientes?busca=gilb", cx.token)).dados.clientes.length, 0);
+    // isolamento
+    const outra = await cenario("beta", amb, amb.p);
+    assert.equal((await post("/api/agenda", outra.cx.token, { barbeiroId: outra.barb.id, data: AMANHA, hora: "09:00", servicoIds: [outra.corte.id], cliente: { id: c.id } })).status, 404);
+    assert.equal((await get("/api/agenda/clientes?busca=gilb", outra.cx.token)).dados.clientes.length, 0);
+  });
+});
+
+describe("promissória: nota em aberto do cliente (pedido de 16/11/2026)", () => {
+  test("corte e venda na nota não entram no caixa; aparecem em aberto; quitar entra no caixa de hoje; não paga duas vezes; estorno; reabrir/cancelar; isolamento", async () => {
+    const amb = await cenario();
+    const { post, get, ger, barb, cx, corte } = amb;
+    const cli = (await post("/api/clientes", ger.token, { nome: "Mensalista Fictício", telefone: "11 95555-7777", aceiteLgpd: true })).dados.cliente;
+    const pom = (await post("/api/produtos", ger.token, { nome: "Pomada Nota", precoCentavos: 2500, estoqueInicial: { quantidade: 5, custoUnitCentavos: 1000 } })).dados.produto;
+    await post("/api/caixa/abrir", cx.token, { trocoCentavos: 0 });
+    // corte na promissória (cobrado no caixa)
+    const m = (await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: HOJE, hora: "09:00", servicoIds: [corte.id], cliente: { id: cli.id } })).dados.agendamento;
+    const cob = await post("/api/caixa/cobrar", cx.token, { id: m.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], pagamentos: [{ forma: "promissoria", valorCentavos: 4000 }] });
+    assert.equal(cob.status, 201, JSON.stringify(cob.dados));
+    // venda: 1 pomada, metade pix e metade na nota
+    const v = await post("/api/vendas", cx.token, { itens: [{ produtoId: pom.id, quantidade: 1 }], clienteId: cli.id, pagamentos: [{ forma: "pix", valorCentavos: 1000 }, { forma: "promissoria", valorCentavos: 1500 }] });
+    assert.equal(v.status, 201, JSON.stringify(v.dados));
+    let hoje = (await get("/api/caixa/hoje", cx.token)).dados.totais;
+    assert.equal(hoje.entradasCentavos, 1000, "só o pix entrou");
+    assert.equal(hoje.notasLancadasCentavos, 5500);
+    assert.equal(hoje.porForma.dinheiro, 0);
+    // em aberto
+    let notas = (await get("/api/promissorias", cx.token)).dados;
+    assert.equal(notas.clientes.length, 1);
+    assert.equal(notas.clientes[0].totalCentavos, 5500);
+    assert.equal(notas.clientes[0].notas.length, 2);
+    assert.match(notas.clientes[0].whatsapp, /wa\.me\/5511955557777/);
+    assert.deepEqual(notas.resumo, { clientes: 1, notas: 2, totalCentavos: 5500 });
+    assert.equal((await get("/api/painel?periodo=hoje", ger.token)).dados.avisos.notasAbertas.totalCentavos, 5500);
+    // painel: o corte conta no faturamento (foi feito), mesmo sem dinheiro
+    assert.equal((await get("/api/painel?periodo=hoje", ger.token)).dados.cartoes.brutoCentavos, 6500);
+    // sem cliente identificado não pode
+    const anon = await post("/api/caixa/atendimento-avulso", cx.token, { barbeiroId: barb.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], pagamentos: [{ forma: "promissoria", valorCentavos: 4000 }], cliente: {} });
+    assert.equal(anon.status, 400);
+    assert.match(anon.dados.erro, /promissória/);
+    assert.equal((await post("/api/vendas", cx.token, { itens: [{ produtoId: pom.id, quantidade: 1 }], pagamentos: [{ forma: "promissoria", valorCentavos: 2500 }] })).status, 400);
+    // receber: soma tem de bater; entra no caixa de hoje em dinheiro
+    const ids = notas.clientes[0].notas.map(n => n.id);
+    assert.equal((await post("/api/promissorias/receber", cx.token, { clienteId: cli.id, promissoriaIds: ids, pagamentos: [{ forma: "dinheiro", valorCentavos: 5000 }] })).status, 400);
+    const rec = await post("/api/promissorias/receber", cx.token, { clienteId: cli.id, promissoriaIds: ids, pagamentos: [{ forma: "dinheiro", valorCentavos: 5500 }] });
+    assert.equal(rec.status, 201, JSON.stringify(rec.dados));
+    // não paga duas vezes
+    assert.equal((await post("/api/promissorias/receber", cx.token, { clienteId: cli.id, promissoriaIds: ids, pagamentos: [{ forma: "dinheiro", valorCentavos: 5500 }] })).status, 409);
+    hoje = (await get("/api/caixa/hoje", cx.token)).dados.totais;
+    assert.equal(hoje.porForma.dinheiro, 5500);
+    assert.equal(hoje.dinheiroEsperadoCentavos, 5500);
+    assert.equal(hoje.notasRecebidasCentavos, 5500);
+    assert.equal((await get("/api/promissorias", cx.token)).dados.clientes.length, 0);
+    // venda já quitada não pode ser cancelada sem estornar o recebimento
+    assert.equal((await post("/api/vendas/cancelar", ger.token, { id: v.dados.venda.id, motivo: "Devolução" })).status, 409);
+    // estorno do recebimento: só gestão; notas voltam a ficar em aberto e o dinheiro sai do caixa
+    assert.equal((await post("/api/promissorias/estornar-recebimento", cx.token, { recebimentoId: rec.dados.recebimento.id, motivo: "Lançado errado" })).status, 403);
+    assert.equal((await post("/api/promissorias/estornar-recebimento", ger.token, { recebimentoId: rec.dados.recebimento.id, motivo: "Lançado errado" })).status, 200);
+    assert.equal((await get("/api/caixa/hoje", cx.token)).dados.totais.porForma.dinheiro, 0);
+    assert.equal((await get("/api/promissorias", cx.token)).dados.resumo.totalCentavos, 5500);
+    // reabrir o corte (nota em aberto) estorna a nota; cancelar a venda estorna a nota dela
+    assert.equal((await post("/api/agenda/reabrir", ger.token, { id: m.id, motivo: "Valor errado" })).status, 200);
+    assert.equal((await post("/api/vendas/cancelar", ger.token, { id: v.dados.venda.id, motivo: "Devolução" })).status, 200);
+    assert.equal((await get("/api/promissorias", cx.token)).dados.resumo.totalCentavos, 0);
+    // contador do mês mostra as notas lançadas (não estornadas = 0 aqui) e recebidas (estornado = 0)
+    const rel = (await get(`/api/contador/relatorio?tipo=mes&ref=${HOJE.slice(0, 7)}`, ger.token)).dados;
+    assert.ok(rel.relatorio ? rel.relatorio.promissorias : rel.promissorias, "relatório tem a seção de promissórias");
+    // permissões e isolamento
+    assert.equal((await get("/api/promissorias", barb.token)).status, 403);
+    const outra = await cenario("beta", amb, amb.p);
+    await post("/api/caixa/abrir", outra.cx.token, { trocoCentavos: 0 });
+    assert.equal((await get("/api/promissorias", outra.cx.token)).dados.clientes.length, 0);
+    assert.equal((await post("/api/promissorias/receber", outra.cx.token, { clienteId: cli.id, promissoriaIds: ids, pagamentos: [{ forma: "dinheiro", valorCentavos: 5500 }] })).status, 409);
+    assert.equal((await post("/api/vendas", outra.cx.token, { itens: [{ produtoId: pom.id, quantidade: 1 }], clienteId: cli.id, pagamentos: [{ forma: "promissoria", valorCentavos: 2500 }] })).status, 404);
+  });
+});

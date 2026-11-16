@@ -12,7 +12,7 @@ const NOME_FORMA = { dinheiro: "dinheiro", pix: "Pix", debito: "débito", credit
 
 // Lista e totais de um caixa. Totais por forma = atendimentos + vendas (já com estornos e correções).
 export async function resumoCaixa(db, barbeariaId, caixa) {
-  const [lanc, movs, vendas] = await Promise.all([
+  const [lanc, movs, vendas, notas, receb] = await Promise.all([
     db.prepare(`
       SELECT l.id, l.tipo, l.forma, l.valor_centavos, l.criado_em, l.finalizacao_id, f.estornada,
         ${formaEfetiva("l.id", "l.forma")} AS forma_atual,
@@ -34,13 +34,37 @@ export async function resumoCaixa(db, barbeariaId, caixa) {
         (SELECT group_concat(nome, ', ') FROM (SELECT i.quantidade || 'x ' || i.nome AS nome FROM venda_itens i WHERE i.venda_id = v.id ORDER BY i.rowid)) AS itens
       FROM vendas v JOIN usuarios uv ON uv.id = v.vendedor_id LEFT JOIN clientes c ON c.id = v.cliente_id
       LEFT JOIN venda_descontos d ON d.venda_id = v.id
-      WHERE v.caixa_id = ? AND v.barbearia_id = ?`).bind(caixa.id, barbeariaId).all()
+      WHERE v.caixa_id = ? AND v.barbearia_id = ?`).bind(caixa.id, barbeariaId).all(),
+    // Notas (promissórias) lançadas neste caixa: não são dinheiro do dia.
+    db.prepare(`SELECT p.id, p.origem, p.valor_centavos, p.descricao, p.situacao, p.criado_em, c.nome AS cliente
+                FROM promissorias p JOIN clientes c ON c.id = p.cliente_id WHERE p.caixa_id = ? AND p.barbearia_id = ?`).bind(caixa.id, barbeariaId).all(),
+    // Notas recebidas (quitadas) neste caixa: entram nas formas de pagamento.
+    db.prepare(`SELECT pp.id, pp.forma, pp.valor_centavos, r.id AS recebimento_id, r.situacao, r.criado_em, c.nome AS cliente,
+                  (SELECT COUNT(*) FROM promissorias x WHERE x.recebimento_id = r.id) AS notas
+                FROM promissoria_pagamentos pp JOIN promissoria_recebimentos r ON r.id = pp.recebimento_id JOIN clientes c ON c.id = r.cliente_id
+                WHERE pp.caixa_id = ? AND pp.barbearia_id = ?`).bind(caixa.id, barbeariaId).all()
   ]);
   const vendaPor = Object.fromEntries(vendas.results.map(v => [v.id, v]));
   const porForma = Object.fromEntries(FORMAS.map(f => [f, 0]));
-  let atendimentos = 0, vendasTot = 0, sangrias = 0, suprimentos = 0;
+  let atendimentos = 0, vendasTot = 0, sangrias = 0, suprimentos = 0, notasLancadas = 0, notasRecebidas = 0;
 
   const itens = [];
+  for (const n of notas.results) {
+    if (n.situacao !== "estornada") notasLancadas += n.valor_centavos;
+    itens.push({
+      id: n.id, tipo: "promissoria", em: n.criado_em, forma: "promissoria", formaAtual: "promissoria", valorCentavos: n.valor_centavos,
+      hora: null, cliente: n.cliente, barbeiro: null, descricao: n.descricao, notaSituacao: n.situacao, corrigido: false, podeCorrigir: false
+    });
+  }
+  for (const r of receb.results) {
+    const ativo = r.situacao === "ativo";
+    if (ativo) { porForma[r.forma] += r.valor_centavos; notasRecebidas += r.valor_centavos; }
+    itens.push({
+      id: r.id, tipo: "recebimento_promissoria", em: r.criado_em, forma: r.forma, formaAtual: r.forma, valorCentavos: r.valor_centavos,
+      hora: null, cliente: r.cliente, barbeiro: null, descricao: `Pagamento de ${r.notas} nota(s)${ativo ? "" : " — estornado"}`,
+      recebimentoEstornado: !ativo, corrigido: false, podeCorrigir: false
+    });
+  }
   for (const l of lanc.results) {
     porForma[l.forma] += l.valor_centavos;
     atendimentos += l.valor_centavos;
@@ -84,7 +108,9 @@ export async function resumoCaixa(db, barbeariaId, caixa) {
       porForma,
       atendimentosCentavos: atendimentos,
       vendasCentavos: vendasTot,
-      entradasCentavos: atendimentos + vendasTot,
+      entradasCentavos: atendimentos + vendasTot + notasRecebidas,
+      notasLancadasCentavos: notasLancadas,          // ficou na promissória (não entrou dinheiro hoje)
+      notasRecebidasCentavos: notasRecebidas,        // notas antigas pagas hoje (já somadas nas formas)
       sangriasCentavos: sangrias,
       suprimentosCentavos: suprimentos,
       // dinheiro esperado na gaveta = troco + entradas em dinheiro + suprimentos − sangrias

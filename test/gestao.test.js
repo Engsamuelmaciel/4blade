@@ -147,7 +147,8 @@ describe("semana simulada (conferida à mão)", () => {
     assert.deepEqual(sem.avisos, {
       estoqueBaixo: ["Pomada"], produtosVencendo: [],
       diferencasCaixa: [{ data: "2026-11-07", diferencaCentavos: -1000, observacao: "Falta (fictícia)" }],
-      valoresAlterados: 1, caixasAbertosDiasAnteriores: ["2026-11-06"]
+      valoresAlterados: 1, caixasAbertosDiasAnteriores: ["2026-11-06"],
+      notasAbertas: { clientes: 0, notas: 0, totalCentavos: 0 }
     });
 
     // ---------- PAINEL: HOJE (08/11) ---------- B 70,00 pix; comissão 40% = 28,00; lucro 42,00

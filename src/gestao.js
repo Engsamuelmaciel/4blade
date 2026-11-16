@@ -3,6 +3,7 @@
 import { json, fail, HttpError, readJson, validId, validCentavos, validDate, textoLimpo, textoOpcional, exigirMotivo, auditoria, hojeBrasil } from "./util.js";
 import { isGestao, atende } from "./perfis.js";
 import { exigirBarbearia, exigirGestao } from "./usuarios.js";
+import { resumoNotasAbertas } from "./promissorias.js";
 import { somarDias } from "./agenda-util.js";
 import { sangriaAutomatica } from "./caixa.js";
 import { avisosProduto } from "./estoque.js";
@@ -442,7 +443,8 @@ async function painel(ctx) {
       produtosVencendo: estoque.filter(x => x.avisos.includes("vencendo") || x.avisos.includes("vencido")).map(x => x.nome),
       diferencasCaixa: d.diferencasCaixa.map(x => ({ data: x.data, diferencaCentavos: x.diferenca_centavos, observacao: x.observacao })),
       valoresAlterados: d.valoresAlterados,
-      caixasAbertosDiasAnteriores: caixasAbertos.results.map(x => x.data)
+      caixasAbertosDiasAnteriores: caixasAbertos.results.map(x => x.data),
+      notasAbertas: await resumoNotasAbertas(db, ctx.barbeariaId)
     }
   });
 }

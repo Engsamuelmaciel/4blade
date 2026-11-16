@@ -10,7 +10,7 @@ import { exigirBarbearia } from "./usuarios.js";
 import {
   horaParaMin, exigirData, exigirMomento, somarDias, regrasDoDia, conferirHorario, momento, carregarRegras, diaSemana, janelaDoDia, livreNaJanela,
   carregarModelos, linksWhatsapp, lerPagamentos, formaEfetiva, FORMAS,
-  telefoneReal, PREFIXO_SEM_TELEFONE
+  telefoneReal, PREFIXO_SEM_TELEFONE, minParaHora, NOME_DIA
 } from "./agenda-util.js";
 
 export { FORMAS };
@@ -153,10 +153,18 @@ async function listarAgenda(ctx) {
 // ---------- MARCAR ----------
 // Cliente identificado pelo telefone (existe → usa; não existe → nasce aqui com aceite LGPD) ou, sem telefone, pelo nome.
 // Põe em "comandos" o cadastro do cliente novo (para ir no mesmo lote) e devolve { id, nome, novo }.
-const CLIENTE_NAO_IDENTIFICADO = "Cliente não identificado";
+export const CLIENTE_NAO_IDENTIFICADO = "Cliente não identificado";
 
 async function clienteDaMarcacao(ctx, c = {}, comandos, origem = "agenda") {
   const { db, user } = ctx;
+  // Cliente escolhido da base (cadastro): sempre conferido dentro da barbearia da sessão.
+  if (c && c.id !== undefined) {
+    if (!validId(c.id)) erro("Cliente inválido.");
+    const cad = await db.prepare("SELECT id, nome, ativo FROM clientes WHERE id = ? AND barbearia_id = ?").bind(c.id, ctx.barbeariaId).first();
+    if (!cad) erro("Cliente não encontrado.", 404);
+    if (!cad.ativo) erro("Esse cliente está desativado. Peça ao gerente para reativar.", 409);
+    return { id: cad.id, nome: cad.nome, novo: false };
+  }
   const semTelefone = typeof c.telefone !== "string" || !c.telefone.replace(/\D/g, "");
   if (semTelefone) {
     // Telefone é opcional: sem ele o cliente é identificado pelo nome (mesmo nome sem telefone = mesmo cliente).
@@ -311,6 +319,14 @@ async function finalizar(ctx) {
   return finalizarDados(ctx, await readJson(ctx.request));
 }
 
+// Nota (promissória) só para cliente identificado e ativo: é para quem o caixa vai cobrar depois.
+export async function exigirClienteDaNota(ctx, clienteId) {
+  const c = clienteId ? await ctx.db.prepare("SELECT nome, ativo FROM clientes WHERE id = ? AND barbearia_id = ?").bind(clienteId, ctx.barbeariaId).first() : null;
+  if (!c || c.nome === CLIENTE_NAO_IDENTIFICADO) erro("Para lançar na promissória, escolha o cliente (do cadastro ou com o nome).");
+  if (!c.ativo) erro("Esse cliente está desativado: não dá para lançar na promissória.", 409);
+  return c;
+}
+
 export async function finalizarDados(ctx, input) {
   const { db, user } = ctx;
   const a = await agendamentoPermitido(ctx, input.id, { cobrar: true });
@@ -337,8 +353,11 @@ export async function finalizarDados(ctx, input) {
   });
   const total = itens.reduce((t, i) => t + i.cobrado, 0);
 
-  // Até 2 formas de pagamento; a soma tem de bater com o total.
-  const pagIn = lerPagamentos(input.pagamentos, total);
+  // Até 2 formas de pagamento; a soma tem de bater com o total. "Promissória" = o cliente paga depois (nota em aberto).
+  const pagIn = lerPagamentos(input.pagamentos, total, { promissoria: true });
+  const nota = pagIn.find(p => p.forma === "promissoria") || null;
+  const pagCaixa = pagIn.filter(p => p.forma !== "promissoria");
+  if (nota) await exigirClienteDaNota(ctx, a.cliente_id);
 
   const anterior = await db.prepare("SELECT total_centavos FROM finalizacoes WHERE agendamento_id = ? AND estornada = 1 ORDER BY criado_em DESC, rowid DESC LIMIT 1")
     .bind(a.id).first();
@@ -363,9 +382,12 @@ export async function finalizarDados(ctx, input) {
     ...itens.map(i => db.prepare(`INSERT INTO finalizacao_itens (id, barbearia_id, finalizacao_id, servico_id, nome, preco_tabela_centavos, preco_cobrado_centavos)
                 SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${existeFin[0]}`)
       .bind(crypto.randomUUID(), ctx.barbeariaId, fid, i.servicoId, i.nome, i.tabela, i.cobrado, ...existeFin[1])),
-    ...pagIn.map(p => db.prepare(`INSERT INTO caixa_lancamentos (id, barbearia_id, caixa_id, tipo, finalizacao_id, forma, valor_centavos, criado_por)
+    ...pagCaixa.map(p => db.prepare(`INSERT INTO caixa_lancamentos (id, barbearia_id, caixa_id, tipo, finalizacao_id, forma, valor_centavos, criado_por)
                 SELECT ?, ?, ?, 'atendimento', ?, ?, ?, ? WHERE ${existeFin[0]}`)
       .bind(crypto.randomUUID(), ctx.barbeariaId, caixa.id, fid, p.forma, p.valorCentavos, user.id, ...existeFin[1])),
+    ...(nota ? [db.prepare(`INSERT INTO promissorias (id, barbearia_id, cliente_id, origem, finalizacao_id, caixa_id, valor_centavos, descricao, criado_por)
+                SELECT ?, ?, ?, 'atendimento', ?, ?, ?, ?, ? WHERE ${existeFin[0]}`)
+      .bind(crypto.randomUUID(), ctx.barbeariaId, a.cliente_id, fid, caixa.id, nota.valorCentavos, `${itens.map(i => i.nome).join(" + ")} (${a.barbeiro_nome})`, user.id, ...existeFin[1])] : []),
     db.prepare(`INSERT INTO comissoes (id, barbearia_id, barbeiro_id, finalizacao_id, tipo, base_centavos, percentual_bp, valor_centavos)
                 SELECT ?, ?, ?, ?, 'servico', ?, ?, ? WHERE ${existeFin[0]}`)
       .bind(crypto.randomUUID(), ctx.barbeariaId, a.barbeiro_id, fid, total, bp, comissao, ...existeFin[1]),
@@ -401,12 +423,19 @@ async function reabrir(ctx) {
       ? "O caixa desse dia já foi fechado: reabra o caixa (com motivo) antes de reabrir o atendimento."
       : "O caixa desse dia já foi fechado: só o gerente pode reabrir.", 409);
   }
+  if (await db.prepare("SELECT 1 FROM promissorias WHERE finalizacao_id = ? AND situacao = 'quitada'").bind(f.id).first()) {
+    erro("Esse atendimento foi na promissória e a nota já foi paga: estorne o recebimento da nota antes de reabrir.", 409);
+  }
   const estornoId = crypto.randomUUID();
   const feito = ["EXISTS (SELECT 1 FROM finalizacoes WHERE id = ? AND estorno_id = ?)", [f.id, estornoId]];
   await db.batch([
     db.prepare(`UPDATE finalizacoes SET estornada = 1, estorno_id = ?, estornada_por = ?, estornada_em = CURRENT_TIMESTAMP, motivo_estorno = ?
-                WHERE id = ? AND barbearia_id = ? AND estornada = 0 AND EXISTS (SELECT 1 FROM caixas WHERE id = ? AND situacao = 'aberto')`)
-      .bind(estornoId, user.id, motivo, f.id, ctx.barbeariaId, f.caixa_id),
+                WHERE id = ? AND barbearia_id = ? AND estornada = 0 AND EXISTS (SELECT 1 FROM caixas WHERE id = ? AND situacao = 'aberto')
+                  AND NOT EXISTS (SELECT 1 FROM promissorias WHERE finalizacao_id = ? AND situacao = 'quitada')`)
+      .bind(estornoId, user.id, motivo, f.id, ctx.barbeariaId, f.caixa_id, f.id),
+    // Nota (promissória) em aberto desse atendimento: estornada junto (nada é apagado).
+    db.prepare(`UPDATE promissorias SET situacao = 'estornada', motivo_estorno = ? WHERE finalizacao_id = ? AND situacao = 'aberta' AND ${feito[0]}`)
+      .bind(`Atendimento reaberto: ${motivo}`, f.id, ...feito[1]),
     // Estorno da entrada: lançamentos negativos no mesmo caixa (nada é apagado).
     db.prepare(`INSERT INTO caixa_lancamentos (id, barbearia_id, caixa_id, tipo, finalizacao_id, forma, valor_centavos, criado_por)
                 SELECT 'est-' || lower(hex(randomblob(16))), barbearia_id, caixa_id, 'estorno_atendimento', finalizacao_id,
@@ -515,6 +544,75 @@ async function clientePorTelefone(ctx) {
   return json({ telefone, cliente: c ? { id: c.id, nome: c.nome, telefone: c.telefone, ativo: Boolean(c.ativo) } : null });
 }
 
+// Busca de cliente cadastrado (nome ou telefone) para marcar horário: só ativos, só desta barbearia.
+async function buscarClientes(ctx) {
+  const busca = (new URL(ctx.request.url).searchParams.get("busca") || "").trim().slice(0, 60);
+  if (busca.length < 2) return json({ clientes: [] });
+  const digitos = busca.replace(/\D/g, "");
+  const nome = `%${busca.replace(/[%_]/g, "")}%`;
+  const r = await ctx.db.prepare(`SELECT id, nome, telefone FROM clientes WHERE barbearia_id = ? AND ativo = 1
+      AND (nome LIKE ? ${digitos.length >= 3 ? "OR (telefone LIKE ? AND telefone NOT LIKE 'sem:%')" : ""}) ORDER BY nome LIMIT 8`)
+    .bind(ctx.barbeariaId, nome, ...(digitos.length >= 3 ? [`%${digitos}%`] : [])).all();
+  return json({ clientes: r.results.map(c => ({ id: c.id, nome: c.nome, telefone: telefoneReal(c.telefone) })) });
+}
+
+// ---------- DISPONIBILIDADE DE UM DIA (para quem vai marcar): situação de cada profissional, ocupados e horários livres ----------
+// Livres = inícios a cada 30 min (e logo após cada ocupação) em que cabe a duração pedida; hoje, só a partir de agora.
+async function disponibilidade(ctx) {
+  const { db, user, request } = ctx;
+  const url = new URL(request.url);
+  const data = exigirData(url.searchParams.get("data") || hojeBrasil());
+  const filtro = veTodasAgendas(user) ? (url.searchParams.get("barbeiroId") || null) : user.id;
+  if (filtro && !validId(filtro)) erro("Profissional inválido.");
+  const durPedida = Number(url.searchParams.get("duracao") || 0);
+  const [profsR, ags, blqs, minDur, regras] = await Promise.all([
+    db.prepare(`SELECT id, nome FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('gerente','barbeiro')${filtro ? " AND id = ?" : ""}
+                ORDER BY CASE perfil WHEN 'gerente' THEN 0 ELSE 1 END, nome`).bind(ctx.barbeariaId, ...(filtro ? [filtro] : [])).all(),
+    db.prepare(`SELECT a.barbeiro_id, a.inicio, a.fim, a.situacao, c.nome AS cliente FROM agendamentos a JOIN clientes c ON c.id = a.cliente_id
+                WHERE a.barbearia_id = ? AND a.data = ? AND a.situacao IN ('agendado','finalizado') ORDER BY a.inicio`).bind(ctx.barbeariaId, data).all(),
+    db.prepare("SELECT barbeiro_id, inicio, fim, motivo FROM bloqueios WHERE barbearia_id = ? AND ativo = 1 AND inicio < ? AND fim > ?")
+      .bind(ctx.barbeariaId, `${somarDias(data, 1)}T00:00`, `${data}T00:00`).all(),
+    db.prepare("SELECT MIN(duracao_min) AS m FROM servicos WHERE barbearia_id = ? AND ativo = 1").bind(ctx.barbeariaId).first(),
+    carregarRegras(db, ctx.barbeariaId, data, data)
+  ]);
+  const duracao = Number.isInteger(durPedida) && durPedida >= 5 && durPedida <= 600 ? durPedida : Number(minDur?.m || 30);
+  const hoje = hojeBrasil();
+  const agoraMin = (() => { const d = new Date(Date.now() - 3 * 3600 * 1000); return d.getUTCHours() * 60 + d.getUTCMinutes(); })();
+  const minDoDia = m => (m.slice(0, 10) < data ? 0 : m.slice(0, 10) > data ? 1440 : horaParaMin(m.slice(11)));
+  const profissionais = profsR.results.map(p => {
+    const r = regras(data, p.id);
+    let situacao = "aberto", motivo = null;
+    if (r.fechada) { situacao = "fechado"; motivo = r.fechada.motivo; }
+    else if (!r.func) { situacao = "sem_funcionamento"; motivo = "Funcionamento da barbearia não cadastrado"; }
+    else if (!r.func.aberto) { situacao = "fechado"; motivo = `A barbearia não abre às ${NOME_DIA[r.dia]}s`; }
+    else if (r.trab && !r.trab.trabalha) { situacao = "folga"; motivo = `Não trabalha às ${NOME_DIA[r.dia]}s`; }
+    const janela = situacao === "aberto" ? janelaDoDia(r) : null;
+    const ocupados = [
+      ...ags.results.filter(a => a.barbeiro_id === p.id).map(a => ({ ini: horaParaMin(a.inicio.slice(11)), fim: horaParaMin(a.fim.slice(11)), tipo: "horario", texto: a.cliente })),
+      ...blqs.results.filter(b => b.barbeiro_id === p.id).map(b => ({ ini: minDoDia(b.inicio), fim: minDoDia(b.fim), tipo: "bloqueio", texto: b.motivo || "Bloqueado" })),
+      ...(janela?.intervalo ? [{ ini: janela.intervalo[0], fim: janela.intervalo[1], tipo: "intervalo", texto: "Intervalo" }] : [])
+    ].sort((a, b) => a.ini - b.ini);
+    let livres = [];
+    if (janela) {
+      const inicios = new Set();
+      for (let t = janela.ini; t < janela.fim; t += 30) inicios.add(t);
+      for (const o of ocupados) if (o.fim > janela.ini && o.fim < janela.fim) inicios.add(o.fim);
+      livres = [...inicios].sort((a, b) => a - b).filter(t => t + duracao <= janela.fim
+        && !(data === hoje && t < agoraMin) && data >= hoje
+        && !ocupados.some(o => t < o.fim && t + duracao > o.ini));
+    }
+    const diaInteiroBloqueado = janela && ocupados.some(o => o.tipo === "bloqueio" && o.ini <= janela.ini && o.fim >= janela.fim);
+    if (diaInteiroBloqueado) { situacao = "bloqueado"; motivo = ocupados.find(o => o.tipo === "bloqueio").texto; }
+    return {
+      id: p.id, nome: p.nome, situacao, motivo,
+      janela: janela ? { ini: minParaHora(janela.ini), fim: minParaHora(janela.fim) } : null,
+      ocupados: ocupados.map(o => ({ ini: minParaHora(Math.max(0, o.ini)), fim: minParaHora(Math.min(1439, o.fim)), tipo: o.tipo, texto: o.texto })),
+      livres: livres.map(minParaHora)
+    };
+  });
+  return json({ data, passado: data < hoje, duracao, profissionais });
+}
+
 // ---------- OCUPAÇÃO POR DIA (calendário Mês/Ano): livre, poucos horários, cheio, fechado ----------
 async function ocupacao(ctx) {
   const { db, user, request } = ctx;
@@ -573,7 +671,7 @@ export async function atendimentoAvulso(ctx) {
   const itens = Array.isArray(input.itens) ? input.itens : erro("Escolha os serviços.");
   const servs = await servicosEscolhidos(ctx, itens.map(i => i?.servicoId));
   const total = itens.reduce((t, i) => t + (validCentavos(i.precoCobradoCentavos) ? i.precoCobradoCentavos : erro("Valor cobrado inválido.")), 0);
-  lerPagamentos(input.pagamentos, total);   // confere antes de gravar
+  lerPagamentos(input.pagamentos, total, { promissoria: true });   // confere antes de gravar
   const caixa = await caixaDeHoje(ctx);
   if (!caixa || caixa.situacao !== "aberto") erro("O caixa de hoje não está aberto.", 409);
   // horário = agora (Brasília), arredondado para 5 min
@@ -609,8 +707,10 @@ export async function rotasAgenda(ctx, path, method) {
   if (ctx.user.perfil === "caixa" && ["/agenda/finalizar", "/agenda/reabrir", "/agenda/bloqueios", "/agenda/bloqueios/cancelar"].includes(path)) erro("Sem permissão", 403);
   if (path === "/agenda" && method === "GET") return listarAgenda(ctx);
   if (path === "/agenda/ocupacao" && method === "GET") return ocupacao(ctx);
+  if (path === "/agenda/disponibilidade" && method === "GET") return disponibilidade(ctx);
   if (path === "/agenda" && method === "POST") return marcar(ctx);
   if (path === "/agenda/cliente" && method === "GET") return clientePorTelefone(ctx);
+  if (path === "/agenda/clientes" && method === "GET") return buscarClientes(ctx);
   if (path === "/agenda/finalizar" && method === "POST") return finalizar(ctx);
   if (path === "/agenda/reabrir" && method === "POST") return reabrir(ctx);
   if (path === "/agenda/situacao" && method === "POST") return mudarSituacao(ctx);

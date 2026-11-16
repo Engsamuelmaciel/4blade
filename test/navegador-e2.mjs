@@ -221,8 +221,8 @@ async function rodar(tela) {
     await page.waitForSelector('[data-lancamento="Diego Cliente Fictício"]');
     const textoCaixa = await page.locator("main").innerText();
     assert.match(await page.textContent("[data-teste=entradas]"), /R\$\s?65,00/);
-    assert.match(textoCaixa, /Pix: R\$\s?40,00/);
-    assert.match(textoCaixa, /Dinheiro: R\$\s?25,00/);
+    assert.match(await page.textContent('[data-forma="pix"]'), /R\$\s?40,00/);
+    assert.match(await page.textContent('[data-forma="dinheiro"]'), /R\$\s?25,00/);
     assert.ok(!/comiss/i.test(textoCaixa), "caixa viu comissão!");
     await print("caixa-entradas-valor-bruto");
     await sair();

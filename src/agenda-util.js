@@ -154,12 +154,14 @@ export async function carregarModelos(db, barbeariaId) {
 // ---------- pagamentos (atendimento e venda): até 2 formas, soma igual ao total ----------
 export const FORMAS = ["dinheiro", "pix", "debito", "credito"];
 const reaisTexto = c => (c / 100).toFixed(2).replace(".", ",");
-export function lerPagamentos(pagIn, total) {
+// promissoria: aceita a forma "promissoria" (a nota do cliente: paga depois; não entra no caixa do dia).
+export function lerPagamentos(pagIn, total, { promissoria = false } = {}) {
   if (!Array.isArray(pagIn)) erro("Informe a forma de pagamento.");
   if (total > 0 && (pagIn.length < 1 || pagIn.length > 2)) erro("Use 1 ou 2 formas de pagamento.");
   if (total === 0 && pagIn.length !== 0) erro("Sem valor não tem pagamento.");
   const formas = pagIn.map(p => p?.forma);
-  if (!formas.every(f => FORMAS.includes(f))) erro("Forma de pagamento inválida (dinheiro, pix, débito ou crédito).");
+  const validas = promissoria ? [...FORMAS, "promissoria"] : FORMAS;
+  if (!formas.every(f => validas.includes(f))) erro(`Forma de pagamento inválida (dinheiro, pix, débito, crédito${promissoria ? " ou promissória" : ""}).`);
   if (new Set(formas).size !== formas.length) erro("Use formas de pagamento diferentes.");
   if (!pagIn.every(p => Number.isInteger(p.valorCentavos) && p.valorCentavos > 0 && p.valorCentavos <= 10_000_000)) erro("Valor de pagamento inválido.");
   const soma = pagIn.reduce((t, p) => t + p.valorCentavos, 0);

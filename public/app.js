@@ -499,12 +499,15 @@ const hojeLocal = () => new Date(Date.now() - 3 * 3600 * 1000).toISOString().sli
 const dataLonga = d => `${DIAS_CURTO[diaDaSemana(d)]}, ${dataBR(d).slice(0, 5)}`;
 // "2026-11-16 15:04:05" (UTC do banco) → "12:04" (Brasília)
 const horaLocal = utc => new Date(`${utc.replace(" ", "T")}Z`).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
-const NOME_FORMA = { dinheiro: "Dinheiro", pix: "Pix", debito: "Débito", credito: "Crédito" };
+const NOME_FORMA = { dinheiro: "Dinheiro", pix: "Pix", debito: "Débito", credito: "Crédito", promissoria: "Promissória (paga depois)" };
+// Formas que entram no caixa na hora (sem a promissória, que é a nota do cliente para pagar depois).
+const OPCOES_FORMA = Object.entries(NOME_FORMA).filter(([f]) => f !== "promissoria");
 const NOME_SITUACAO = { agendado: "Agendado", finalizado: "Finalizado", faltou: "Faltou", cancelado: "Cancelado" };
 const COR_SITUACAO = { agendado: "", finalizado: "verde", faltou: "amarela", cancelado: "vermelha" };
 
 // ---------- AGENDA ----------
 const estadoAgenda = { data: null, visao: "dia", barbeiroId: "" };
+let marcarParaCliente = null;   // cliente escolhido na tela Clientes → abre o "Novo horário" já com ele
 let servicosCache = null;
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 const NOME_STATUS = { livre: "livre", poucos: "poucos horários", cheio: "agenda cheia", fechado: "fechado" };
@@ -525,7 +528,28 @@ async function telaAgenda() {
   // Mês e Ano usam o cálculo de ocupação (livre / poucos / cheio / fechado) por dia.
   const periodo = v === "mes" ? [`${d0.slice(0, 7)}-01`, ultimoDiaMes(d0.slice(0, 7))] : v === "ano" ? [`${d0.slice(0, 4)}-01-01`, `${d0.slice(0, 4)}-12-31`] : null;
   const qo = periodo ? new URLSearchParams({ inicio: periodo[0], fim: periodo[1], ...(veTodas() && estadoAgenda.barbeiroId ? { barbeiroId: estadoAgenda.barbeiroId } : {}) }) : null;
-  const [ag, oc] = await Promise.all([api(`/agenda?${q}`), qo ? api(`/agenda/ocupacao?${qo}`) : null, carregarServicos()]);
+  const qd = new URLSearchParams({ data: d0, ...(veTodas() && estadoAgenda.barbeiroId ? { barbeiroId: estadoAgenda.barbeiroId } : {}) });
+  const [ag, oc, , disp] = await Promise.all([api(`/agenda?${q}`), qo ? api(`/agenda/ocupacao?${qo}`) : null, carregarServicos(),
+    v === "dia" ? api(`/agenda/disponibilidade?${qd}`) : null]);
+  // Dia: situação de cada profissional e horários livres (tocar abre o "Novo horário" já preenchido).
+  const dispDe = id => disp?.profissionais.find(x => x.id === id);
+  const resumoDia = p => {
+    const x = dispDe(p.id);
+    if (!x) return null;
+    if (disp.passado) return null;
+    if (x.situacao !== "aberto") {
+      const rotulo = { fechado: "Fechado", folga: "Folga", bloqueado: "Dia bloqueado", sem_funcionamento: "Sem funcionamento" }[x.situacao];
+      return el("div", { class: "resumo-dia fechado", "data-teste": "resumo-dia" }, el("strong", { text: rotulo }), x.motivo ? ` · ${x.motivo}` : "");
+    }
+    const mostrar = x.livres.slice(0, 12);
+    return el("div", { class: `resumo-dia ${x.livres.length ? "livre" : "cheio"}`, "data-teste": "resumo-dia" },
+      el("div", { class: "resumo-topo" },
+        el("strong", { text: x.livres.length ? `${x.livres.length} horário(s) livre(s)` : "Agenda cheia" }),
+        el("span", { class: "suave", text: `${x.janela.ini}–${x.janela.fim}` })),
+      x.livres.length ? el("div", { class: "chips-hora" }, mostrar.map(h => el("button", { type: "button", class: "chip-hora", "data-livre": h, text: h,
+        onclick: () => janelaMarcar(ag, { barbeiroId: p.id, hora: h, data: d0 }) })),
+        x.livres.length > mostrar.length ? el("span", { class: "suave mais", text: `+${x.livres.length - mostrar.length}` }) : null) : null);
+  };
 
   const irPara = (d, visao = v) => { estadoAgenda.data = d; estadoAgenda.visao = visao; comCarga(telaAgenda).catch(e => avisar(e.message, "erro")); };
   const mover = n => irPara(v === "mes" ? `${somaMes(d0.slice(0, 7), n)}-01` : v === "ano" ? `${Number(d0.slice(0, 4)) + n}-01-01` : somaDias(d0, n * (v === "semana" ? 7 : 1)));
@@ -562,6 +586,7 @@ async function telaAgenda() {
       const itens = itensDoDia(ag, d0, p.id);
       return el("section", { class: "coluna-prof", "data-prof": p.nome },
         el("h3", { text: p.nome }),
+        resumoDia(p),
         itens.length ? itens : el("p", { class: "vazio", text: "Nenhum horário." }));
     }));
   } else if (v === "semana") {
@@ -581,6 +606,11 @@ async function telaAgenda() {
 
   const subtitulo = v === "dia" ? `${DIAS[diaDaSemana(d0)]}, ${dataBR(d0)}` : v === "semana" ? `Semana de ${dataBR(ag.data)} a ${dataBR(ag.ate)}`
     : v === "mes" ? "Toque num dia para ver os horários" : "Toque num mês para ver o calendário";
+  if (marcarParaCliente) {
+    const c = marcarParaCliente;
+    marcarParaCliente = null;
+    setTimeout(() => janelaMarcar(ag, { cliente: c }));
+  }
   mostrar(
     cabecalho(veTodas() ? "Agenda" : "Minha agenda", subtitulo),
     barra,
@@ -731,18 +761,93 @@ function cartaoAgendamento(a, mostrarNome) {
       a.situacao === "cancelado" || a.situacao === "faltou" ? botaoWhatsapp(a, "proposta", "Propor horário") : null));
 }
 
-function campoProfissional(ag) {
+function campoProfissional(ag, escolhido = null) {
   if (!veTodas()) return null;
-  const padrao = estadoAgenda.barbeiroId || (ag.profissionais.some(p => p.id === usuario.id) ? usuario.id : ag.profissionais[0]?.id);
+  const padrao = escolhido || estadoAgenda.barbeiroId || (ag.profissionais.some(p => p.id === usuario.id) ? usuario.id : ag.profissionais[0]?.id);
   return campo("Profissional", { tag: "select", name: "prof", valor: padrao, opcoes: ag.profissionais.map(p => [p.id, p.nome]) });
 }
 
-function janelaMarcar(ag) {
+// Escolher cliente: da base (busca por nome ou telefone) ou digitar um cliente novo/avulso.
+// nomes = nomes dos campos do cliente novo (a agenda usa cli*, o caixa a*). Devolve { el, ler(), escolhido() }.
+function seletorCliente({ id, preSelecionado = null, aoMudar = () => {} }) {
+  let escolhido = preSelecionado;
+  const resultados = el("ul", { class: "resultados-cliente", "data-teste": `${id}-resultados` });
+  const busca = el("input", { type: "search", id: `${id}-busca`, autocomplete: "off", placeholder: "Digite o nome ou o telefone", "aria-label": "Buscar cliente cadastrado" });
+  const blocoBusca = el("div", { class: "campo" }, el("label", { for: `${id}-busca`, text: "Cliente cadastrado" }), busca, resultados);
+  const escolhidoEl = el("div", { class: "cliente-escolhido", "data-teste": `${id}-escolhido` });
+  let temporizador;
+  const desenhar = () => {
+    blocoBusca.hidden = Boolean(escolhido);
+    escolhidoEl.hidden = !escolhido;
+    if (escolhido) {
+      escolhidoEl.replaceChildren(
+        el("span", { class: "conta-avatar pequeno", text: escolhido.nome.trim().charAt(0).toUpperCase() }),
+        el("div", {}, el("strong", { text: escolhido.nome }), el("span", { class: "suave", text: escolhido.telefone ? fone(escolhido.telefone) : "sem telefone" })),
+        botao("Trocar", () => { escolhido = null; busca.value = ""; resultados.replaceChildren(); desenhar(); busca.focus(); }, "pequeno"));
+    }
+    aoMudar(escolhido);
+  };
+  busca.addEventListener("input", () => {
+    clearTimeout(temporizador);
+    const termo = busca.value.trim();
+    if (termo.length < 2) { resultados.replaceChildren(); return; }
+    temporizador = setTimeout(async () => {
+      try {
+        const { clientes } = await api(`/agenda/clientes?busca=${encodeURIComponent(termo)}`);
+        resultados.replaceChildren(...(clientes.length ? clientes.map(c => el("li", {},
+          el("button", { type: "button", class: "resultado-cliente", "data-cliente-opcao": c.nome, onclick: () => { escolhido = c; desenhar(); } },
+            el("strong", { text: c.nome }), el("span", { class: "suave", text: c.telefone ? fone(c.telefone) : "sem telefone" }))))
+          : [el("li", { class: "suave sem-resultado", text: "Nenhum cliente com esse nome ou telefone. Preencha abaixo como cliente novo." })]));
+      } catch (e) { resultados.replaceChildren(el("li", { class: "erro", text: e.message })); }
+    }, 250);
+  });
+  desenhar();
+  return { el: el("div", { class: "seletor-cliente" }, blocoBusca, escolhidoEl), escolhido: () => escolhido };
+}
+
+// Painel de disponibilidade do dia: situação do profissional, ocupados e horários livres (tocar preenche a hora).
+function painelDisponibilidade() {
+  const painel = el("div", { class: "disponibilidade", "data-teste": "disponibilidade", "aria-live": "polite" });
+  let vez = 0;
+  async function atualizar({ data, barbeiroId, duracao, hora, aoEscolher }) {
+    const minha = ++vez;
+    if (!data) { painel.replaceChildren(); return; }
+    painel.replaceChildren(el("p", { class: "suave", text: "Conferindo a agenda do dia…" }));
+    try {
+      const q = new URLSearchParams({ data, ...(barbeiroId ? { barbeiroId } : {}), ...(duracao ? { duracao: String(duracao) } : {}) });
+      const d = await api(`/agenda/disponibilidade?${q}`);
+      if (minha !== vez) return;
+      const p = d.profissionais[0];
+      if (!p) { painel.replaceChildren(el("p", { class: "disp-aviso fechado", text: "Escolha o profissional." })); return; }
+      const titulo = `${p.nome.split(" ")[0]} em ${DIAS[diaDaSemana(data)].toLowerCase()}, ${dataBR(data).slice(0, 5)}`;
+      if (d.passado) { painel.replaceChildren(el("p", { class: "disp-aviso fechado", text: `${dataBR(data)} já passou.` })); return; }
+      if (p.situacao !== "aberto") {
+        const rotulo = { fechado: "Fechado", folga: "Folga", bloqueado: "Dia bloqueado", sem_funcionamento: "Sem funcionamento" }[p.situacao];
+        painel.replaceChildren(el("p", { class: "disp-aviso fechado", "data-teste": "disp-situacao" }, el("strong", { text: `${rotulo}: ` }), p.motivo || ""));
+        return;
+      }
+      const chips = p.livres.map(h => el("button", { type: "button", class: `chip-hora ${h === hora ? "ativo" : ""}`, "data-hora-livre": h, text: h,
+        onclick: () => { aoEscolher(h); painel.querySelectorAll(".chip-hora").forEach(b => b.classList.toggle("ativo", b.dataset.horaLivre === h)); } }));
+      painel.replaceChildren(...[
+        el("div", { class: "disp-topo" },
+          el("strong", { text: titulo }),
+          el("span", { class: `etiqueta ${p.livres.length ? "verde" : "vermelha"}`, "data-teste": "disp-situacao", text: p.livres.length ? `${p.livres.length} horário(s) livre(s)` : "Agenda cheia" })),
+        el("p", { class: "suave", text: `Atende das ${p.janela.ini} às ${p.janela.fim} · horários para ${d.duracao} min. Toque num horário livre:` }),
+        p.livres.length ? el("div", { class: "chips-hora" }, chips) : el("p", { class: "disp-aviso cheio", text: "Nenhum horário livre para essa duração neste dia. Tente outro dia ou outro profissional." }),
+        p.ocupados.length ? el("ul", { class: "disp-ocupados" }, p.ocupados.map(o => el("li", { class: `ocup-${o.tipo}` },
+          el("span", { class: "hora", text: `${o.ini}–${o.fim}` }), el("span", { text: o.tipo === "horario" ? `Ocupado · ${o.texto}` : o.texto })))) : null
+      ].filter(Boolean));
+    } catch (e) { if (minha === vez) painel.replaceChildren(el("p", { class: "erro", text: e.message })); }
+  }
+  return { el: painel, atualizar };
+}
+
+function janelaMarcar(ag, pre = {}) {
   const servicos = servicosCache || [];
   // Sem profissional ou sem serviço não há como marcar: explica o que falta em vez de um formulário vazio.
   if (veTodas() && !ag.profissionais.length) return abrirJanela("Novo horário", el("p", { text: "Nenhum profissional com agenda. Cadastre um gerente ou barbeiro em Equipe e ajustes → Equipe (o proprietário não tem agenda própria)." }), { ok: "Entendi", semCancelar: true, aoConfirmar: () => true });
   if (!servicos.length) return abrirJanela("Novo horário", el("p", { text: "Nenhum serviço cadastrado. Cadastre em Catálogo e estoque → Serviços (nome, preço e duração)." }), { ok: "Entendi", semCancelar: true, aoConfirmar: () => true });
-  // Telefone é opcional: sem ele, o cliente fica só com o nome (sem WhatsApp).
+  // Cliente: da base (busca) ou novo/avulso. Telefone é opcional: sem ele, o cliente fica só com o nome (sem WhatsApp).
   const nomeCampo = campo("Nome do cliente", { name: "cliNome", autocomplete: "off" });
   const lgpd = caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "cliLgpd" });
   const blocoNovo = el("div", { class: "cliente-novo" }, nomeCampo, lgpd);
@@ -750,6 +855,8 @@ function janelaMarcar(ag) {
   const achado = el("p", { class: "cliente-achado", role: "status" });
   const tel = campo("Telefone do cliente (WhatsApp) — opcional", { name: "cliTel", inputmode: "tel", autocomplete: "off", placeholder: "(11) 91234-5678" },
     "Sem telefone, o cliente fica só com o nome (sem lembrete pelo WhatsApp).");
+  const blocoAvulso = el("div", { class: "cliente-avulso" }, el("p", { class: "separador-ou", text: "ou cliente novo / avulso" }), tel, achado, blocoNovo);
+  const seletor = seletorCliente({ id: "cli", preSelecionado: pre.cliente || null, aoMudar: c => { blocoAvulso.hidden = Boolean(c); } });
   const buscar = async () => {
     const v = tel.querySelector("input").value.replace(/\D/g, "");
     if (v.length < 10) { achado.textContent = ""; blocoNovo.hidden = false; lgpd.hidden = true; return; }
@@ -761,6 +868,7 @@ function janelaMarcar(ag) {
   };
   tel.querySelector("input").addEventListener("change", buscar);
   tel.querySelector("input").addEventListener("input", buscar);
+  const disp = painelDisponibilidade();
 
   setTimeout(() => {
     const f = janela.querySelector("form");
@@ -771,16 +879,27 @@ function janelaMarcar(ag) {
       if (f.repetir.value && !f.repAte.value) f.repAte.value = somaDias(f.data.value || hojeLocal(), 56);
     };
     f.repetir.addEventListener("change", atualizarRep);
+    if (pre.hora) f.hora.value = pre.hora;
+    // Disponibilidade: muda com profissional, data e serviços escolhidos (a duração soma os serviços).
+    const duracao = () => servicos.filter(sv => f.querySelector(`#serv-${sv.id}`)?.checked).reduce((t, sv) => t + sv.duracaoMin, 0);
+    const recalcular = () => disp.atualizar({
+      data: f.data.value, barbeiroId: f.prof?.value || null, duracao: duracao(), hora: f.hora.value,
+      aoEscolher: h => { f.hora.value = h; }
+    });
+    f.data.addEventListener("change", recalcular);
+    f.prof?.addEventListener("change", recalcular);
+    f.querySelectorAll("input[name=serv]").forEach(c => c.addEventListener("change", recalcular));
+    recalcular();
   });
   return abrirJanela("Novo horário", [
-    campoProfissional(ag),
+    campoProfissional(ag, pre.barbeiroId),
     el("div", { class: "lado-a-lado" },
-      campo("Data", { name: "data", type: "date", value: estadoAgenda.data, required: true }),
+      campo("Data", { name: "data", type: "date", value: pre.data || estadoAgenda.data, required: true }),
       campo("Hora", { name: "hora", type: "time", step: "300", required: true })),
     el("fieldset", { class: "servicos-escolha" }, el("legend", { text: "Serviços" }),
-      servicos.length ? servicos.map(s => caixaMarcar(`${s.nome} · ${reais(s.precoCentavos)} · ${s.duracaoMin} min`, { name: "serv", value: s.id, id: `serv-${s.id}` }))
-        : el("p", { class: "suave", text: "Nenhum serviço cadastrado." })),
-    tel, achado, blocoNovo,
+      servicos.map(s => caixaMarcar(`${s.nome} · ${reais(s.precoCentavos)} · ${s.duracaoMin} min`, { name: "serv", value: s.id, id: `serv-${s.id}` }))),
+    disp.el,
+    el("fieldset", { class: "servicos-escolha bloco-cliente" }, el("legend", { text: "Cliente" }), seletor.el, blocoAvulso),
     campo("Observação (opcional)", { name: "obs", maxlength: "300", autocomplete: "off" }),
     el("div", { class: "lado-a-lado" },
       campo("Repetir (horário fixo)", { tag: "select", name: "repetir", opcoes: [["", "Não repete"], ["1", "Toda semana"], ["2", "A cada 2 semanas"], ["3", "A cada 3 semanas"], ["4", "A cada 4 semanas"]] }),
@@ -790,12 +909,13 @@ function janelaMarcar(ag) {
     aoConfirmar: async f => {
       const servicoIds = [...f.querySelectorAll("input[name=serv]:checked")].map(i => i.value);
       if (!servicoIds.length) throw new Error("Escolha pelo menos um serviço.");
+      const daBase = seletor.escolhido();
       const r = await api("/agenda", {
         metodo: "POST",
         corpo: {
           barbeiroId: f.prof?.value, data: f.data.value, hora: f.hora.value, servicoIds,
           observacao: f.obs.value || null,
-          cliente: { telefone: f.cliTel.value, nome: f.cliNome.value || undefined, aceiteLgpd: f.cliLgpd.checked },
+          cliente: daBase ? { id: daBase.id } : { telefone: f.cliTel.value, nome: f.cliNome.value || undefined, aceiteLgpd: f.cliLgpd.checked },
           ...(f.repetir.value ? { repetir: { intervaloSemanas: Number(f.repetir.value), ate: f.repAte.value } } : {})
         }
       });
@@ -1030,12 +1150,13 @@ async function janelaHorario(u) {
 }
 
 // ---------- PAGAMENTO (1 ou 2 formas) — usado na venda ----------
-function blocoPagamento(totalAtual) {
-  const forma1 = campo("Forma de pagamento", { tag: "select", name: "forma1", valor: "pix", opcoes: Object.entries(NOME_FORMA) });
+function blocoPagamento(totalAtual, { nota = true } = {}) {
+  const opcoes = nota ? Object.entries(NOME_FORMA) : OPCOES_FORMA;
+  const forma1 = campo("Forma de pagamento", { tag: "select", name: "forma1", valor: "pix", opcoes });
   const dividir = caixaMarcar("Dividir em 2 formas", { name: "dividir" });
   const valor1 = campo("Valor na 1ª forma (R$)", { name: "valor1", inputmode: "decimal" });
   const segunda = el("div", { class: "lado-a-lado" },
-    campo("2ª forma", { tag: "select", name: "forma2", valor: "dinheiro", opcoes: Object.entries(NOME_FORMA) }),
+    campo("2ª forma", { tag: "select", name: "forma2", valor: "dinheiro", opcoes }),
     el("div", { class: "campo" }, el("label", { text: "Valor na 2ª forma" }), el("p", { class: "valor2", "data-teste": "valor2" })));
   const atualizar = () => {
     const d = dividir.querySelector("input").checked;
@@ -1051,7 +1172,9 @@ function blocoPagamento(totalAtual) {
     if (v1 === null || v1 <= 0 || v1 >= t) throw new Error("Valor da 1ª forma inválido: precisa ser maior que zero e menor que o total.");
     return [{ forma: f.forma1.value, valorCentavos: v1 }, { forma: f.forma2.value, valorCentavos: t - v1 }];
   };
-  return { elementos: [forma1, dividir, valor1, segunda], atualizar, ler };
+  // Alguma das formas escolhidas é promissória? (exige cliente identificado)
+  const temNota = () => forma1.querySelector("select").value === "promissoria" || (dividir.querySelector("input").checked && segunda.querySelector("select").value === "promissoria");
+  return { elementos: [forma1, dividir, valor1, segunda], atualizar, ler, temNota };
 }
 
 // ---------- VENDA DE PRODUTO (caixa, gestão ou barbeiro) ----------
@@ -1101,7 +1224,8 @@ async function janelaVenda({ agendamento = null, aoTerminar } = {}) {
 let timerCaixa;
 const NOME_TIPO_CAIXA = {
   atendimento: "Atendimento", estorno_atendimento: "Estorno (atendimento reaberto)", venda: "Venda",
-  estorno_venda: "Estorno (venda cancelada)", sangria: "Sangria", suprimento: "Suprimento"
+  estorno_venda: "Estorno (venda cancelada)", sangria: "Sangria", suprimento: "Suprimento",
+  promissoria: "Na promissória (não entrou dinheiro)", recebimento_promissoria: "Nota recebida"
 };
 
 function listaCaixa(c, recarregar) {
@@ -1120,10 +1244,12 @@ function listaCaixa(c, recarregar) {
     l.corrigido ? el("p", { class: "suave destaque-texto", text: `Forma corrigida: ${NOME_FORMA[l.forma]} → ${NOME_FORMA[l.formaAtual]}` }) : null,
     l.desconto ? el("p", { class: "suave", "data-teste": "desconto-lancamento", text: `Desconto de ${bpParaTexto(l.desconto.percentualBp)}% (− ${reais(l.desconto.valorCentavos)}; sem desconto seria ${reais(l.desconto.brutoCentavos)})` }) : null,
     l.vendaCancelada && l.tipo === "venda" ? el("p", { class: "suave", text: "Venda cancelada" }) : null,
+    l.tipo === "promissoria" ? el("span", { class: `etiqueta ${{ aberta: "amarela", quitada: "verde", estornada: "" }[l.notaSituacao]}`, "data-teste": "nota-situacao",
+      text: { aberta: "Nota em aberto", quitada: "Nota paga", estornada: "Nota estornada" }[l.notaSituacao] }) : null,
     l.podeCorrigir || l.podeCancelarVenda ? el("div", { class: "item-acoes" },
       l.podeCorrigir ? botao("Corrigir forma", () => abrirJanela("Corrigir forma de pagamento", [
         el("p", { text: `${reais(l.valorCentavos)} está em ${NOME_FORMA[l.formaAtual]}. Qual a forma certa?` }),
-        campo("Forma certa", { tag: "select", name: "nova", opcoes: Object.entries(NOME_FORMA).filter(([f]) => f !== l.formaAtual) }),
+        campo("Forma certa", { tag: "select", name: "nova", opcoes: OPCOES_FORMA.filter(([f]) => f !== l.formaAtual) }),
         campo("Motivo", { name: "motivo", required: true, minlength: "3" })
       ], {
         ok: "Corrigir",
@@ -1136,22 +1262,6 @@ function listaCaixa(c, recarregar) {
         await api("/vendas/cancelar", { metodo: "POST", corpo: { id: l.vendaId, motivo } });
         avisar("Venda cancelada."); recarregar();
       }, "Cancelar venda"), "pequeno perigo") : null) : null)));
-}
-
-function resumoTotais(c) {
-  const t = c.totais;
-  return [
-    el("div", { class: "resumo-caixa" },
-      el("div", { class: "vaga" }, el("strong", { text: reais(c.caixa.trocoCentavos) }), el("span", { text: "Troco inicial" })),
-      el("div", { class: "vaga" }, el("strong", { "data-teste": "entradas", text: reais(t.entradasCentavos) }), el("span", { text: "Entradas (bruto)" })),
-      el("div", { class: "vaga" }, el("strong", { "data-teste": "esperado", text: reais(t.dinheiroEsperadoCentavos) }), el("span", { text: "Dinheiro na gaveta" }))),
-    el("div", { class: "formas" },
-      Object.entries(t.porForma).map(([f, v]) => el("span", { class: "etiqueta", text: `${NOME_FORMA[f]}: ${reais(v)}` })),
-      el("span", { class: "etiqueta", text: `Atendimentos: ${reais(t.atendimentosCentavos)}` }),
-      el("span", { class: "etiqueta", text: `Vendas: ${reais(t.vendasCentavos)}` }),
-      t.sangriasCentavos ? el("span", { class: "etiqueta vermelha", text: `Sangrias: ${reais(t.sangriasCentavos)}` }) : null,
-      t.suprimentosCentavos ? el("span", { class: "etiqueta verde", text: `Suprimentos: ${reais(t.suprimentosCentavos)}` }) : null)
-  ];
 }
 
 function janelaMovimento(tipo, recarregar) {
@@ -1255,16 +1365,18 @@ async function telaCaixa(dataHistorico = null) {
   const aberto = c.caixa.situacao === "aberto";
   const ehHoje = !dataHistorico || dataHistorico === hojeLocal();
   const topo = [
+    // Topo do caixa: quanto entrou no total, quanto deve ter na gaveta (só o dinheiro em espécie) e quanto entrou em cada forma.
     el("div", { class: "pdv-topo", "data-tela": "caixa" },
-      el("div", { class: "pdv-num" }, el("span", { text: "Troco inicial" }), el("strong", { text: reais(c.caixa.trocoCentavos) })),
-      el("div", { class: "pdv-num" }, el("span", { text: "Entradas (bruto)" }), el("strong", { "data-teste": "entradas", text: reais(t.entradasCentavos) })),
-      el("div", { class: "pdv-num ouro" }, el("span", { text: "Dinheiro na gaveta" }), el("strong", { "data-teste": "esperado", text: reais(t.dinheiroEsperadoCentavos) }))),
-    el("div", { class: "formas" },
-      Object.entries(t.porForma).map(([f, v]) => el("span", { class: "etiqueta", text: `${NOME_FORMA[f]}: ${reais(v)}` })),
-      el("span", { class: "etiqueta", text: `Atendimentos: ${reais(t.atendimentosCentavos)}` }),
-      el("span", { class: "etiqueta", text: `Vendas: ${reais(t.vendasCentavos)}` }),
-      t.sangriasCentavos ? el("span", { class: "etiqueta vermelha", text: `Sangrias: ${reais(t.sangriasCentavos)}` }) : null,
-      t.suprimentosCentavos ? el("span", { class: "etiqueta verde", text: `Suprimentos: ${reais(t.suprimentosCentavos)}` }) : null)
+      el("div", { class: "pdv-num" }, el("span", { text: "Recebido hoje (todas as formas)" }), el("strong", { "data-teste": "entradas", text: reais(t.entradasCentavos) }),
+        el("small", { text: `Atendimentos ${reais(t.atendimentosCentavos)} · produtos ${reais(t.vendasCentavos)}${t.notasRecebidasCentavos ? ` · notas ${reais(t.notasRecebidasCentavos)}` : ""}` })),
+      el("div", { class: "pdv-num ouro" }, el("span", { text: "Dinheiro na gaveta" }), el("strong", { "data-teste": "esperado", text: reais(t.dinheiroEsperadoCentavos) }),
+        el("small", { "data-teste": "composicao-gaveta", text: [`Troco ${reais(c.caixa.trocoCentavos)}`, `+ dinheiro ${reais(t.porForma.dinheiro)}`,
+          t.suprimentosCentavos ? `+ suprimentos ${reais(t.suprimentosCentavos)}` : null, t.sangriasCentavos ? `− sangrias ${reais(t.sangriasCentavos)}` : null].filter(Boolean).join(" ") }))),
+    el("div", { class: "pdv-formas", "data-teste": "por-forma" },
+      [["dinheiro", "Dinheiro", "em espécie"], ["pix", "Pix", "na conta"], ["debito", "Cartão de débito", "na maquininha"], ["credito", "Cartão de crédito", "na maquininha"]].map(([f, nome, onde]) =>
+        el("div", { class: `forma-card forma-${f}`, "data-forma": f }, el("span", { text: nome }), el("strong", { text: reais(t.porForma[f] || 0) }), el("small", { text: onde }))),
+      el("div", { class: "forma-card forma-promissoria", "data-forma": "promissoria", "data-teste": "notas-lancadas" },
+        el("span", { text: "Promissória" }), el("strong", { text: reais(t.notasLancadasCentavos || 0) }), el("small", { text: "a receber (não entrou)" })))
   ];
 
   if (!aberto || !ehHoje) {
@@ -1299,6 +1411,7 @@ async function telaCaixa(dataHistorico = null) {
         [["cobrar", "Cobrar"], ["vender", "Vender"], ["lancamentos", "Lançamentos"]].map(([k, txt]) =>
           botao(txt, () => trocarAba(k), `pequeno ${aba === k ? "ativo" : ""}`))),
       el("div", { class: "pdv-acoes" },
+        el("a", { class: "botao pequeno", href: "#/notas", text: "Notas em aberto" }),
         botao("Sangria", () => janelaMovimento("sangria", recarregar), "pequeno"),
         botao("Suprimento", () => janelaMovimento("suprimento", recarregar), "pequeno"),
         botao("Fechar caixa", () => janelaFechar(c, recarregar, dataHistorico), "pequeno perigo"),
@@ -1331,6 +1444,12 @@ async function abaCobrar(recarregar) {
 // Atendimento sem horário marcado (cliente chegou na hora): registra e já cobra.
 function janelaAvulso(profissionais, recarregar) {
   const servicos = servicosCache || [];
+  const avulsoCampos = el("div", { class: "cliente-avulso" },
+    el("p", { class: "separador-ou", text: "ou cliente novo / avulso" }),
+    campo("Telefone do cliente (WhatsApp) — opcional", { name: "aTel", inputmode: "tel", autocomplete: "off" }),
+    campo("Nome do cliente — opcional", { name: "aNome", autocomplete: "off" }, "Sem nome e sem telefone, fica como \"Cliente não identificado\"."),
+    Object.assign(caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "aLgpd" }), { hidden: true }));
+  const seletor = seletorCliente({ id: "av-cli", aoMudar: c => { avulsoCampos.hidden = Boolean(c); } });
   const linhas = servicos.map(s => {
     const chk = el("input", { type: "checkbox", name: "aserv", value: s.id, id: `av-${s.id}` });
     const valor = el("input", { type: "text", inputmode: "decimal", value: centavosParaTexto(s.precoCentavos), "aria-label": `Valor cobrado de ${s.nome}` });
@@ -1343,9 +1462,7 @@ function janelaAvulso(profissionais, recarregar) {
     campo("Quem atendeu", { tag: "select", name: "prof", opcoes: profissionais.map(p => [p.id, p.nome]) }),
     el("div", { class: "lista-servicos" }, linhas.map(l => l.el)),
     totalEl,
-    campo("Telefone do cliente (WhatsApp) — opcional", { name: "aTel", inputmode: "tel", autocomplete: "off" }),
-    campo("Nome do cliente — opcional", { name: "aNome", autocomplete: "off" }, "Sem nome e sem telefone, fica como \"Cliente não identificado\"."),
-    Object.assign(caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "aLgpd" }), { hidden: true }),
+    el("fieldset", { class: "servicos-escolha bloco-cliente" }, el("legend", { text: "Cliente" }), seletor.el, avulsoCampos),
     ...pag.elementos
   ], {
     ok: "Cobrar",
@@ -1359,7 +1476,8 @@ function janelaAvulso(profissionais, recarregar) {
       if (!itens.length) throw new Error("Marque pelo menos um serviço.");
       await api("/caixa/atendimento-avulso", {
         metodo: "POST",
-        corpo: { barbeiroId: f.prof.value, itens, pagamentos: pag.ler(f), cliente: { telefone: f.aTel.value, nome: f.aNome.value || undefined, aceiteLgpd: f.aLgpd.checked } }
+        corpo: { barbeiroId: f.prof.value, itens, pagamentos: pag.ler(f),
+          cliente: seletor.escolhido() ? { id: seletor.escolhido().id } : { telefone: f.aTel.value, nome: f.aNome.value || undefined, aceiteLgpd: f.aLgpd.checked } }
       });
       avisar(`Atendimento lançado: ${reais(total())}.`);
       recarregar();
@@ -1395,6 +1513,11 @@ async function abaVender(recarregar) {
   const linhaSubtotal = el("div", { class: "linha-resumo" }, el("span", { text: "Subtotal" }), subtotalEl);
   const linhaDesconto = el("div", { class: "linha-resumo desconto" }, el("span", { "data-teste": "rotulo-desconto" }), descontoEl);
   const pag = blocoPagamento(total);
+  // Promissória: a venda fica na nota do cliente (escolher o cliente é obrigatório).
+  const seletor = seletorCliente({ id: "venda-cli" });
+  const blocoNota = el("fieldset", { class: "servicos-escolha bloco-cliente", "data-teste": "cliente-nota" },
+    el("legend", { text: "Cliente da nota (promissória)" }), seletor.el);
+  blocoNota.hidden = true;
   const form = el("form", { class: "carrinho", "data-teste": "carrinho" },
     el("h3", {}, el("span", { text: "Venda" }), botao("Limpar", () => { carrinho.clear(); descontoInput.value = ""; desenhar(); }, "pequeno")),
     linhasEl,
@@ -1402,6 +1525,7 @@ async function abaVender(recarregar) {
     linhaSubtotal, linhaDesconto,
     el("div", { class: "total-carrinho" }, el("span", { text: "Total" }), totalEl),
     ...pag.elementos,
+    blocoNota,
     el("button", { type: "submit", class: "botao principal", text: "Finalizar venda" }));
   const tiles = el("div", { class: "produtos-grade" }, produtos.map(p => el("button", {
     type: "button", class: "produto-tile", "data-produto-pdv": p.nome, disabled: saldoDe(p) < 1 || null,
@@ -1430,6 +1554,7 @@ async function abaVender(recarregar) {
     totalEl.textContent = reais(total());
     pag.atualizar();
   }
+  form.addEventListener("change", () => { blocoNota.hidden = !pag.temNota(); });
   form.addEventListener("input", atualizarTotais);
   form.addEventListener("change", atualizarTotais);
   form.addEventListener("submit", ev => {
@@ -1440,7 +1565,9 @@ async function abaVender(recarregar) {
       const bp = descontoBp();
       if (bp === null) throw new Error("Desconto inválido: use um número de 0 a 99 (ex.: 10 ou 7,5).");
       const valor = total();
-      await api("/vendas", { metodo: "POST", corpo: { itens, pagamentos: pag.ler(form), ...(bp ? { descontoBp: bp } : {}) } });
+      const naNota = pag.temNota();
+      if (naNota && !seletor.escolhido()) throw new Error("Na promissória, escolha o cliente da nota.");
+      await api("/vendas", { metodo: "POST", corpo: { itens, pagamentos: pag.ler(form), ...(bp ? { descontoBp: bp } : {}), ...(naNota ? { clienteId: seletor.escolhido().id } : {}) } });
       carrinho.clear();
       avisar(bp ? `Venda registrada: ${reais(valor)} (desconto de ${bpParaTexto(bp)}%).` : `Venda registrada: ${reais(valor)}.`);
       recarregar();
@@ -1679,7 +1806,8 @@ async function telaPainel() {
     ...av.diferencasCaixa.map(d => ["vermelha", `Diferença no caixa de ${dataBR(d.data)}: ${d.diferencaCentavos > 0 ? "sobra" : "falta"} de ${reais(Math.abs(d.diferencaCentavos))}`]),
     av.valoresAlterados ? ["amarela", `${av.valoresAlterados} atendimento(s) com valor alterado (veja na agenda)`] : null,
     ...av.estoqueBaixo.map(n => ["amarela", `Estoque baixo: ${n}`]),
-    ...av.produtosVencendo.map(n => ["amarela", `Produto vencendo: ${n}`])
+    ...av.produtosVencendo.map(n => ["amarela", `Produto vencendo: ${n}`]),
+    av.notasAbertas?.notas ? ["amarela", `Notas em aberto (promissória): ${av.notasAbertas.clientes} cliente(s) · ${reais(av.notasAbertas.totalCentavos)}`] : null
   ].filter(Boolean);
   const textoPeriodo = p.periodo.ini === p.periodo.fim ? dataBR(p.periodo.ini) : `${dataBR(p.periodo.ini)} a ${dataBR(p.periodo.fim)}`;
   mostrar(
@@ -2276,8 +2404,10 @@ async function telaClientes(busca = "") {
         !c.telefone ? null : c.aceiteLgpd ? el("span", { class: "etiqueta verde", text: "LGPD ok" }) : el("span", { class: "etiqueta amarela", text: "Sem aceite" })),
       el("p", { class: "suave", text: c.telefone ? fone(c.telefone) : "Sem telefone" }),
       c.observacao ? el("p", { class: "suave", text: c.observacao }) : null,
-      ehCaixa() ? el("div", { class: "item-acoes" }, botao("Editar", () => editarEmJanela(`Editar ${c.nome}`, def, c), "pequeno"))
-        : linhaAcoesCadastro("clientes", c, () => telaClientes(busca), () => editarEmJanela(`Editar ${c.nome}`, def, c)))))
+      el("div", { class: "item-acoes" },
+        c.ativo ? botao("Marcar horário", () => { marcarParaCliente = { id: c.id, nome: c.nome, telefone: c.telefone }; estadoAgenda.visao = "dia"; location.hash = "#/agenda"; }, "pequeno principal") : null,
+        ehCaixa() ? botao("Editar", () => editarEmJanela(`Editar ${c.nome}`, def, c), "pequeno")
+          : linhaAcoesCadastro("clientes", c, () => telaClientes(busca), () => editarEmJanela(`Editar ${c.nome}`, def, c))))))
     : el("p", { class: "vazio", text: busca ? "Nenhum cliente encontrado." : "Nenhum cliente ainda." });
   mostrar(cabecalho("Clientes", "Na agenda o cliente também é cadastrado na hora de marcar (pelo telefone ou só pelo nome)."),
     el("div", { class: "duas-colunas" }, el("section", {}, buscaForm, lista), el("section", {}, formCadastro(def))));
@@ -2417,6 +2547,70 @@ function mostrarFilaEnvio(fila, envio) {
 
 
 // ---------- MENU LATERAL (categorias com sub-opções; ícones em SVG) ----------
+// ---------- NOTAS EM ABERTO (promissória) ----------
+// Quem levou serviço/produto para pagar depois. "Receber" só quando o cliente quita: o valor entra no caixa de hoje.
+async function telaNotas() {
+  const [{ clientes, resumo }, { recebimentos }] = await Promise.all([api("/promissorias"), api("/promissorias/recebimentos")]);
+  const lista = clientes.length
+    ? el("ul", { class: "lista" }, clientes.map(c => el("li", { class: "item nota-cliente", "data-nota-cliente": c.cliente },
+      el("div", { class: "item-topo" },
+        el("strong", { text: c.cliente }),
+        el("span", { class: "preco", "data-teste": "nota-total", text: reais(c.totalCentavos) })),
+      el("p", { class: "suave", text: `${c.notas.length} lançamento(s) desde ${dataBR(c.desde)}${c.telefone ? ` · ${fone(c.telefone)}` : ""}` }),
+      el("ul", { class: "notas-itens" }, c.notas.map(n => el("li", {},
+        el("span", { text: `${dataBR(n.data).slice(0, 5)} · ${n.origem === "venda" ? "Produto" : "Serviço"}: ${n.descricao}` }),
+        el("strong", { text: reais(n.valorCentavos) })))),
+      el("div", { class: "item-acoes" },
+        botao("Receber (dar baixa)", () => janelaReceberNota(c), "pequeno principal"),
+        c.whatsapp ? el("a", { class: "botao pequeno whats", href: c.whatsapp, target: "_blank", rel: "noopener", text: "Lembrar no WhatsApp" }) : null))))
+    : el("p", { class: "vazio", text: "Nenhuma nota em aberto. Para lançar, escolha \"Promissória (paga depois)\" como forma de pagamento no caixa." });
+  const historico = recebimentos.length
+    ? el("ul", { class: "lista" }, recebimentos.map(r => el("li", { class: `item ${r.situacao === "estornado" ? "inativo" : ""}`, "data-recebimento": r.cliente },
+      el("div", { class: "item-topo" }, el("strong", { text: r.cliente }), el("span", { class: "preco", text: reais(r.totalCentavos) }),
+        r.situacao === "estornado" ? el("span", { class: "etiqueta vermelha", text: "Estornado" }) : el("span", { class: "etiqueta verde", text: "Pago" })),
+      el("p", { class: "suave", text: [`${dataBR(r.data)} · ${r.notas} nota(s)`, r.pagamentos.map(p => `${NOME_FORMA[p.forma]} ${reais(p.valorCentavos)}`).join(" + "), `por ${r.por.split(" ")[0]}`, r.motivoEstorno ? `motivo: ${r.motivoEstorno}` : null].filter(Boolean).join(" · ") }),
+      r.podeEstornar ? el("div", { class: "item-acoes" }, botao("Estornar recebimento", () => pedirMotivo("Estornar recebimento", "O dinheiro sai do caixa de hoje e as notas voltam a ficar em aberto. Fica registrado.", async motivo => {
+        await api("/promissorias/estornar-recebimento", { metodo: "POST", corpo: { recebimentoId: r.id, motivo } });
+        avisar("Recebimento estornado."); telaNotas();
+      }, "Estornar"), "pequeno perigo")) : null)))
+    : el("p", { class: "vazio", text: "Nenhuma nota recebida nos últimos 30 dias." });
+  mostrar(cabecalho("Notas em aberto", "Clientes que pagam depois (promissória). Só dê baixa quando o cliente pagar: o valor entra no caixa de hoje."),
+    el("div", { class: "cartoes" },
+      el("div", { class: "cartao-num", "data-cartao": "notas-clientes" }, el("span", { class: "cartao-tit", text: "Clientes com nota" }), el("strong", { text: String(resumo.clientes) })),
+      el("div", { class: "cartao-num negativo", "data-cartao": "notas-total" }, el("span", { class: "cartao-tit", text: "Total a receber" }), el("strong", { text: reais(resumo.totalCentavos) }))),
+    el("div", { class: "duas-colunas" },
+      el("section", {}, lista),
+      el("section", {}, el("h3", { text: "Recebidas (últimos 30 dias)" }), historico)));
+}
+
+function janelaReceberNota(c) {
+  const linhas = c.notas.map(n => ({ n, chk: el("input", { type: "checkbox", name: "nota", value: n.id, id: `nota-${n.id}`, checked: true }) }));
+  const totalEl = el("p", { class: "total-final", "data-teste": "total" });
+  const total = () => linhas.filter(l => l.chk.checked).reduce((t, l) => t + l.n.valorCentavos, 0);
+  const pag = blocoPagamento(total, { nota: false });
+  const promessa = abrirJanela(`Receber nota de ${c.cliente}`, [
+    el("p", { class: "suave", text: "Marque o que o cliente está pagando agora. O valor entra no caixa de hoje." }),
+    el("div", { class: "lista-servicos" }, linhas.map(l => el("div", { class: "linha-servico" },
+      el("div", { class: "marcar" }, l.chk, el("label", { for: `nota-${l.n.id}`, text: `${dataBR(l.n.data).slice(0, 5)} · ${l.n.descricao}` })),
+      el("strong", { text: reais(l.n.valorCentavos) })))),
+    totalEl, ...pag.elementos
+  ], {
+    ok: "Confirmar recebimento",
+    aoConfirmar: async f => {
+      const ids = linhas.filter(l => l.chk.checked).map(l => l.n.id);
+      if (!ids.length) throw new Error("Marque pelo menos uma nota.");
+      await api("/promissorias/receber", { metodo: "POST", corpo: { clienteId: c.clienteId, promissoriaIds: ids, pagamentos: pag.ler(f) } });
+      avisar(`Nota recebida: ${reais(total())}.`);
+      telaNotas();
+    }
+  });
+  const atualizar = () => { totalEl.textContent = `Total: ${reais(total())}`; pag.atualizar(); };
+  janela.querySelector("form").addEventListener("input", atualizar);
+  janela.querySelector("form").addEventListener("change", atualizar);
+  atualizar();
+  return promessa;
+}
+
 const ICONES = {
   menu: "M4 6h16M4 12h16M4 18h16",
   seta: "M9 6l6 6-6 6",
@@ -2448,7 +2642,7 @@ function gruposDoMenu() {
   const p = usuario.perfil;
   if (p === "plataforma") return [{ id: "plataforma", titulo: "Plataforma", icone: "loja", itens: [["plataforma", "Barbearias", "loja"]] }];
   if (p === "caixa") return [
-    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
+    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["notas", "Notas em aberto", "contas"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
     { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
   ];
   if (p === "barbeiro") return [
@@ -2458,7 +2652,7 @@ function gruposDoMenu() {
   return [
     { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ...(p === "gerente" ? [["desempenho", "Meu desempenho", "grafico"]] : [])] },
     { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
-    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["comissoes", "Comissões e vales", "comissao"], ["contas", "Contas a pagar", "contas"], ["contador", "Contador e dados", "contador"]] },
+    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["comissoes", "Comissões e vales", "comissao"], ["notas", "Notas em aberto", "contas"], ["contas", "Contas a pagar", "contas"], ["contador", "Contador e dados", "contador"]] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"], ["estoque", "Estoque", "estoque"]] },
     { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"]] }
   ];
@@ -2530,7 +2724,8 @@ const ROTAS = {
   produtos: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaProdutos },
   clientes: { perfis: ["proprietario", "gerente", "caixa"], tela: () => telaClientes() },
   mensagens: { perfis: ["proprietario", "gerente", "caixa"], tela: telaMensagens },
-  agenda: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgenda }
+  agenda: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgenda },
+  notas: { perfis: ["proprietario", "gerente", "caixa"], tela: telaNotas }
 };
 
 async function rotear() {
