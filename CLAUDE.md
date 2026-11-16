@@ -50,7 +50,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - Venda guarda vendedor (barbeiro) e custo unitário do momento — base para comissão de produto e lucro na E4. Barbeiro vende em seu nome (botão no horário da agenda).
   - Regras que decidi (confirmar): sangria não pode passar do dinheiro na gaveta; preço do produto na venda é o de tabela (sem alterar); "repor" quando saldo < mínimo; validade do produto = a mais próxima entre a atual e a da nova entrada.
   - Testes: `npm test` (72, inclui o dia simulado conferido à mão) + navegador E1, E2 e E3. Demonstração local: `npm run demo` (senha dos usuários *.demo: `Demo-4blade-2026`).
-- 16/11/2026: **E4 (Gestão) pronta** na ramificação `e4-gestao` (a partir da `e3-caixa-estoque`), aguardando avaliação. **Fase 1 (E1–E4) completa.** Próximo: avaliação; depois publicação de teste na Cloudflare (precisa de confirmação + token do responsável) e fase 2 (E5).
+- 16/11/2026: **E4 (Gestão) pronta** na ramificação `e4-gestao` (a partir da `e3-caixa-estoque`), aguardando avaliação. **Fase 1 (E1–E4) completa.** Versão de teste publicada (ver abaixo). Logo oficial aplicada (docs/logo-4blade-original.jpg). Próximo: avaliação; depois fase 2 (E5).
   - Banco: `migrations/0004_gestao.sql` (só tabelas novas): comissoes_produto, vales, fechamentos_comissao + fechamento_comissao_itens (UNIQUE: cada comissão/vale entra em um só fechamento), contas, configuracoes (contato do contador), envios_contador.
   - API: `src/gestao.js` (comissões/prévia/fechamento/pagamento, vales, contas, painel, desempenho, extrato), `src/contador.js` (relatório, envio com impressão digital, envios com aviso de alteração, contato, exportar CSV), `src/pdf.js` (PDF sem biblioteca, Helvetica/WinAnsi), `src/csv.js` (ponto e vírgula, BOM, vírgula decimal, proteção contra fórmula).
   - Dia de cada lançamento = dia do caixa. Painel: hoje; semana = hoje e 6 dias antes; mês = dia 1º até hoje. Lucro dia/semana = bruto − comissões − custo dos produtos vendidos (custo guardado na venda); mês = também − contas pagas (pelo dia do pagamento).
@@ -60,6 +60,13 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - Contador: entradas por forma (serviços × produtos), saídas (contas por categoria, compras de mercadoria, sangrias avulsas), comissões/vales/pago, resultado, cota-parte (barbearia = bruto − comissões; profissionais = comissões — o contador confirma se usa a Lei 13.352), estoque no fim (saldo × custo médio atual), diferenças de caixa e lista detalhada. Aviso de alteração: compara a impressão digital (recalcula até 2 períodos por consulta).
   - Regras que decidi (confirmar): vale não sai do caixa (só registro) — a comissão paga pode sair; ranking por faturamento em atendimentos; extrato do barbeiro mostra só o primeiro nome do cliente.
   - Testes: `npm test` (78, inclui a semana simulada conferida à mão) + navegador E1–E4. `npm run demo` sobe com a demonstração e com a semana simulada (`*.semana`, senha `Senha-Semana-2026`).
+
+## Versão de teste publicada (Cloudflare)
+- Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
+- Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.
+- No ambiente do Claude o token fica como segredo de rede de api.cloudflare.com (usar `CLOUDFLARE_API_TOKEN=proxy-injected`); o envio de "assets" não passa pelo proxy, por isso a versão de teste usa `src/entrada-teste.js` (tela dentro do Worker).
+- 1º acesso da plataforma: usuário `suporte`, senha provisória entregue ao responsável (troca obrigatória). Não há segredo ADMIN_SETUP_TOKEN nessa versão (o usuário foi criado direto no banco).
+- A versão REAL (wrangler.toml, Worker `4blade`) ainda não existe: criar só com confirmação.
 
 ## Pendências fora do código
 - Conferir domínios 4blade.com.br e forblade.com.br (registro.br) e a marca no INPI (classe 42).
