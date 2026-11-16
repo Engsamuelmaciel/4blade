@@ -839,3 +839,5 @@ a.botao.largo { display: flex; justify-content: center; align-items: center; wid
 .lp-dor p { margin: 6px 0 0; color: var(--suave); }
 .lp-dor p::before { content: "✓ "; color: var(--ok); font-weight: 800; }
 @media (min-width: 720px) { .lp-dores { grid-template-columns: repeat(2, 1fr); } }
+.enviar-acesso { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 4px; }
+.enviar-acesso .botao { text-align: center; }

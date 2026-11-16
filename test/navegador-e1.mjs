@@ -83,9 +83,13 @@ async function rodar(tela) {
     await page.waitForSelector("dialog[open] [data-teste=senha]");
     const s = (await page.textContent("dialog[open] [data-teste=senha]")).trim();
     assert.match(s, /^[A-HJ-NP-Z2-9]{10}$/);
+    // botão de enviar pelo WhatsApp: mensagem com link, usuário e senha
+    const login = (await page.textContent("dialog[open] [data-teste=login]")).trim();
+    const msg = decodeURIComponent((await page.getAttribute("dialog[open] [data-teste=whats-escolher]", "href")).split("?text=")[1]);
+    assert.match(msg, new RegExp(`Link: http://localhost:\\d+/#/entrar\\nUsuário: ${login.replace(".", "\\.")}\\nSenha provisória: ${s}`));
     return s;
   };
-  const fecharJanela = () => page.click("dialog[open] button:has-text('Pronto, anotei')");
+  const fecharJanela = () => page.click("dialog[open] button[type=submit]");
   const criarPessoa = async (perfil, nome, login, comServ, comProd, printarSenha = false) => {
     await page.selectOption("#c-perfil", perfil);
     await page.fill("#c-nome", nome);
@@ -96,7 +100,7 @@ async function rodar(tela) {
     }
     await page.click("button:has-text('Criar acesso')");
     const senha = await lerSenhaDaJanela();
-    if (printarSenha) await print("senha-provisoria-da-equipe");
+    if (printarSenha) await print("senha-provisoria-da-equipe", false);
     await fecharJanela();
     await page.waitForSelector(`[data-usuario="${login}"]`);
     return senha;

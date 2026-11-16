@@ -318,14 +318,40 @@ function pedirMotivo(titulo, explicacao, executar, ok = "Confirmar") {
 }
 
 // Mostra usuário e senha provisória para entregar à pessoa.
-function mostrarSenha(login, senha, quem) {
+// Mensagem pronta com link, usuário e senha provisória (para mandar pelo WhatsApp da loja ou da pessoa).
+function mensagemAcesso(login, senha, { nome = "", barbearia = "" } = {}) {
+  const primeiro = (nome || "").trim().split(" ")[0];
+  return [
+    `Olá${primeiro ? `, ${primeiro}` : ""}! Seu acesso ao 4blade${barbearia ? ` da ${barbearia}` : ""}:`,
+    "",
+    `Link: ${location.origin}/#/entrar`,
+    `Usuário: ${login}`,
+    `Senha provisória: ${senha}`,
+    "",
+    "No 1º acesso o sistema pede para você criar uma senha só sua. Dá para instalar no celular: abra o link e toque em \"Adicionar à tela inicial\"."
+  ].join("\n");
+}
+
+function mostrarSenha(login, senha, quem, { nome = "", telefone = null, barbearia = usuario?.barbearia?.nome || "" } = {}) {
+  const texto = mensagemAcesso(login, senha, { nome, barbearia });
+  const tel = (telefone || "").replace(/\D/g, "");
+  const copiar = el("button", { type: "button", class: "botao largo", "data-teste": "copiar-acesso", text: "Copiar mensagem",
+    onclick: async () => {
+      try { await navigator.clipboard.writeText(texto); copiar.textContent = "Copiado ✓"; }
+      catch { copiar.textContent = "Não deu para copiar: use o WhatsApp"; }
+    } });
   return abrirJanela("Acesso criado", [
     el("p", { text: `Entregue estes dados para ${quem}. No 1º acesso o sistema pede para trocar a senha.` }),
     el("dl", { class: "credencial" },
+      el("dt", { text: "Link" }), el("dd", { class: "credencial-valor", "data-teste": "link", text: `${location.host}/#/entrar` }),
       el("dt", { text: "Usuário" }), el("dd", { class: "credencial-valor", "data-teste": "login", text: login }),
       el("dt", { text: "Senha provisória" }), el("dd", { class: "credencial-valor", "data-teste": "senha", text: senha })),
-    el("p", { class: "suave", text: "Esta senha não aparece de novo. Anote ou envie agora." })
-  ], { ok: "Pronto, anotei", semCancelar: true, aoConfirmar: () => true });
+    el("div", { class: "enviar-acesso" },
+      tel.length >= 10 ? el("a", { class: "botao principal whats largo", href: `https://wa.me/55${tel}?text=${encodeURIComponent(texto)}`, target: "_blank", rel: "noopener", "data-teste": "whats-acesso", text: `Enviar no WhatsApp de ${fone(tel)}` }) : null,
+      el("a", { class: `botao ${tel.length >= 10 ? "" : "principal whats"} largo`, href: `https://wa.me/?text=${encodeURIComponent(texto)}`, target: "_blank", rel: "noopener", "data-teste": "whats-escolher", text: tel.length >= 10 ? "Enviar para outro contato" : "Enviar pelo WhatsApp (escolher contato)" }),
+      copiar),
+    el("p", { class: "suave", text: "Esta senha não aparece de novo. Envie agora ou anote." })
+  ], { ok: "Pronto", semCancelar: true, aoConfirmar: () => true });
 }
 
 // ---------- LOGIN e TROCA DE SENHA ----------
@@ -1085,7 +1111,7 @@ function janelaCadastrarPedido(s) {
         nome: form.nome.value, plano: form.plano.value, telefone: form.propTel.value || undefined, solicitacaoId: s.id,
         proprietario: { nome: form.propNome.value, login: form.propLogin.value.trim().toLowerCase(), telefone: form.propTel.value || undefined }
       } });
-      setTimeout(async () => { await mostrarSenha(r.proprietario.login, r.senhaProvisoria, `o proprietário (${r.proprietario.nome})`); telaPedidos(); }, 0);
+      setTimeout(async () => { await mostrarSenha(r.proprietario.login, r.senhaProvisoria, `o proprietário (${r.proprietario.nome})`, { nome: r.proprietario.nome, telefone: s.telefone, barbearia: r.barbearia.nome }); telaPedidos(); }, 0);
     }
   });
 }
@@ -1137,7 +1163,7 @@ async function telaPlataforma() {
           proprietario: { nome: form.propNome.value, login: form.propLogin.value.trim().toLowerCase(), telefone: form.propTel.value || undefined }
         }
       });
-      await mostrarSenha(r.proprietario.login, r.senhaProvisoria, `o proprietário (${r.proprietario.nome})`);
+      await mostrarSenha(r.proprietario.login, r.senhaProvisoria, `o proprietário (${r.proprietario.nome})`, { nome: r.proprietario.nome, telefone: form.propTel.value, barbearia: r.barbearia.nome });
       telaPlataforma();
     });
   });
@@ -1168,7 +1194,7 @@ async function telaPlataforma() {
           "Nova senha do proprietário", "Gera uma senha provisória. A senha antiga para de funcionar.",
           async motivo => {
             const r = await api("/plataforma/barbearias/redefinir-senha", { metodo: "POST", corpo: { id: b.id, motivo } });
-            await mostrarSenha(r.login, r.senhaProvisoria, "o proprietário");
+            await mostrarSenha(r.login, r.senhaProvisoria, "o proprietário", { nome: b.proprietario?.nome, barbearia: b.nome });
           }, "Gerar senha"), "pequeno"))
     )))
     : el("p", { class: "vazio", text: "Nenhuma barbearia ainda. Crie a primeira ao lado." });
@@ -2986,7 +3012,7 @@ async function telaEquipe() {
       (u.perfil === "gerente" || u.perfil === "barbeiro") && u.ativo ? botao("Horário", () => janelaHorario(u), "pequeno") : null,
       u.ativo ? botao("Nova senha", () => pedirMotivo(`Nova senha para ${u.nome}`, "Gera uma senha provisória. A senha antiga para de funcionar.", async motivo => {
         const r = await api("/usuarios/redefinir-senha", { metodo: "POST", corpo: { id: u.id, motivo } });
-        await mostrarSenha(r.login, r.senhaProvisoria, u.nome);
+        await mostrarSenha(r.login, r.senhaProvisoria, u.nome, { nome: u.nome, telefone: u.telefone });
       }, "Gerar senha"), "pequeno") : null,
       botao(u.ativo ? "Desativar" : "Reativar", () => pedirMotivo(
         `${u.ativo ? "Desativar" : "Reativar"} ${u.nome}`,
@@ -3042,7 +3068,7 @@ function formUsuario(perfis) {
         ...(form.perfil.value === "caixa" ? {} : lerComissoes(form))
       };
       const r = await api("/usuarios", { metodo: "POST", corpo });
-      await mostrarSenha(r.usuario.login, r.senhaProvisoria, r.usuario.nome);
+      await mostrarSenha(r.usuario.login, r.senhaProvisoria, r.usuario.nome, { nome: r.usuario.nome, telefone: r.usuario.telefone });
       telaEquipe();
     });
   });

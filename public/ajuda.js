@@ -56,7 +56,7 @@ window.AJUDA = {
       dica: "A duração é usada pela agenda para calcular os horários livres de cada barbeiro." },
     { id: "equipe", titulo: "Cadastrar a equipe (barbeiros, gerente e caixa)", perfis: ["proprietario", "gerente"], rotas: ["equipe"],
       onde: "Menu → Equipe e ajustes → Equipe.",
-      passos: ["Em \"Nova pessoa\", escolha o perfil (gerente, barbeiro ou caixa), o nome e o usuário.", "Para gerente e barbeiro, informe a comissão de serviços e de produtos (%).", "Toque em \"Criar acesso\". Aparece a senha provisória: anote ou envie para a pessoa (ela não aparece de novo).", "Toque em \"Horário\" no barbeiro para dizer os dias e horas em que ele trabalha."],
+      passos: ["Em \"Nova pessoa\", escolha o perfil (gerente, barbeiro ou caixa), o nome e o usuário.", "Para gerente e barbeiro, informe a comissão de serviços e de produtos (%).", "Toque em \"Criar acesso\". Aparecem o link, o usuário e a senha provisória: toque em \"Enviar pelo WhatsApp\" para mandar tudo pronto para a pessoa (ou para o WhatsApp da loja). A senha não aparece de novo.", "Toque em \"Horário\" no barbeiro para dizer os dias e horas em que ele trabalha."],
       exemplo: "Bruno — barbeiro — usuário bruno.navalha — 50% em serviços, 10% em produtos.",
       dica: "No alto da tela aparecem as vagas do plano. Desativar alguém libera a vaga." },
     { id: "marcar-horario", titulo: "Marcar um horário na agenda", perfis: ["proprietario", "gerente", "barbeiro", "caixa"], rotas: ["agenda"],
