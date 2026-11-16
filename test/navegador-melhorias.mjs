@@ -43,6 +43,7 @@ async function rodar(tela) {
     viewport: { width: tela.largura, height: tela.altura },
     deviceScaleFactor: 2, isMobile: tela.movel, hasTouch: tela.movel, locale: "pt-BR", timezoneId: "America/Sao_Paulo"
   });
+  await contexto.route(/wa\.me/, r => r.fulfill({ status: 200, contentType: "text/html", body: "<p>WhatsApp (simulado)</p>" }));
   const page = await contexto.newPage();
   const problemas = [];
   page.on("console", m => {
@@ -268,10 +269,30 @@ async function rodar(tela) {
     await page.waitForSelector('[data-cliente="Ivo Recepção Fictício"]');
     assert.equal(await page.locator('[data-cliente="Ivo Recepção Fictício"] button:has-text("Desativar")').count(), 0);
     await ir(page, "Mensagens");
-    await page.waitForSelector("h2:has-text('Modelos de mensagem')");
+    await page.waitForSelector("h3:has-text('Modelos de mensagem')");
     await ir(page, "Serviços");
     await page.waitForSelector("h2:has-text('Serviços')");
     await print("caixa-catalogo-servicos");
+
+    passo("caixa escolhe clientes do dia e envia mensagem personalizada pelo WhatsApp");
+    await ir(page, "Mensagens");
+    await page.waitForSelector("[data-teste=enviar-mensagem]");
+    await page.fill("#env-data", AMANHA);
+    await page.locator("#env-data").dispatchEvent("change");
+    await page.waitForSelector('[data-destino="Fábio Fixo Fictício"]');
+    assert.ok(await page.locator('[data-destino="Seu Zé Fictício"] input').isDisabled(), "sem telefone não pode ser escolhido");
+    await page.check('[data-destino="Fábio Fixo Fictício"] input');
+    await page.fill("#env-texto", "Olá {cliente}! Amanhã às {hora} te esperamos.");
+    await print("mensagem-escolher-clientes", false);
+    await page.click("[data-teste=enviar-mensagem] button[type=submit]");
+    const linkFabio = page.locator('[data-enviar="Fábio Fixo Fictício"]');
+    await linkFabio.waitFor();
+    assert.match(decodeURIComponent(await linkFabio.getAttribute("href")), /wa\.me\/55\d+\?text=Olá Fábio! Amanhã às 10:00 te esperamos\./);
+    const [aba] = await Promise.all([page.context().waitForEvent("page"), linkFabio.click()]);
+    await aba.close();
+    await page.waitForSelector("[data-teste=fila-envio] >> text=Aberto ✓");
+    await page.waitForSelector("[data-teste=progresso-envio] >> text=Pronto");
+    await print("mensagem-fila-enviada");
     await sair();
 
     // ---------- PAINEL ----------
@@ -284,6 +305,32 @@ async function rodar(tela) {
     await page.click("#btn-conta");
     await page.waitForSelector("dialog[open] .conta-cartao >> text=Gustavo Gerente");
     await print("minha-conta", false);
+    await page.click("dialog[open] button:has-text('Fechar')");
+
+    passo("gerente muda a aparência: tema escuro e paleta Oceano (fica guardado no aparelho)");
+    await page.click("#btn-conta");
+    await page.click('dialog[open] [data-modo="escuro"]');
+    await page.click('dialog[open] [data-paleta-opcao="oceano"]');
+    assert.deepEqual(await page.evaluate(() => [document.documentElement.dataset.tema, document.documentElement.dataset.paleta]), ["escuro", "oceano"]);
+    await print("aparencia-escolha", false);
+    await page.click("dialog[open] button:has-text('Fechar')");
+    await page.reload();
+    await page.waitForSelector("[data-cartao=bruto]");
+    await page.waitForSelector("#carregador", { state: "hidden" });
+    assert.deepEqual(await page.evaluate(() => [document.documentElement.dataset.tema, document.documentElement.dataset.paleta]), ["escuro", "oceano"], "continua após recarregar");
+    const fundo = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    assert.equal(fundo, "rgb(18, 20, 23)", "fundo escuro aplicado");
+    await print("painel-escuro-oceano");
+    for (const [modo, paleta] of [["claro", "esmeralda"], ["claro", "bordo"]]) {
+      await page.click("#btn-conta");
+      await page.click(`dialog[open] [data-modo="${modo}"]`);
+      await page.click(`dialog[open] [data-paleta-opcao="${paleta}"]`);
+      await page.click("dialog[open] button:has-text('Fechar')");
+      await print(`painel-${modo}-${paleta}`);
+    }
+    await page.click("#btn-conta");
+    await page.click('dialog[open] [data-modo="claro"]');
+    await page.click('dialog[open] [data-paleta-opcao="navalha"]');
     await page.click("dialog[open] button:has-text('Fechar')");
 
     passo("gerente cadastra produto já com estoque e edita uma conta lançada");

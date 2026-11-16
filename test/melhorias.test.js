@@ -328,3 +328,41 @@ describe("desconto na venda do caixa (pedido de 16/11/2026)", () => {
     assert.ok(!JSON.stringify((await get("/api/caixa/hoje", outra.cx.token)).dados).includes("Pomada Fictícia"));
   });
 });
+
+describe("enviar mensagem pelo WhatsApp para clientes do dia (pedido de 16/11/2026)", () => {
+  test("lista do dia, prepara links personalizados por cliente, marca aberto; sem telefone fica de fora; permissões e isolamento", async () => {
+    const amb = await cenario();
+    const { post, get, ger, barb, cx, corte } = amb;
+    const m1 = (await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "09:00", servicoIds: [corte.id], cliente: { telefone: "11 97000-0001", nome: "Davi Fictício", aceiteLgpd: true } })).dados.agendamento;
+    const m2 = (await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "10:00", servicoIds: [corte.id], cliente: { telefone: "11 97000-0002", nome: "Enzo Fictício", aceiteLgpd: true } })).dados.agendamento;
+    const m3 = (await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "11:00", servicoIds: [corte.id], cliente: { nome: "Sem Fone Fictício" } })).dados.agendamento;
+    const lista = (await get(`/api/mensagens/clientes-do-dia?data=${AMANHA}`, cx.token)).dados.clientes;
+    assert.deepEqual(lista.map(c => [c.cliente, c.podeReceber]), [["Davi Fictício", true], ["Enzo Fictício", true], ["Sem Fone Fictício", false]]);
+    const texto = "Olá {cliente}! Seu horário é às {hora} com {barbeiro}.";
+    const r = await post("/api/mensagens/envios", cx.token, { data: AMANHA, texto, agendamentoIds: [m1.id, m2.id] });
+    assert.equal(r.status, 201, JSON.stringify(r.dados));
+    assert.equal(r.dados.envio.total, 2);
+    const [d1, d2] = r.dados.envio.destinos;
+    assert.match(d1.link, /^https:\/\/wa\.me\/5511970000001\?text=/);
+    assert.match(decodeURIComponent(d1.link.split("text=")[1]), /^Olá Davi! Seu horário é às 09:00 com \S+\.$/, "texto personalizado para cada cliente");
+    assert.match(decodeURIComponent(d2.link.split("text=")[1]), /^Olá Enzo! Seu horário é às 10:00/);
+    // marca aberto (uma vez) e audita a preparação
+    assert.equal((await post("/api/mensagens/envios/aberto", cx.token, { destinoId: d1.id })).status, 200);
+    assert.ok(amb.env.DB.raw.prepare("SELECT aberto_em FROM mensagens_livres_destinos WHERE id = ?").get(d1.id).aberto_em);
+    assert.ok(amb.env.DB.raw.prepare("SELECT 1 FROM auditoria WHERE acao = 'mensagem_livre_preparada' AND alvo = ?").get(r.dados.envio.id));
+    // sem telefone: recusado; campo inexistente: recusado; vazio: recusado
+    assert.equal((await post("/api/mensagens/envios", cx.token, { data: AMANHA, texto, agendamentoIds: [m3.id] })).status, 400);
+    assert.equal((await post("/api/mensagens/envios", cx.token, { data: AMANHA, texto: "Oi {apelido}", agendamentoIds: [m1.id] })).status, 400);
+    assert.equal((await post("/api/mensagens/envios", cx.token, { data: AMANHA, texto: "Oi", agendamentoIds: [] })).status, 400);
+    // outro dia: o horário não é deste dia
+    assert.equal((await post("/api/mensagens/envios", cx.token, { data: HOJE, texto, agendamentoIds: [m1.id] })).status, 404);
+    // gerente pode; barbeiro não
+    assert.equal((await get(`/api/mensagens/clientes-do-dia?data=${AMANHA}`, ger.token)).status, 200);
+    assert.equal((await get(`/api/mensagens/clientes-do-dia?data=${AMANHA}`, barb.token)).status, 403);
+    // isolamento
+    const outra = await cenario("beta", amb, amb.p);
+    assert.equal((await get(`/api/mensagens/clientes-do-dia?data=${AMANHA}`, outra.cx.token)).dados.clientes.length, 0);
+    assert.equal((await post("/api/mensagens/envios", outra.cx.token, { data: AMANHA, texto, agendamentoIds: [m1.id] })).status, 404);
+    assert.equal((await post("/api/mensagens/envios/aberto", outra.cx.token, { destinoId: d2.id })).status, 404);
+  });
+});

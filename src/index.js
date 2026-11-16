@@ -17,6 +17,7 @@ import { rotasUsuarios } from "./usuarios.js";
 import { rotasCadastros } from "./cadastros.js";
 import { rotasFuncionamento } from "./funcionamento.js";
 import { rotasAgenda } from "./agenda.js";
+import { rotasMensagens } from "./mensagens.js";
 import { rotasCaixa } from "./caixa.js";
 import { rotasEstoque, rotasVendas } from "./estoque.js";
 import { rotasGestao } from "./gestao.js";
@@ -250,7 +251,7 @@ export default {
       // ---------- DADOS DA BARBEARIA: exige usuário de barbearia ----------
       const r = (await rotasFuncionamento(ctx, path, method)) || (await rotasAgenda(ctx, path, method)) ||
         (await rotasCaixa(ctx, path, method)) || (await rotasEstoque(ctx, path, method)) || (await rotasVendas(ctx, path, method)) ||
-        (await rotasGestao(ctx, path, method)) || (await rotasContador(ctx, path, method)) || (await rotasUsuarios(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
+        (await rotasGestao(ctx, path, method)) || (await rotasContador(ctx, path, method)) || (await rotasMensagens(ctx, path, method)) || (await rotasUsuarios(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
       if (r) {
         return r;
       }
