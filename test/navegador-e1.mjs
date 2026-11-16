@@ -144,6 +144,7 @@ async function rodar(tela) {
     const cartaoB = await page.textContent('[data-barbearia="Barbearia Navalha Fictícia"]');
     assert.match(cartaoB, /Cadastrada pelo suporte/);
     assert.ok(!/Assinou pelo site|R\$/.test(cartaoB), "barbearia do suporte sem valor nem 'assinou pelo site'");
+    assert.match(cartaoB, /Equipe ativa: 1 gerente \(o dono\), 0 barbeiro\(s\), 0 caixa\(s\)/, "o dono conta como gerente");
     await print("plataforma-painel");
 
     // suporte edita os dados do dono (WhatsApp) e envia o acesso direto para ele

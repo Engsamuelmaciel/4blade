@@ -1163,6 +1163,12 @@ function irParaInicial() {
 }
 
 // ---------- PLATAFORMA ----------
+// O dono já é gerente (seção 16): entra na conta dos gerentes.
+function textoGerentes(b) {
+  const outros = b.usuariosAtivos.gerente;
+  if (!b.proprietario) return `${outros} gerente(s)`;
+  return outros ? `${outros + 1} gerentes (o dono + ${outros})` : "1 gerente (o dono)";
+}
 async function telaPlataforma() {
   const { barbearias } = await api("/plataforma/barbearias");
   const form = el("form", { class: "cartao" },
@@ -1201,7 +1207,7 @@ async function telaPlataforma() {
       b.assinatura?.origem === "asaas" ? el("p", { class: "suave", text: `Assinou pelo site · ${reais(b.assinatura.valorCentavos)}/${b.assinatura.ciclo === "anual" ? "ano" : "mês"} · ${textoSituacao(b.assinatura)}${b.email ? ` · ${b.email}` : ""}` }) : null,
       el("p", { class: "suave", text: `Proprietário: ${b.proprietario?.nome || "—"} · usuário ${b.proprietario?.login || "—"}${b.proprietario?.telefone ? ` · WhatsApp ${fone(b.proprietario.telefone)}` : ""}${b.proprietario?.trocaPendente ? " · ainda não entrou" : ""}` }),
       b.telefone ? el("p", { class: "suave", text: `Telefone: ${fone(b.telefone)}` }) : null,
-      el("p", { class: "suave", text: `Equipe ativa: ${b.usuariosAtivos.gerente} gerente(s), ${b.usuariosAtivos.barbeiro} barbeiro(s), ${b.usuariosAtivos.caixa} caixa(s)` }),
+      el("p", { class: "suave", "data-teste": "equipe-ativa", text: `Equipe ativa: ${textoGerentes(b)}, ${b.usuariosAtivos.barbeiro} barbeiro(s), ${b.usuariosAtivos.caixa} caixa(s)` }),
       b.bloqueada && b.motivoBloqueio ? el("p", { class: "suave", text: `Motivo do bloqueio: ${b.motivoBloqueio}` }) : null,
       el("div", { class: "item-acoes" },
         botao(b.bloqueada ? "Desbloquear" : "Bloquear", () => pedirMotivo(
