@@ -92,6 +92,11 @@ async function foto(id, { janela = false } = {}) {
 }
 
 try {
+  // instalar o app: o site aberto no celular (é o que a pessoa vê antes de "Adicionar à Tela de Início")
+  await page.goto(`${BASE}/#/`);
+  await page.waitForSelector("[data-teste=lp-entrar]");
+  await foto("instalar-app", { janela: true });
+
   // 1º acesso (barbeiro novo com senha provisória)
   logado = null;
   await page.goto(`${BASE}/#/entrar`);

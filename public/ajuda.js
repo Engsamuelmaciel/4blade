@@ -8,7 +8,7 @@ window.AJUDA = {
   duvidas: [
     { cat: "Primeiros passos", p: "Por onde eu começo?", r: "Na ordem: 1) Equipe e ajustes → Funcionamento (dias e horários em que a barbearia abre); 2) Catálogo e estoque → Serviços (cortes, barba, preços e duração); 3) Equipe e ajustes → Equipe (barbeiros, gerente e caixa). A agenda só aceita horários depois que o funcionamento estiver salvo." },
     { cat: "Primeiros passos", p: "Quem é quem no sistema?", r: "Proprietário: dono, vê e faz tudo. Gerente: cuida do dia a dia e também atende (tem agenda e comissão). Barbeiro: vê a própria agenda, finaliza seus atendimentos e acompanha o próprio desempenho. Caixa: recepção — marca horários para todos, cobra, vende e cuida do caixa." },
-    { cat: "Primeiros passos", p: "Dá para usar no celular? Como instalo o app?", r: "Sim. Abra o endereço do 4blade no navegador do celular. No Android (Chrome): menu ⋮ → \"Instalar app\" ou \"Adicionar à tela inicial\". No iPhone (Safari): botão Compartilhar → \"Adicionar à Tela de Início\". O ícone do 4blade aparece junto dos outros apps." },
+    { cat: "Primeiros passos", p: "Dá para usar no celular? Como instalo o app?", r: "Sim, no iPhone e no Android, sem loja de aplicativos. iPhone: abra forblade.com.br no SAFARI (só funciona pelo Safari) → botão Compartilhar (quadrado com seta para cima) → \"Adicionar à Tela de Início\" → \"Adicionar\". Android: abra no Chrome → menu ⋮ → \"Instalar app\" ou \"Adicionar à tela inicial\". O ícone do 4blade aparece junto dos outros apps e abre em tela cheia. Passo a passo em Ajuda → Tutoriais → Instalar o 4blade no celular." },
     { cat: "Acesso e senha", p: "Esqueci a minha senha. E agora?", r: "Barbeiro e caixa: peça ao gerente ou ao proprietário, em Equipe → Nova senha. Gerente: peça ao proprietário. Proprietário: abra um chamado ou chame o suporte do 4blade no WhatsApp. A senha provisória é trocada no 1º acesso." },
     { cat: "Acesso e senha", p: "Alguém saiu da equipe. Apago o usuário?", r: "Não precisa apagar: em Equipe, toque em Desativar e informe o motivo. A pessoa não entra mais, a vaga do plano fica livre e todo o histórico (atendimentos, comissões) continua guardado." },
     { cat: "Acesso e senha", p: "Por que o sistema pediu para entrar de novo?", r: "Por segurança o acesso dura 12 horas. Depois disso, ou se alguém trocou a sua senha, é só entrar de novo com usuário e senha." },
@@ -39,6 +39,17 @@ window.AJUDA = {
   ],
 
   tutoriais: [
+    { id: "instalar-app", titulo: "Instalar o 4blade no celular (iPhone e Android)", perfis: ["proprietario", "gerente", "barbeiro", "caixa"], rotas: [],
+      onde: "No navegador do celular, no endereço forblade.com.br (não precisa de loja de aplicativos).",
+      passos: [
+        "iPhone: abra forblade.com.br no SAFARI (no iPhone a instalação só funciona pelo Safari, não pelo Chrome nem pelo Instagram/WhatsApp).",
+        "iPhone: toque no botão Compartilhar (o quadrado com a seta para cima, embaixo no meio da tela — no iPad fica em cima).",
+        "iPhone: role a lista e toque em \"Adicionar à Tela de Início\". Confira o nome \"4blade\" e toque em \"Adicionar\" (no canto de cima).",
+        "Android: abra forblade.com.br no Chrome, toque nos três pontinhos (⋮) e em \"Instalar app\" ou \"Adicionar à tela inicial\".",
+        "Pronto: o ícone do 4blade aparece na tela do celular. Toque nele e entre com seu usuário e senha. Ele abre em tela cheia, como um aplicativo."
+      ],
+      exemplo: "Link que veio no WhatsApp → abriu no Safari → Compartilhar → Adicionar à Tela de Início → ícone 4blade na tela.",
+      dica: "Se o link abriu dentro do WhatsApp, toque nos três pontinhos ou no ícone de bússola e escolha \"Abrir no Safari\" (ou no Chrome, no Android). Para atualizar o app, basta fechar e abrir de novo." },
     { id: "primeiro-acesso", titulo: "Entrar pela primeira vez e criar sua senha", perfis: ["proprietario", "gerente", "barbeiro", "caixa"], rotas: [],
       onde: "Tela de entrada do 4blade.",
       passos: ["Digite o usuário e a senha provisória que você recebeu.", "O sistema pede uma senha nova: digite a senha provisória, a nova (mínimo 8 caracteres) e repita.", "Toque em \"Salvar nova senha\". Pronto: você entra direto na sua tela."],

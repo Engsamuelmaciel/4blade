@@ -13,6 +13,7 @@ import img_equipe_jpg from "../public/tutoriais/equipe.jpg";
 import img_fechar_caixa_jpg from "../public/tutoriais/fechar-caixa.jpg";
 import img_finalizar_jpg from "../public/tutoriais/finalizar.jpg";
 import img_funcionamento_jpg from "../public/tutoriais/funcionamento.jpg";
+import img_instalar_app_jpg from "../public/tutoriais/instalar-app.jpg";
 import img_marcar_horario_jpg from "../public/tutoriais/marcar-horario.jpg";
 import img_mensagens_jpg from "../public/tutoriais/mensagens.jpg";
 import img_meu_plano_jpg from "../public/tutoriais/meu-plano.jpg";
@@ -39,6 +40,7 @@ export const IMAGENS_TUTORIAIS = {
   "/tutoriais/fechar-caixa.jpg": img_fechar_caixa_jpg,
   "/tutoriais/finalizar.jpg": img_finalizar_jpg,
   "/tutoriais/funcionamento.jpg": img_funcionamento_jpg,
+  "/tutoriais/instalar-app.jpg": img_instalar_app_jpg,
   "/tutoriais/marcar-horario.jpg": img_marcar_horario_jpg,
   "/tutoriais/mensagens.jpg": img_mensagens_jpg,
   "/tutoriais/meu-plano.jpg": img_meu_plano_jpg,
