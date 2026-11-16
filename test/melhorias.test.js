@@ -371,15 +371,15 @@ describe("disponibilidade do dia e cliente da base (pedido de 16/11/2026)", () =
   test("mostra fechado/folga/bloqueio, ocupados e horários livres pela duração; barbeiro só a dele; isolamento", async () => {
     const amb = await cenario();
     const { post, get, ger, barb, cx, corte } = amb;
-    // dia normal: 09:00–12:00, um horário 10:00–10:30 → livres de 30 min: 09:00, 09:30, 10:30, 11:00, 11:30
+    // dia normal: 09:00–12:00, um horário 10:00–10:30 → de hora em hora: 09:00 e 11:00 (10:00 está ocupado)
     await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "10:00", servicoIds: [corte.id], cliente: { nome: "Ocupante Fictício" } });
     const d = (await get(`/api/agenda/disponibilidade?data=${AMANHA}&barbeiroId=${barb.id}&duracao=30`, cx.token)).dados;
     const p = d.profissionais[0];
     assert.equal(p.situacao, "aberto");
-    assert.deepEqual(p.livres, ["09:00", "09:30", "10:30", "11:00", "11:30"]);
+    assert.deepEqual(p.livres, ["09:00", "11:00"]);
     assert.deepEqual(p.ocupados.map(o => [o.ini, o.fim, o.tipo, o.texto]), [["10:00", "10:30", "horario", "Ocupante Fictício"]]);
-    // duração de 60 min: 09:00 cabe (09–10), 09:30 não (bate às 10:00)
-    assert.deepEqual((await get(`/api/agenda/disponibilidade?data=${AMANHA}&barbeiroId=${barb.id}&duracao=60`, cx.token)).dados.profissionais[0].livres, ["09:00", "10:30", "11:00"]);
+    // duração de 90 min: 09:00 não cabe (bate às 10:00); 11:00 não cabe (fecha às 12:00)
+    assert.deepEqual((await get(`/api/agenda/disponibilidade?data=${AMANHA}&barbeiroId=${barb.id}&duracao=90`, cx.token)).dados.profissionais[0].livres, []);
     // dia fechado (balanço)
     await post("/api/funcionamento/datas-fechadas", ger.token, { dataIni: somarDias(AMANHA, 3), motivo: "Fechado pra balanço" });
     const f = (await get(`/api/agenda/disponibilidade?data=${somarDias(AMANHA, 3)}`, cx.token)).dados.profissionais;
@@ -493,5 +493,42 @@ describe("promissória: nota em aberto do cliente (pedido de 16/11/2026)", () =>
     assert.equal((await get("/api/promissorias", outra.cx.token)).dados.clientes.length, 0);
     assert.equal((await post("/api/promissorias/receber", outra.cx.token, { clienteId: cli.id, promissoriaIds: ids, pagamentos: [{ forma: "dinheiro", valorCentavos: 5500 }] })).status, 409);
     assert.equal((await post("/api/vendas", outra.cx.token, { itens: [{ produtoId: pom.id, quantidade: 1 }], clienteId: cli.id, pagamentos: [{ forma: "promissoria", valorCentavos: 2500 }] })).status, 404);
+  });
+});
+
+describe("promissória: cancelar só o gerente; paga fica registrada (pedido de 16/11/2026)", () => {
+  test("caixa e barbeiro lançam; só gestão cancela (direto, reabrindo ou cancelando a venda); paga aparece no histórico como paga", async () => {
+    const amb = await cenario();
+    const { post, get, ger, barb, cx, corte } = amb;
+    const cli = (await post("/api/clientes", ger.token, { nome: "Nota Fictícia", telefone: "11 94444-1111", aceiteLgpd: true })).dados.cliente;
+    await post("/api/caixa/abrir", cx.token, { trocoCentavos: 0 });
+    // barbeiro finaliza o próprio atendimento na promissória
+    const m1 = (await post("/api/agenda", barb.token, { data: HOJE, hora: "09:00", servicoIds: [corte.id], cliente: { id: cli.id } })).dados.agendamento;
+    assert.equal((await post("/api/agenda/finalizar", barb.token, { id: m1.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], pagamentos: [{ forma: "promissoria", valorCentavos: 4000 }] })).status, 201);
+    // barbeiro não reabre atendimento que está numa nota em aberto
+    assert.equal((await post("/api/agenda/reabrir", barb.token, { id: m1.id, motivo: "teste" })).status, 403);
+    // caixa lança outro na nota
+    const m2 = (await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: HOJE, hora: "10:00", servicoIds: [corte.id], cliente: { id: cli.id } })).dados.agendamento;
+    await post("/api/caixa/cobrar", cx.token, { id: m2.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], pagamentos: [{ forma: "promissoria", valorCentavos: 4000 }] });
+    const notas = (await get("/api/promissorias", cx.token)).dados.clientes[0].notas;
+    assert.equal(notas.length, 2);
+    // cancelar nota: caixa não pode; gerente pode (com motivo)
+    assert.equal((await post("/api/promissorias/cancelar", cx.token, { id: notas[0].id, motivo: "Cortesia" })).status, 403);
+    assert.equal((await post("/api/promissorias/cancelar", ger.token, { id: notas[0].id })).status, 400, "precisa de motivo");
+    assert.equal((await post("/api/promissorias/cancelar", ger.token, { id: notas[0].id, motivo: "Cortesia do gerente" })).status, 200);
+    assert.equal((await post("/api/promissorias/cancelar", ger.token, { id: notas[0].id, motivo: "De novo" })).status, 409);
+    // a outra é paga e continua registrada como paga
+    await post("/api/promissorias/receber", cx.token, { clienteId: cli.id, promissoriaIds: [notas[1].id], pagamentos: [{ forma: "pix", valorCentavos: 4000 }] });
+    assert.equal((await post("/api/promissorias/cancelar", ger.token, { id: notas[1].id, motivo: "Tentativa" })).status, 409, "paga não se cancela");
+    const pagas = (await get("/api/promissorias/historico?situacao=pagas", cx.token)).dados.notas;
+    assert.deepEqual(pagas.map(n => [n.id, n.situacao, n.pagoEm]), [[notas[1].id, "paga", HOJE]]);
+    const canceladas = (await get("/api/promissorias/historico?situacao=canceladas", cx.token)).dados.notas;
+    assert.equal(canceladas.length, 1);
+    assert.match(canceladas[0].motivo, /Cortesia do gerente/);
+    assert.ok(amb.env.DB.raw.prepare("SELECT 1 FROM auditoria WHERE acao = 'promissoria_cancelada' AND alvo = ?").get(notas[0].id));
+    // isolamento
+    const outra = await cenario("beta", amb, amb.p);
+    assert.equal((await post("/api/promissorias/cancelar", outra.ger.token, { id: notas[1].id, motivo: "Invasão" })).status, 404);
+    assert.equal((await get("/api/promissorias/historico?situacao=pagas", outra.cx.token)).dados.notas.length, 0);
   });
 });

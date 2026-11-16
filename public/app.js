@@ -985,7 +985,15 @@ function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaA
   segunda.hidden = true;
 
   const total = () => linhas.filter(l => l.chk.checked).reduce((t, l) => t + (paraCentavos(l.valor.value) ?? 0), 0);
+  const troco = campoTroco(() => {
+    const t = total();
+    const f1 = forma1.querySelector("select").value;
+    if (!dividir.querySelector("input").checked) return f1 === "dinheiro" ? t : 0;
+    const v1 = Math.min(t, Math.max(0, paraCentavos(valor1.querySelector("input").value) ?? 0));
+    return (f1 === "dinheiro" ? v1 : 0) + (segunda.querySelector("select").value === "dinheiro" ? t - v1 : 0);
+  });
   const atualizar = () => {
+    troco.atualizar();
     for (const l of linhas) l.aviso.hidden = !l.chk.checked || paraCentavos(l.valor.value) === Number(l.valor.dataset.tabela);
     totalEl.textContent = `Total: ${reais(total())}`;
     const dividindo = dividir.querySelector("input").checked;
@@ -997,7 +1005,7 @@ function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaA
   const conteudo = [
     el("p", { class: "suave", text: `${a.cliente.nome} · ${a.inicio} · o valor pode ser alterado (fica registrado e aparece para o gerente).` }),
     el("div", { class: "lista-servicos" }, linhas.map(l => l.linha)),
-    totalEl, forma1, dividir, valor1, segunda
+    totalEl, forma1, dividir, valor1, segunda, troco.el
   ];
   const promessa = abrirJanela(titulo, conteudo, {
     ok: "Confirmar",
@@ -1150,6 +1158,28 @@ async function janelaHorario(u) {
 }
 
 // ---------- PAGAMENTO (1 ou 2 formas) — usado na venda ----------
+// Troco: quando parte (ou tudo) é em dinheiro, digita quanto o cliente entregou e o sistema mostra o troco.
+// Só ajuda na conta: no caixa entra o valor da compra, não o que o cliente entregou.
+let contadorTroco = 0;
+function campoTroco(valorEmDinheiro) {
+  const id = `troco-${++contadorTroco}`;
+  const input = el("input", { type: "text", id, name: "recebidoDinheiro", inputmode: "decimal", autocomplete: "off", placeholder: "Ex.: 50,00", "data-teste": "recebido-dinheiro" });
+  const resultado = el("p", { class: "troco-resultado", "data-teste": "troco", "aria-live": "polite" });
+  const bloco = el("div", { class: "bloco-troco" },
+    el("div", { class: "campo" }, el("label", { for: id, text: "Valor recebido em dinheiro (R$)" }), input), resultado);
+  const atualizar = () => {
+    const devido = valorEmDinheiro();
+    bloco.hidden = devido <= 0;
+    const recebido = paraCentavos(input.value);
+    if (!input.value.trim() || recebido === null) { resultado.textContent = `Em dinheiro: ${reais(devido)}`; resultado.className = "troco-resultado"; return; }
+    if (recebido >= devido) { resultado.textContent = `Troco: ${reais(recebido - devido)}`; resultado.className = "troco-resultado ok"; }
+    else { resultado.textContent = `Faltam ${reais(devido - recebido)}`; resultado.className = "troco-resultado falta"; }
+  };
+  input.addEventListener("input", atualizar);
+  input.addEventListener("blur", atualizar);
+  return { el: bloco, atualizar };
+}
+
 function blocoPagamento(totalAtual, { nota = true } = {}) {
   const opcoes = nota ? Object.entries(NOME_FORMA) : OPCOES_FORMA;
   const forma1 = campo("Forma de pagamento", { tag: "select", name: "forma1", valor: "pix", opcoes });
@@ -1158,11 +1188,20 @@ function blocoPagamento(totalAtual, { nota = true } = {}) {
   const segunda = el("div", { class: "lado-a-lado" },
     campo("2ª forma", { tag: "select", name: "forma2", valor: "dinheiro", opcoes }),
     el("div", { class: "campo" }, el("label", { text: "Valor na 2ª forma" }), el("p", { class: "valor2", "data-teste": "valor2" })));
+  const emDinheiro = () => {
+    const t = totalAtual();
+    const f1 = forma1.querySelector("select").value;
+    if (!dividir.querySelector("input").checked) return f1 === "dinheiro" ? t : 0;
+    const v1 = Math.min(t, Math.max(0, paraCentavos(valor1.querySelector("input").value) ?? 0));
+    return (f1 === "dinheiro" ? v1 : 0) + (segunda.querySelector("select").value === "dinheiro" ? t - v1 : 0);
+  };
+  const troco = campoTroco(emDinheiro);
   const atualizar = () => {
     const d = dividir.querySelector("input").checked;
     valor1.hidden = !d;
     segunda.hidden = !d;
     segunda.querySelector(".valor2").textContent = reais(totalAtual() - (paraCentavos(valor1.querySelector("input").value) ?? 0));
+    troco.atualizar();
   };
   const ler = f => {
     const t = totalAtual();
@@ -1174,7 +1213,7 @@ function blocoPagamento(totalAtual, { nota = true } = {}) {
   };
   // Alguma das formas escolhidas é promissória? (exige cliente identificado)
   const temNota = () => forma1.querySelector("select").value === "promissoria" || (dividir.querySelector("input").checked && segunda.querySelector("select").value === "promissoria");
-  return { elementos: [forma1, dividir, valor1, segunda], atualizar, ler, temNota };
+  return { elementos: [forma1, dividir, valor1, segunda, troco.el], atualizar, ler, temNota };
 }
 
 // ---------- VENDA DE PRODUTO (caixa, gestão ou barbeiro) ----------
@@ -2549,38 +2588,64 @@ function mostrarFilaEnvio(fila, envio) {
 // ---------- MENU LATERAL (categorias com sub-opções; ícones em SVG) ----------
 // ---------- NOTAS EM ABERTO (promissória) ----------
 // Quem levou serviço/produto para pagar depois. "Receber" só quando o cliente quita: o valor entra no caixa de hoje.
+// Nota paga continua registrada (aba Pagas). Cancelar nota em aberto: só gerente/proprietário, com motivo.
+const estadoNotas = { aba: "abertas" };
 async function telaNotas() {
-  const [{ clientes, resumo }, { recebimentos }] = await Promise.all([api("/promissorias"), api("/promissorias/recebimentos")]);
-  const lista = clientes.length
-    ? el("ul", { class: "lista" }, clientes.map(c => el("li", { class: "item nota-cliente", "data-nota-cliente": c.cliente },
-      el("div", { class: "item-topo" },
-        el("strong", { text: c.cliente }),
-        el("span", { class: "preco", "data-teste": "nota-total", text: reais(c.totalCentavos) })),
-      el("p", { class: "suave", text: `${c.notas.length} lançamento(s) desde ${dataBR(c.desde)}${c.telefone ? ` · ${fone(c.telefone)}` : ""}` }),
-      el("ul", { class: "notas-itens" }, c.notas.map(n => el("li", {},
-        el("span", { text: `${dataBR(n.data).slice(0, 5)} · ${n.origem === "venda" ? "Produto" : "Serviço"}: ${n.descricao}` }),
-        el("strong", { text: reais(n.valorCentavos) })))),
-      el("div", { class: "item-acoes" },
-        botao("Receber (dar baixa)", () => janelaReceberNota(c), "pequeno principal"),
-        c.whatsapp ? el("a", { class: "botao pequeno whats", href: c.whatsapp, target: "_blank", rel: "noopener", text: "Lembrar no WhatsApp" }) : null))))
-    : el("p", { class: "vazio", text: "Nenhuma nota em aberto. Para lançar, escolha \"Promissória (paga depois)\" como forma de pagamento no caixa." });
-  const historico = recebimentos.length
-    ? el("ul", { class: "lista" }, recebimentos.map(r => el("li", { class: `item ${r.situacao === "estornado" ? "inativo" : ""}`, "data-recebimento": r.cliente },
-      el("div", { class: "item-topo" }, el("strong", { text: r.cliente }), el("span", { class: "preco", text: reais(r.totalCentavos) }),
-        r.situacao === "estornado" ? el("span", { class: "etiqueta vermelha", text: "Estornado" }) : el("span", { class: "etiqueta verde", text: "Pago" })),
-      el("p", { class: "suave", text: [`${dataBR(r.data)} · ${r.notas} nota(s)`, r.pagamentos.map(p => `${NOME_FORMA[p.forma]} ${reais(p.valorCentavos)}`).join(" + "), `por ${r.por.split(" ")[0]}`, r.motivoEstorno ? `motivo: ${r.motivoEstorno}` : null].filter(Boolean).join(" · ") }),
-      r.podeEstornar ? el("div", { class: "item-acoes" }, botao("Estornar recebimento", () => pedirMotivo("Estornar recebimento", "O dinheiro sai do caixa de hoje e as notas voltam a ficar em aberto. Fica registrado.", async motivo => {
-        await api("/promissorias/estornar-recebimento", { metodo: "POST", corpo: { recebimentoId: r.id, motivo } });
-        avisar("Recebimento estornado."); telaNotas();
-      }, "Estornar"), "pequeno perigo")) : null)))
-    : el("p", { class: "vazio", text: "Nenhuma nota recebida nos últimos 30 dias." });
-  mostrar(cabecalho("Notas em aberto", "Clientes que pagam depois (promissória). Só dê baixa quando o cliente pagar: o valor entra no caixa de hoje."),
+  const aba = estadoNotas.aba;
+  const [{ clientes, resumo }, hist, rec] = await Promise.all([
+    api("/promissorias"),
+    aba === "abertas" ? null : api(`/promissorias/historico?situacao=${aba}`),
+    aba === "pagas" ? api("/promissorias/recebimentos") : null
+  ]);
+  const abas = el("div", { class: "alterna largo-celular", role: "tablist", "aria-label": "Notas" },
+    [["abertas", `Em aberto (${resumo.notas})`], ["pagas", "Pagas"], ["canceladas", "Canceladas"]].map(([k, t]) =>
+      botao(t, () => { estadoNotas.aba = k; comCarga(telaNotas).catch(e => avisar(e.message, "erro")); }, `pequeno ${aba === k ? "ativo" : ""}`)));
+  let corpo;
+  if (aba === "abertas") {
+    corpo = clientes.length
+      ? el("ul", { class: "lista" }, clientes.map(c => el("li", { class: "item nota-cliente", "data-nota-cliente": c.cliente },
+        el("div", { class: "item-topo" },
+          el("strong", { text: c.cliente }),
+          el("span", { class: "preco", "data-teste": "nota-total", text: reais(c.totalCentavos) })),
+        el("p", { class: "suave", text: `${c.notas.length} lançamento(s) desde ${dataBR(c.desde)}${c.telefone ? ` · ${fone(c.telefone)}` : ""}` }),
+        el("ul", { class: "notas-itens" }, c.notas.map(n => el("li", { "data-nota": n.descricao },
+          el("span", { text: `${dataBR(n.data).slice(0, 5)} · ${n.origem === "venda" ? "Produto" : "Serviço"}: ${n.descricao}` }),
+          el("strong", { text: reais(n.valorCentavos) }),
+          gestao() ? el("button", { type: "button", class: "link-perigo", "data-cancelar-nota": n.descricao, text: "Cancelar",
+            onclick: () => pedirMotivo("Cancelar nota", `${reais(n.valorCentavos)} de ${c.cliente}. A nota fica registrada como cancelada (nada é apagado).`, async motivo => {
+              await api("/promissorias/cancelar", { metodo: "POST", corpo: { id: n.id, motivo } });
+              avisar("Nota cancelada."); telaNotas();
+            }, "Cancelar nota") }) : null))),
+        el("div", { class: "item-acoes" },
+          botao("Receber (dar baixa)", () => janelaReceberNota(c), "pequeno principal"),
+          c.whatsapp ? el("a", { class: "botao pequeno whats", href: c.whatsapp, target: "_blank", rel: "noopener", text: "Lembrar no WhatsApp" }) : null))))
+      : el("p", { class: "vazio", text: "Nenhuma nota em aberto. Para lançar, escolha \"Promissória (paga depois)\" como forma de pagamento no caixa." });
+  } else {
+    const notas = hist.notas;
+    const listaNotas = notas.length
+      ? el("ul", { class: "lista" }, notas.map(n => el("li", { class: `item ${n.situacao === "cancelada" ? "inativo" : ""}`, "data-nota-historico": n.cliente },
+        el("div", { class: "item-topo" }, el("strong", { text: n.cliente }), el("span", { class: "preco", text: reais(n.valorCentavos) }),
+          n.situacao === "paga" ? el("span", { class: "etiqueta verde", text: `Paga em ${dataBR(n.pagoEm).slice(0, 5)}` }) : el("span", { class: "etiqueta vermelha", text: "Cancelada" })),
+        el("p", { class: "suave", text: [`${dataBR(n.data)} · ${n.origem === "venda" ? "Produto" : "Serviço"}: ${n.descricao}`, n.motivo].filter(Boolean).join(" · ") }))))
+      : el("p", { class: "vazio", text: aba === "pagas" ? "Nenhuma nota paga nos últimos 90 dias." : "Nenhuma nota cancelada nos últimos 90 dias." });
+    const recebimentos = rec ? (rec.recebimentos.length
+      ? el("ul", { class: "lista" }, rec.recebimentos.map(r => el("li", { class: `item ${r.situacao === "estornado" ? "inativo" : ""}`, "data-recebimento": r.cliente },
+        el("div", { class: "item-topo" }, el("strong", { text: r.cliente }), el("span", { class: "preco", text: reais(r.totalCentavos) }),
+          r.situacao === "estornado" ? el("span", { class: "etiqueta vermelha", text: "Estornado" }) : el("span", { class: "etiqueta verde", text: "Pago" })),
+        el("p", { class: "suave", text: [`${dataBR(r.data)} · ${r.notas} nota(s)`, r.pagamentos.map(p => `${NOME_FORMA[p.forma]} ${reais(p.valorCentavos)}`).join(" + "), `por ${r.por.split(" ")[0]}`, r.motivoEstorno ? `motivo: ${r.motivoEstorno}` : null].filter(Boolean).join(" · ") }),
+        r.podeEstornar ? el("div", { class: "item-acoes" }, botao("Estornar recebimento", () => pedirMotivo("Estornar recebimento", "O dinheiro sai do caixa de hoje e as notas voltam a ficar em aberto. Fica registrado.", async motivo => {
+          await api("/promissorias/estornar-recebimento", { metodo: "POST", corpo: { recebimentoId: r.id, motivo } });
+          avisar("Recebimento estornado."); telaNotas();
+        }, "Estornar"), "pequeno perigo")) : null)))
+      : el("p", { class: "vazio", text: "Nenhum recebimento nos últimos 30 dias." })) : null;
+    corpo = rec ? el("div", { class: "duas-colunas" }, el("section", {}, el("h3", { text: "Notas pagas (90 dias)" }), listaNotas),
+      el("section", {}, el("h3", { text: "Recebimentos (30 dias)" }), recebimentos)) : listaNotas;
+  }
+  mostrar(cabecalho("Notas (promissória)", "Clientes que pagam depois. Só dê baixa quando o cliente pagar: o valor entra no caixa de hoje. Nota paga fica registrada como paga."),
     el("div", { class: "cartoes" },
       el("div", { class: "cartao-num", "data-cartao": "notas-clientes" }, el("span", { class: "cartao-tit", text: "Clientes com nota" }), el("strong", { text: String(resumo.clientes) })),
       el("div", { class: "cartao-num negativo", "data-cartao": "notas-total" }, el("span", { class: "cartao-tit", text: "Total a receber" }), el("strong", { text: reais(resumo.totalCentavos) }))),
-    el("div", { class: "duas-colunas" },
-      el("section", {}, lista),
-      el("section", {}, el("h3", { text: "Recebidas (últimos 30 dias)" }), historico)));
+    abas, corpo);
 }
 
 function janelaReceberNota(c) {
@@ -2601,6 +2666,7 @@ function janelaReceberNota(c) {
       if (!ids.length) throw new Error("Marque pelo menos uma nota.");
       await api("/promissorias/receber", { metodo: "POST", corpo: { clienteId: c.clienteId, promissoriaIds: ids, pagamentos: pag.ler(f) } });
       avisar(`Nota recebida: ${reais(total())}.`);
+      estadoNotas.aba = "abertas";
       telaNotas();
     }
   });
@@ -2763,6 +2829,7 @@ async function sairDoSistema() {
   Object.assign(estadoAgenda, { data: null, visao: "dia", barbeiroId: "" });
   clearTimeout(timerCaixa);
   dataEnvioMensagem = null;
+  estadoNotas.aba = "abertas";
   history.replaceState(null, "", "/");
   telaLogin("Você saiu do sistema.");
 }

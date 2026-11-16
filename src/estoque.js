@@ -311,6 +311,9 @@ async function cancelarVenda(ctx) {
   if (!v) erro("Venda não encontrada.", 404);
   if (v.situacao !== "ativa") erro("Essa venda já foi cancelada.", 409);
   if (v.caixa_situacao !== "aberto") erro("O caixa dessa venda já foi fechado: o gerente precisa reabrir o caixa antes.", 409);
+  if (!isGestao(user) && await db.prepare("SELECT 1 FROM promissorias WHERE venda_id = ? AND situacao = 'aberta'").bind(v.id).first()) {
+    erro("Essa venda está numa nota (promissória) em aberto: só o gerente pode cancelar (a nota é cancelada junto).", 403);
+  }
   if (await db.prepare("SELECT 1 FROM promissorias WHERE venda_id = ? AND situacao = 'quitada'").bind(v.id).first()) {
     erro("Essa venda foi na promissória e a nota já foi paga: estorne o recebimento da nota antes de cancelar.", 409);
   }

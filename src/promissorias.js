@@ -1,7 +1,7 @@
 // Promissória ("notinha"): atendimentos/vendas lançados para o cliente pagar depois (pedido do responsável, 16/11/2026).
 // A nota só sai de "em aberto" quando é quitada (recebimento no caixa aberto de hoje, nas formas de pagamento normais).
 // Gestão e caixa. Estornar um recebimento (engano) só a gestão, com motivo, e com o caixa daquele dia ainda aberto.
-import { json, HttpError, readJson, validId, exigirMotivo, auditoria, auditoriaSe, hojeBrasil } from "./util.js";
+import { json, HttpError, readJson, validId, exigirMotivo, auditoriaSe, hojeBrasil } from "./util.js";
 import { isGestao } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
 import { lerPagamentos, telefoneReal, linkWhatsapp, somarDias } from "./agenda-util.js";
@@ -47,6 +47,43 @@ export async function rotasPromissorias(ctx, path, method) {
       whatsapp: c.telefone ? linkWhatsapp(c.telefone, `Olá, ${c.cliente.split(" ")[0]}! Passando para lembrar da sua nota na ${user.barbearia_nome}: ${reais(c.totalCentavos)} (${c.notas.length} lançamento(s) desde ${c.desde.split("-").reverse().join("/")}). Obrigado!`) : null
     })).sort((a, b) => b.totalCentavos - a.totalCentavos);
     return json({ clientes, resumo: await resumoNotasAbertas(db, ctx.barbeariaId) });
+  }
+
+  // Histórico de notas: pagas (com a data do pagamento) ou canceladas, dos últimos 90 dias. Nada some do sistema.
+  if (path === "/promissorias/historico" && method === "GET") {
+    const situacao = new URL(request.url).searchParams.get("situacao") === "canceladas" ? "estornada" : "quitada";
+    const r = await db.prepare(`
+      SELECT p.id, p.origem, p.valor_centavos, p.descricao, p.motivo_estorno, cx.data, c.nome AS cliente,
+             r.criado_em AS pago_em, (SELECT cr.data FROM caixas cr WHERE cr.id = r.caixa_id) AS pago_dia
+      FROM promissorias p JOIN caixas cx ON cx.id = p.caixa_id JOIN clientes c ON c.id = p.cliente_id
+      LEFT JOIN promissoria_recebimentos r ON r.id = p.recebimento_id
+      WHERE p.barbearia_id = ? AND p.situacao = ? AND cx.data >= ? ORDER BY COALESCE(r.criado_em, p.criado_em) DESC LIMIT 300`)
+      .bind(ctx.barbeariaId, situacao, somarDias(hojeBrasil(), -90)).all();
+    return json({
+      notas: r.results.map(n => ({ id: n.id, cliente: n.cliente, data: n.data, origem: n.origem, descricao: n.descricao, valorCentavos: n.valor_centavos,
+        situacao: situacao === "quitada" ? "paga" : "cancelada", pagoEm: n.pago_dia || null, motivo: n.motivo_estorno || null }))
+    });
+  }
+
+  // Cancelar uma nota em aberto (perdoar a dívida ou lançamento errado): só gerente/proprietário, com motivo.
+  // O atendimento/venda continua registrado; a nota fica como "cancelada" (nada é apagado).
+  if (path === "/promissorias/cancelar" && method === "POST") {
+    if (!isGestao(user)) erro("Só o gerente ou o proprietário cancela uma nota.", 403);
+    const input = await readJson(request);
+    if (!validId(input.id)) erro("Nota inválida.");
+    const motivo = exigirMotivo(input.motivo);
+    const n = await db.prepare("SELECT id, situacao, valor_centavos, cliente_id FROM promissorias WHERE id = ? AND barbearia_id = ?").bind(input.id, ctx.barbeariaId).first();
+    if (!n) erro("Nota não encontrada.", 404);
+    if (n.situacao === "quitada") erro("Essa nota já foi paga: fica registrada como paga. Para desfazer o pagamento, estorne o recebimento.", 409);
+    if (n.situacao !== "aberta") erro("Essa nota já foi cancelada.", 409);
+    const r = await db.batch([
+      db.prepare("UPDATE promissorias SET situacao = 'estornada', motivo_estorno = ? WHERE id = ? AND barbearia_id = ? AND situacao = 'aberta'")
+        .bind(`Cancelada pelo gerente: ${motivo}`, n.id, ctx.barbeariaId),
+      auditoriaSe(ctx, "EXISTS (SELECT 1 FROM promissorias WHERE id = ? AND situacao = 'estornada' AND motivo_estorno = ?)", [n.id, `Cancelada pelo gerente: ${motivo}`],
+        "promissoria_cancelada", n.id, { motivo, valor: n.valor_centavos, antes: { situacao: "aberta" }, depois: { situacao: "cancelada" } })
+    ]);
+    if (!r[0].meta?.changes) erro("Essa nota não está mais em aberto. Atualize a tela.", 409);
+    return json({ mensagem: "Nota cancelada." });
   }
 
   // Notas quitadas (recebimentos) dos últimos 30 dias.

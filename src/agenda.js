@@ -423,6 +423,9 @@ async function reabrir(ctx) {
       ? "O caixa desse dia já foi fechado: reabra o caixa (com motivo) antes de reabrir o atendimento."
       : "O caixa desse dia já foi fechado: só o gerente pode reabrir.", 409);
   }
+  if (!isGestao(user) && await db.prepare("SELECT 1 FROM promissorias WHERE finalizacao_id = ? AND situacao = 'aberta'").bind(f.id).first()) {
+    erro("Esse atendimento está numa nota (promissória) em aberto: só o gerente pode reabrir (a nota é cancelada junto).", 403);
+  }
   if (await db.prepare("SELECT 1 FROM promissorias WHERE finalizacao_id = ? AND situacao = 'quitada'").bind(f.id).first()) {
     erro("Esse atendimento foi na promissória e a nota já foi paga: estorne o recebimento da nota antes de reabrir.", 409);
   }
@@ -557,7 +560,7 @@ async function buscarClientes(ctx) {
 }
 
 // ---------- DISPONIBILIDADE DE UM DIA (para quem vai marcar): situação de cada profissional, ocupados e horários livres ----------
-// Livres = inícios a cada 30 min (e logo após cada ocupação) em que cabe a duração pedida; hoje, só a partir de agora.
+// Livres = inícios de hora em hora (a partir da abertura) em que cabe a duração pedida; hoje, só a partir de agora.
 async function disponibilidade(ctx) {
   const { db, user, request } = ctx;
   const url = new URL(request.url);
@@ -595,8 +598,7 @@ async function disponibilidade(ctx) {
     let livres = [];
     if (janela) {
       const inicios = new Set();
-      for (let t = janela.ini; t < janela.fim; t += 30) inicios.add(t);
-      for (const o of ocupados) if (o.fim > janela.ini && o.fim < janela.fim) inicios.add(o.fim);
+      for (let t = janela.ini; t < janela.fim; t += 60) inicios.add(t);   // 1 atendimento a cada hora (pedido de 16/11/2026)
       livres = [...inicios].sort((a, b) => a - b).filter(t => t + duracao <= janela.fim
         && !(data === hoje && t < agoraMin) && data >= hoje
         && !ocupados.some(o => t < o.fim && t + duracao > o.ini));

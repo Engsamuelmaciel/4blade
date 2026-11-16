@@ -205,6 +205,11 @@ async function rodar(tela) {
     await page.click('[data-cobrar="Gil Fila Fictício"] button:has-text("Cobrar")');
     await page.waitForSelector("dialog[open] [data-teste=total]:has-text('40,00')");
     await page.selectOption("dialog[open] #c-forma1", "dinheiro");
+    // troco: cliente entrega 50,00 para pagar 40,00
+    await page.locator("dialog[open] [data-teste=recebido-dinheiro]").fill("50,00");
+    await page.locator("dialog[open] [data-teste=recebido-dinheiro]").dispatchEvent("input");
+    assert.match(await page.textContent("dialog[open] [data-teste=troco]"), /Troco: R\$\s?10,00/);
+    await print("cobrar-dinheiro-com-troco", false);
     await ok();
     await page.waitForSelector('[data-cobrar="Gil Fila Fictício"] >> text=Pago');
     assert.notEqual(await page.textContent("[data-teste=entradas]"), entradas0);
@@ -261,8 +266,12 @@ async function rodar(tela) {
     await page.click('[data-nota-cliente="Fábio Fixo Fictício"] button:has-text("Receber")');
     await page.selectOption("dialog[open] #c-forma1", "pix");
     await ok();
+    await page.waitForSelector("text=Nota recebida");
+    assert.equal(await page.locator('[data-nota-cliente="Fábio Fixo Fictício"]').count(), 0, "nota quitada sai da lista de abertas");
+    assert.equal(await page.locator("[data-cancelar-nota]").count(), 0, "caixa não vê o botão de cancelar nota");
+    await page.click("[role=tablist] button:has-text('Pagas')");
+    await page.waitForSelector('[data-nota-historico="Fábio Fixo Fictício"] >> text=Paga em');
     await page.waitForSelector('[data-recebimento="Fábio Fixo Fictício"] >> text=Pago');
-    assert.equal(await page.locator('[data-nota-cliente="Fábio Fixo Fictício"]').count(), 0, "nota quitada sai da lista");
     await print("nota-recebida");
 
     passo("caixa (recepção) vê a agenda de todos, marca para um barbeiro e acessa clientes, mensagens e catálogo");
