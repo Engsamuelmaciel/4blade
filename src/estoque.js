@@ -1,7 +1,7 @@
 // Estoque (seção 4.4) e vendas de produto. Tudo filtrado pela barbearia da sessão.
 // Saldo nunca fica negativo (CHECK no banco): venda sem saldo é bloqueada e nada é gravado.
 import {
-  json, fail, HttpError, readJson, validId, textoOpcional, validCentavos, validDate,
+  json, fail, HttpError, readJson, validId, textoLimpo, textoOpcional, validCentavos, validDate,
   exigirMotivo, auditoria, auditoriaSe, hojeBrasil
 } from "./util.js";
 import { isGestao, atende } from "./perfis.js";
@@ -24,7 +24,8 @@ export function avisosProduto(p, hoje = hojeBrasil()) {
   return avisos;
 }
 
-const SELECT_PRODUTOS = `SELECT p.*, COALESCE(e.saldo, 0) AS saldo FROM produtos p
+const SELECT_PRODUTOS = `SELECT p.*, COALESCE(e.saldo, 0) AS saldo,
+  EXISTS (SELECT 1 FROM produtos_uso_interno ui WHERE ui.produto_id = p.id) AS uso_interno FROM produtos p
   LEFT JOIN produto_estoque e ON e.produto_id = p.id WHERE p.barbearia_id = ?`;
 
 async function produtoDaBarbearia(ctx, id) {
@@ -54,9 +55,8 @@ async function lote(db, comandos, msgSaldo) {
 
 // ---------- ESTOQUE (gestão) ----------
 // Comandos de uma entrada de mercadoria (usados na tela de estoque e no cadastro do produto com estoque inicial).
-export function comandosEntrada(ctx, p, { q, c, fornecedor = null, validade = null }) {
+export function comandosEntrada(ctx, p, { q, c, fornecedor = null, validade = null, id = crypto.randomUUID() }) {
   const { db, user } = ctx;
-  const id = crypto.randomUUID();
   return [
     garantirLinhaEstoque(ctx, p.id),
     db.prepare(`UPDATE produtos SET
@@ -92,7 +92,7 @@ export async function rotasEstoque(ctx, path, method) {
     const hoje = hojeBrasil();
     return json({
       produtos: r.results.map(p => ({
-        id: p.id, nome: p.nome, codigo: p.codigo || null, ativo: Boolean(p.ativo),
+        id: p.id, nome: p.nome, codigo: p.codigo || null, ativo: Boolean(p.ativo), usoInterno: Boolean(p.uso_interno),
         saldo: p.saldo, estoqueMinimo: p.estoque_minimo, validade: p.validade || null,
         precoCentavos: p.preco_centavos, custoMedioCentavos: p.custo_medio_centavos,
         margemBp: p.custo_medio_centavos > 0 && p.preco_centavos > 0
@@ -151,6 +151,33 @@ export async function rotasEstoque(ctx, path, method) {
       auditoria(ctx, "estoque_ajuste", p.id, { motivo, quantidade: q, antes: { saldo: p.saldo }, depois: { saldo: p.saldo + q } })
     ], `Saldo insuficiente: ${p.nome} tem ${p.saldo} em estoque.`);
     return json({ produto: { id: p.id, saldo: p.saldo + q } }, 201);
+  }
+
+  // Material de uso da barbearia (lâminas, cremes…): controla estoque, não é vendido (pedido de 16/11/2026).
+  if (path === "/estoque/material" && method === "POST") {
+    const input = await readJson(request);
+    const nome = textoLimpo(input.nome, 2, 80);
+    if (!nome) erro("Informe o nome do material (2 a 80 letras).");
+    const codigo = textoOpcional(input.codigo, 40);
+    if (codigo === false) erro("Código muito longo.");
+    const minimo = input.estoqueMinimo ?? 0;
+    if (!Number.isInteger(minimo) || minimo < 0 || minimo > 100000) erro("Estoque mínimo inválido.");
+    const validade = input.validade ? (validDate(input.validade) ? input.validade : erro("Validade inválida.")) : null;
+    const inicial = lerEstoqueInicial(input.estoqueInicial);
+    if (codigo && await db.prepare("SELECT 1 FROM produtos WHERE barbearia_id = ? AND codigo = ?").bind(ctx.barbeariaId, codigo).first()) erro("Já existe um produto com esse código.", 409);
+    if (await db.prepare(`SELECT 1 FROM produtos p WHERE p.barbearia_id = ? AND lower(p.nome) = lower(?) AND EXISTS (SELECT 1 FROM produtos_uso_interno ui WHERE ui.produto_id = p.id)`)
+      .bind(ctx.barbeariaId, nome).first()) erro("Já existe um material com esse nome.", 409);
+    const id = crypto.randomUUID();
+    await db.batch([
+      db.prepare(`INSERT INTO produtos (id, barbearia_id, nome, codigo, preco_centavos, validade, estoque_minimo, mostrar_site) VALUES (?, ?, ?, ?, 0, ?, ?, 0)`)
+        .bind(id, ctx.barbeariaId, nome, codigo || null, validade, minimo),
+      db.prepare("INSERT INTO produtos_uso_interno (produto_id, barbearia_id) VALUES (?, ?)").bind(id, ctx.barbeariaId),
+      garantirLinhaEstoque(ctx, id),
+      auditoria(ctx, "material_criado", id, { depois: { nome, codigo: codigo || null, estoqueMinimo: minimo, validade } }),
+      ...(inicial ? comandosEntrada(ctx, { id }, { q: inicial.q, c: inicial.c, validade }) : [])
+    ]);
+    const novo = await produtoDaBarbearia(ctx, id);
+    return json({ material: { id, nome, saldo: novo.saldo, usoInterno: true } }, 201);
   }
 
   // Inventário: gerente digita o contado; o sistema mostra a diferença e ajusta (com motivo).
@@ -231,6 +258,7 @@ async function vender(ctx) {
   const itens = input.itens.map(i => {
     const p = porId[i.produtoId];
     if (!p || !p.ativo) erro("Produto não encontrado ou desativado.", 404);
+    if (p.uso_interno) erro(`${p.nome} é material de uso da barbearia: não é vendido.`, 409);
     const q = lerQuantidade(i.quantidade);
     if (p.saldo < q) erro(`Estoque insuficiente de ${p.nome} (tem ${p.saldo}). Peça ao gerente para ajustar.`, 409);
     return { p, q, preco: p.preco_centavos, custo: p.custo_medio_centavos };

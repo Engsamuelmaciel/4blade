@@ -972,3 +972,4 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
 .mini-horario strong { min-width: 92px; white-space: nowrap; }
 .acoes-dia-semana { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 8px; border-top: 1px solid var(--borda); }
 @media (max-width: 699px) { .mini-horario strong { min-width: 0; } .acoes-dia-semana .botao { flex: 1; } }
+.etiqueta.roxa { background: var(--roxo-fundo); color: var(--roxo-texto); }

@@ -83,7 +83,7 @@ const CADASTROS = {
         ? Math.round(((r.preco_centavos - r.custo_medio_centavos) * 10000) / r.preco_centavos)
         : null,
       validade: r.validade || null, estoqueMinimo: r.estoque_minimo, mostrarSite: Boolean(r.mostrar_site),
-      saldo: r.saldo ?? 0,
+      saldo: r.saldo ?? 0, usoInterno: Boolean(r.uso_interno),
       ativo: Boolean(r.ativo), motivoDesativacao: r.motivo_desativacao || null
     }),
     // Barbeiro e caixa: só nome, preço e disponível (ativo e com saldo). NUNCA custo ou margem. O caixa vê também o saldo (para vender).
@@ -91,7 +91,7 @@ const CADASTROS = {
       id: r.id, nome: r.nome, precoCentavos: r.preco_centavos, disponivel: Boolean(r.ativo) && r.saldo > 0,
       ...(user?.perfil === "caixa" ? { saldo: r.saldo } : {})
     }),
-    selectLista: "SELECT p.*, COALESCE(e.saldo, 0) AS saldo FROM produtos p LEFT JOIN produto_estoque e ON e.produto_id = p.id WHERE p.barbearia_id = ?",
+    selectLista: "SELECT p.*, COALESCE(e.saldo, 0) AS saldo, EXISTS (SELECT 1 FROM produtos_uso_interno ui WHERE ui.produto_id = p.id) AS uso_interno FROM produtos p LEFT JOIN produto_estoque e ON e.produto_id = p.id WHERE p.barbearia_id = ?",
     leituraRestrita: true
   },
   clientes: {
@@ -139,6 +139,8 @@ async function rotasCadastro(ctx, nome, def, path, method) {
     let sql = def.selectLista || `SELECT * FROM ${def.tabela} WHERE barbearia_id = ?`;
     const params = [ctx.barbeariaId];
     if (!gestao) sql += def.selectLista ? " AND p.ativo = 1" : " AND ativo = 1";
+    // Material de uso da barbearia (lâminas, cremes…) não aparece para quem vende.
+    if (!gestao && nome === "produtos") sql += " AND NOT EXISTS (SELECT 1 FROM produtos_uso_interno ui WHERE ui.produto_id = p.id)";
     if (nome === "clientes") { sql += " AND id NOT IN (SELECT cliente_id FROM clientes_excluidos WHERE barbearia_id = ?)"; params.push(ctx.barbeariaId); }
     const busca = (url.searchParams.get("busca") || "").trim().slice(0, 60);
     if (busca && nome === "clientes") {

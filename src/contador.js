@@ -44,7 +44,8 @@ export async function relatorioComDados(ctx, per) {
       WHERE m.barbearia_id = ?1 AND c.data BETWEEN ?2 AND ?3 AND m.tipo IN ('venda','estorno_venda','correcao_saida','correcao_entrada')
       GROUP BY 1, 2`).bind(b, per.ini, per.fim).all(),
     db.prepare(`SELECT m.*, p.nome AS produto, ${dataLocal("m.criado_em")} AS dia FROM estoque_movimentos m JOIN produtos p ON p.id = m.produto_id
-                WHERE m.barbearia_id = ? AND m.tipo = 'entrada' AND ${dataLocal("m.criado_em")} BETWEEN ? AND ? ORDER BY m.criado_em`).bind(b, per.ini, per.fim).all(),
+                WHERE m.barbearia_id = ? AND m.tipo = 'entrada' AND ${dataLocal("m.criado_em")} BETWEEN ? AND ?
+                  AND NOT EXISTS (SELECT 1 FROM contas_estoque ce WHERE ce.movimento_id = m.id) ORDER BY m.criado_em`).bind(b, per.ini, per.fim).all(),
     db.prepare(`SELECT m.valor_centavos, m.motivo, c.data FROM caixa_movimentos m JOIN caixas c ON c.id = m.caixa_id
                 WHERE m.barbearia_id = ? AND m.tipo = 'sangria' AND c.data BETWEEN ? AND ?
                   AND NOT EXISTS (SELECT 1 FROM contas k WHERE k.caixa_movimento_id = m.id) AND m.motivo NOT LIKE 'Comissão paga:%'

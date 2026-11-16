@@ -124,7 +124,7 @@ window.AJUDA = {
       onde: "Menu → Catálogo e estoque → Produtos / Estoque.",
       passos: ["Em Produtos, cadastre nome, preço de venda e estoque mínimo (já dá para lançar a quantidade e o custo de hoje).", "Em Estoque, \"Entrada\" registra mercadoria nova com o custo: o custo médio é calculado sozinho.", "\"Ajuste\" corrige perdas (quebrou, venceu) com motivo.", "\"Inventário (contagem)\" ajusta tudo de uma vez a partir da contagem da prateleira."],
       exemplo: "Entrada: 10 pomadas a R$ 20,00 cada. Estoque mínimo 3 → aparece \"Repor\" quando ficar abaixo.",
-      dica: "Os avisos \"Repor\", \"Vencendo\" e \"Vencido\" aparecem no Estoque e no Painel." },
+      dica: "Material que a barbearia usa e não vende (lâminas, cremes): Estoque → \"+ Material de uso\"; ao usar, toque em \"Usei (dar baixa)\". Comprou material? Em Contas a pagar marque \"lançar no estoque\" e ele já entra com o custo. Os avisos \"Repor\", \"Vencendo\" e \"Vencido\" aparecem no Estoque e no Painel." },
     { id: "comissoes", titulo: "Comissões e vales", perfis: ["proprietario", "gerente"], rotas: ["comissoes"],
       onde: "Menu → Financeiro → Comissões e vales.",
       passos: ["Escolha o período (ex.: \"Semana passada\").", "Confira a prévia por profissional: serviços, produtos e vales descontados.", "Toque em \"Fechar comissão do período\".", "Quando pagar, toque em \"Registrar pagamento\" (pode sair do dinheiro do caixa)."],

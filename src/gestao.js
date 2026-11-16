@@ -6,7 +6,7 @@ import { exigirBarbearia, exigirGestao } from "./usuarios.js";
 import { resumoNotasAbertas } from "./promissorias.js";
 import { somarDias } from "./agenda-util.js";
 import { sangriaAutomatica } from "./caixa.js";
-import { avisosProduto } from "./estoque.js";
+import { avisosProduto, comandosEntrada } from "./estoque.js";
 import { gerarPdf, base64 } from "./pdf.js";
 import { gerarCsv, dinheiroCsv, dataCsv } from "./csv.js";
 
@@ -304,15 +304,19 @@ function statusConta(c, hoje) {
 const contaPublica = (c, hoje) => ({
   id: c.id, descricao: c.descricao, categoria: c.categoria, valorCentavos: c.valor_centavos, vencimento: c.vencimento,
   recorrente: Boolean(c.recorrente), situacao: c.situacao, status: statusConta(c, hoje), pagoEm: c.pago_em || null,
-  pagoComCaixa: Boolean(c.caixa_movimento_id), motivoCancelamento: c.motivo_cancelamento || null
+  pagoComCaixa: Boolean(c.caixa_movimento_id), motivoCancelamento: c.motivo_cancelamento || null,
+  estoque: c.est_produto ? { produto: c.est_produto, quantidade: c.est_qtd } : null
 });
+// Conta com o material lançado no estoque (quando houver).
+const SELECT_CONTAS = `SELECT k.*, (SELECT p.nome FROM contas_estoque ce JOIN produtos p ON p.id = ce.produto_id WHERE ce.conta_id = k.id) AS est_produto,
+  (SELECT ce.quantidade FROM contas_estoque ce WHERE ce.conta_id = k.id) AS est_qtd FROM contas k`;
 
 async function rotasContas(ctx, path, method) {
   const { db, user, request } = ctx;
   const hoje = hojeBrasil();
   if (path === "/contas" && method === "GET") {
     const todas = new URL(request.url).searchParams.get("todas") === "1";
-    const r = await db.prepare(`SELECT * FROM contas WHERE barbearia_id = ? ${todas ? "" : "AND (situacao = 'aberta' OR pago_em >= ?)"}
+    const r = await db.prepare(`${SELECT_CONTAS} WHERE barbearia_id = ? ${todas ? "" : "AND (situacao = 'aberta' OR pago_em >= ?)"}
                                 ORDER BY CASE situacao WHEN 'aberta' THEN 0 ELSE 1 END, vencimento LIMIT 300`)
       .bind(ctx.barbeariaId, ...(todas ? [] : [somarDias(hoje, -31)])).all();
     return json({ contas: r.results.map(c => contaPublica(c, hoje)), categorias: CATEGORIAS });
@@ -325,13 +329,32 @@ async function rotasContas(ctx, path, method) {
     if (!validCentavos(input.valorCentavos) || input.valorCentavos <= 0) erro("Valor inválido.");
     if (!validDate(input.vencimento)) erro("Vencimento inválido.");
     if (input.recorrente !== undefined && typeof input.recorrente !== "boolean") erro("Recorrente inválido.");
+    // Despesa que já lança o material/produto no estoque (pedido de 16/11/2026): custo unitário = valor ÷ quantidade.
+    let est = null;
+    if (input.estoque) {
+      if (input.recorrente) erro("Conta recorrente não lança no estoque. Lance a compra do material como conta normal.");
+      if (!validId(input.estoque.produtoId)) erro("Escolha o produto ou material do estoque.");
+      const p = await db.prepare(`SELECT p.*, COALESCE(e.saldo, 0) AS saldo FROM produtos p LEFT JOIN produto_estoque e ON e.produto_id = p.id
+                                  WHERE p.id = ? AND p.barbearia_id = ?`).bind(input.estoque.produtoId, ctx.barbeariaId).first();
+      if (!p) erro("Produto não encontrado.", 404);
+      if (!p.ativo) erro("Produto desativado. Reative antes.");
+      const q = input.estoque.quantidade;
+      if (!Number.isInteger(q) || q < 1 || q > 100000) erro("Quantidade para o estoque inválida.");
+      est = { p, q, c: Math.round(input.valorCentavos / q), mov: crypto.randomUUID() };
+    }
     const id = crypto.randomUUID();
     await db.batch([
       db.prepare("INSERT INTO contas (id, barbearia_id, descricao, categoria, valor_centavos, vencimento, recorrente, criado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
         .bind(id, ctx.barbeariaId, descricao, input.categoria, input.valorCentavos, input.vencimento, input.recorrente ? 1 : 0, user.id),
-      auditoria(ctx, "conta_criada", id, { depois: { descricao, categoria: input.categoria, valor: input.valorCentavos, vencimento: input.vencimento, recorrente: Boolean(input.recorrente) } })
+      auditoria(ctx, "conta_criada", id, { depois: { descricao, categoria: input.categoria, valor: input.valorCentavos, vencimento: input.vencimento, recorrente: Boolean(input.recorrente),
+        estoque: est ? { produto: est.p.nome, quantidade: est.q, custoUnit: est.c } : undefined } }),
+      ...(est ? [
+        ...comandosEntrada(ctx, est.p, { q: est.q, c: est.c, fornecedor: textoLimpo(descricao, 2, 80) || null, id: est.mov }),
+        db.prepare(`INSERT INTO contas_estoque (id, barbearia_id, conta_id, produto_id, quantidade, custo_unit_centavos, movimento_id) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+          .bind(crypto.randomUUID(), ctx.barbeariaId, id, est.p.id, est.q, est.c, est.mov)
+      ] : [])
     ]);
-    return json({ conta: contaPublica(await db.prepare("SELECT * FROM contas WHERE id = ?").bind(id).first(), hoje) }, 201);
+    return json({ conta: contaPublica(await db.prepare(`${SELECT_CONTAS} WHERE k.id = ?`).bind(id).first(), hoje) }, 201);
   }
   if (path === "/contas/pagar" && method === "POST") {
     const input = await readJson(request);
@@ -375,6 +398,10 @@ async function rotasContas(ctx, path, method) {
     const mudaValores = ["valorCentavos", "vencimento", "recorrente"].some(k => input[k] !== undefined
       && input[k] !== { valorCentavos: c.valor_centavos, vencimento: c.vencimento, recorrente: Boolean(c.recorrente) }[k]);
     if (mudaValores && c.situacao !== "aberta") erro("Conta já paga: só dá para mudar a descrição e a categoria.", 409);
+    if (input.valorCentavos !== undefined && input.valorCentavos !== c.valor_centavos
+      && await db.prepare("SELECT 1 FROM contas_estoque WHERE conta_id = ?").bind(c.id).first()) {
+      erro("Essa conta lançou material no estoque com o custo do valor: para mudar o valor, cancele a conta e lance de novo.", 409);
+    }
     if (input.valorCentavos !== undefined) { if (!validCentavos(input.valorCentavos) || input.valorCentavos <= 0) erro("Valor inválido."); novo.valor_centavos = input.valorCentavos; }
     if (input.vencimento !== undefined) { if (!validDate(input.vencimento)) erro("Vencimento inválido."); novo.vencimento = input.vencimento; }
     if (input.recorrente !== undefined) { if (typeof input.recorrente !== "boolean") erro("Recorrente inválido."); novo.recorrente = input.recorrente ? 1 : 0; }
@@ -395,11 +422,27 @@ async function rotasContas(ctx, path, method) {
     const c = await db.prepare("SELECT * FROM contas WHERE id = ? AND barbearia_id = ?").bind(input.id, ctx.barbeariaId).first();
     if (!c) erro("Conta não encontrada.", 404);
     if (c.situacao !== "aberta") erro("Só conta em aberto pode ser cancelada.", 409);
-    await db.batch([
-      db.prepare("UPDATE contas SET situacao = 'cancelada', motivo_cancelamento = ? WHERE id = ? AND barbearia_id = ? AND situacao = 'aberta'").bind(motivo, c.id, ctx.barbeariaId),
-      auditoria(ctx, "conta_cancelada", c.id, { motivo, antes: { situacao: "aberta" }, depois: { situacao: "cancelada" } })
-    ]);
-    return json({ mensagem: "Conta cancelada." });
+    // Material que entrou no estoque por esta conta sai de novo (ajuste "Correção"), se ainda houver saldo.
+    const ce = await db.prepare(`SELECT ce.*, p.nome, COALESCE(e.saldo, 0) AS saldo, p.custo_medio_centavos FROM contas_estoque ce JOIN produtos p ON p.id = ce.produto_id
+                                 LEFT JOIN produto_estoque e ON e.produto_id = p.id WHERE ce.conta_id = ? AND ce.estornado_movimento_id IS NULL`).bind(c.id).first();
+    if (ce && ce.saldo < ce.quantidade) erro(`Não dá para cancelar: ${ce.quantidade} de ${ce.nome} entraram por esta conta, mas só há ${ce.saldo} no estoque. Ajuste o estoque antes.`, 409);
+    const movEst = ce ? crypto.randomUUID() : null;
+    try {
+      await db.batch([
+        db.prepare("UPDATE contas SET situacao = 'cancelada', motivo_cancelamento = ? WHERE id = ? AND barbearia_id = ? AND situacao = 'aberta'").bind(motivo, c.id, ctx.barbeariaId),
+        auditoria(ctx, "conta_cancelada", c.id, { motivo, antes: { situacao: "aberta" }, depois: { situacao: "cancelada" }, estoque: ce ? { produto: ce.nome, quantidade: -ce.quantidade } : undefined }),
+        ...(ce ? [
+          db.prepare("UPDATE produto_estoque SET saldo = saldo - ?, atualizado_em = CURRENT_TIMESTAMP WHERE produto_id = ? AND barbearia_id = ?").bind(ce.quantidade, ce.produto_id, ctx.barbeariaId),
+          db.prepare(`INSERT INTO estoque_movimentos (id, barbearia_id, produto_id, tipo, quantidade, custo_unit_centavos, motivo, criado_por) VALUES (?, ?, ?, 'ajuste', ?, ?, ?, ?)`)
+            .bind(movEst, ctx.barbeariaId, ce.produto_id, -ce.quantidade, ce.custo_unit_centavos, `Correção: conta cancelada (${c.descricao})`, user.id),
+          db.prepare("UPDATE contas_estoque SET estornado_movimento_id = ? WHERE id = ?").bind(movEst, ce.id)
+        ] : [])
+      ]);
+    } catch (e) {
+      if (/CHECK constraint failed|constraint failed/i.test(String(e?.message))) erro("Saldo do estoque insuficiente para desfazer a entrada desta conta.", 409);
+      throw e;
+    }
+    return json({ mensagem: ce ? `Conta cancelada. ${ce.quantidade} de ${ce.nome} saíram do estoque.` : "Conta cancelada." });
   }
   return null;
 }

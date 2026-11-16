@@ -138,6 +138,8 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 
 - 16/11/2026: **Semana enxuta**: `iniciosLivres` em agenda.js (usado por disponibilidade e ocupação; ocupação devolve `livres` por dia); tela Semana busca `/agenda/ocupacao` da semana; barra `[data-dia]` com `[data-marcados]`/`[data-livres]`, todos fechados por padrão; aberto = `.mini-lista` + `.acoes-dia-semana`. Testado em `test/navegador-e2.mjs`. Cache do sw `4blade-v18`.
 
+- 16/11/2026: **Material de uso + despesa com estoque**: `migrations/0015_material_uso_contas_estoque.sql` (produtos_uso_interno; contas_estoque com movimento_id). API: `POST /estoque/material`; `/estoque` e `/produtos` (gestão) levam `usoInterno`; `/produtos` para barbeiro/caixa esconde material; vender material → 409; `POST /contas` aceita `estoque {produtoId, quantidade}` (`comandosEntrada` com `id`), alterar valor → 409, cancelar estorna (ajuste "Correção: conta cancelada"); contador exclui das "compras de mercadoria" as entradas ligadas a conta. Tela: `janelaMaterial`, "Usei (dar baixa)", bloco `[data-teste=conta-estoque]` em Contas. Testes: `test/material-estoque.test.js` + `test/navegador-e4.mjs`. `npm test` (140). Cache do sw `4blade-v19`. **Migrações 0014 e 0015 ainda NÃO aplicadas no banco real.**
+
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.

@@ -163,6 +163,38 @@ async function rodar(tela) {
     await ok();
     await page.waitForSelector('[data-conta="Conta de luz"] >> text=com dinheiro do caixa');
 
+    // ---------- MATERIAL DE USO + DESPESA QUE LANÇA NO ESTOQUE ----------
+    passo("gerente cadastra material de uso no estoque e lança a compra pela conta (vai direto para o estoque)");
+    await ir(page, "Estoque");
+    await page.click("button:has-text('+ Material de uso')");
+    await page.fill("dialog[open] #c-mNome", "Creme para progressiva");
+    await page.fill("dialog[open] #c-mMin", "2");
+    await print("material-de-uso-novo", false);
+    await ok();
+    await page.waitForSelector('[data-estoque="Creme para progressiva"] >> text=Uso da barbearia');
+    await ir(page, "Contas a pagar");
+    await page.fill("#c-desc", "Caixa de creme (fictícia)");
+    await page.selectOption("#c-cat", "fornecedor");
+    await page.fill("#c-valor", "150,00");
+    await page.check("#c-lancaEst");
+    await page.waitForSelector("[data-teste=conta-estoque]:visible");
+    const opCreme = await page.locator("#c-estProd option", { hasText: "Creme para progressiva" }).getAttribute("value");
+    await page.selectOption("#c-estProd", opCreme);
+    await page.fill("#c-estQtd", "10");
+    await page.waitForSelector("[data-teste=custo-unidade]:has-text('15,00')");
+    await page.locator("[data-teste=conta-estoque]").scrollIntoViewIfNeeded();
+    await print("conta-lanca-no-estoque", false);
+    await page.click("button:has-text('Salvar conta')");
+    await page.waitForSelector('[data-conta="Caixa de creme (fictícia)"] [data-teste=conta-no-estoque]:has-text("+10 Creme para progressiva")');
+    await ir(page, "Estoque");
+    assert.match(await texto('[data-estoque="Creme para progressiva"] [data-teste=saldo]'), /10 un\./);
+    assert.match(await texto('[data-estoque="Creme para progressiva"]'), /Custo médio R\$\s?15,00/);
+    await page.click('[data-estoque="Creme para progressiva"] button:has-text("Usei (dar baixa)")');
+    await page.fill("dialog[open] #c-qtd", "1");
+    await ok();
+    await page.waitForSelector('[data-estoque="Creme para progressiva"] [data-teste=saldo]:has-text("9 un.")');
+    await print("estoque-com-material");
+
     // ---------- CONTADOR ----------
     passo("gerente envia ao contador (PDF + planilha) e vê o aviso de alteração");
     await ir(page, "Contador e dados");

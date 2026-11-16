@@ -2242,7 +2242,7 @@ function blocoPagamento(totalAtual, { nota = true } = {}) {
 
 // ---------- VENDA DE PRODUTO (caixa, gestão ou barbeiro) ----------
 async function janelaVenda({ agendamento = null, aoTerminar } = {}) {
-  const produtos = (await api("/produtos")).produtos.filter(p => (p.disponivel ?? (p.ativo && p.saldo > 0)));
+  const produtos = (await api("/produtos")).produtos.filter(p => !p.usoInterno && (p.disponivel ?? (p.ativo && p.saldo > 0)));
   if (!produtos.length) { avisar("Nenhum produto com estoque para vender.", "erro"); return; }
   const linhas = produtos.map(p => {
     const qtd = el("input", { type: "number", min: "0", max: String(p.saldo ?? 999), step: "1", value: "0", inputmode: "numeric", name: `q-${p.id}`, "aria-label": `Quantidade de ${p.nome}` });
@@ -2588,7 +2588,7 @@ function janelaAvulso(profissionais, recarregar) {
 
 // Aba "Vender produto": produtos em botões grandes + carrinho com pagamento.
 async function abaVender(recarregar) {
-  const produtos = (await api("/produtos")).produtos.filter(p => p.disponivel ?? p.ativo);
+  const produtos = (await api("/produtos")).produtos.filter(p => !p.usoInterno && (p.disponivel ?? p.ativo));
   const carrinho = estadoCaixa.carrinho;
   for (const id of [...carrinho.keys()]) if (!produtos.some(p => p.id === id)) carrinho.delete(id);
   const saldoDe = p => p.saldo ?? 999;
@@ -2697,24 +2697,59 @@ async function telaEstoque() {
   mostrar(
     cabecalho("Estoque", "Entradas recalculam o custo médio. Vendas baixam sozinhas; cancelamentos devolvem."),
     avisos.length ? el("p", { class: "info", "data-teste": "avisos-estoque", text: `Atenção: ${avisos.map(p => `${p.nome} (${p.avisos.map(a => NOME_AVISO[a][0].toLowerCase()).join(", ")})`).join(" · ")}` }) : null,
-    el("div", { class: "acoes-caixa" }, botao("Inventário (contagem)", () => janelaInventario(ativos), "pequeno")),
+    el("div", { class: "acoes-caixa" },
+      botao("+ Material de uso", () => janelaMaterial(), "pequeno principal"),
+      botao("Inventário (contagem)", () => janelaInventario(ativos), "pequeno")),
+    el("p", { class: "suave", text: "Material de uso = o que a barbearia usa e não vende (lâminas, cremes, toalhas…): controla quanto tem e quanto custou. Produto para vender: cadastre em Produtos." }),
     ativos.length
       ? el("ul", { class: "lista" }, ativos.map(p => el("li", { class: "item", "data-estoque": p.nome },
         el("div", { class: "item-topo" },
           el("strong", { text: p.nome }),
+          p.usoInterno ? el("span", { class: "etiqueta roxa", text: "Uso da barbearia" }) : null,
           el("span", { class: "saldo", "data-teste": "saldo", text: `${p.saldo} un.` }),
           p.avisos.map(a => el("span", { class: `etiqueta ${NOME_AVISO[a][1]}`, text: NOME_AVISO[a][0] }))),
         el("p", { class: "suave", text: [
-          `Mínimo ${p.estoqueMinimo}`, `Preço ${reais(p.precoCentavos)}`,
+          `Mínimo ${p.estoqueMinimo}`, p.usoInterno ? "Não é vendido" : `Preço ${reais(p.precoCentavos)}`,
           `Custo médio ${p.custoMedioCentavos ? reais(p.custoMedioCentavos) : "—"}`,
           p.margemBp === null ? null : `Margem ${pct(p.margemBp)}`,
           p.validade ? `Validade ${dataBR(p.validade)}` : null
         ].filter(Boolean).join(" · ") }),
         el("div", { class: "item-acoes" },
           botao("Entrada", () => janelaEntrada(p), "pequeno principal"),
+          p.usoInterno ? botao("Usei (dar baixa)", () => janelaAjuste(p, motivosAjuste, "uso_interno"), "pequeno") : null,
           botao("Ajuste", () => janelaAjuste(p, motivosAjuste), "pequeno"),
           botao("Histórico", () => janelaHistorico(p), "pequeno")))))
-      : el("p", { class: "vazio", text: "Nenhum produto cadastrado. Cadastre em Produtos." }));
+      : el("p", { class: "vazio", text: "Nada no estoque ainda. Cadastre um material de uso aqui (+ Material de uso) ou um produto para vender em Produtos." }));
+}
+
+// Material de uso da barbearia (lâminas, cremes…): entra no estoque, não é vendido.
+function janelaMaterial() {
+  return abrirJanela("Novo material de uso", [
+    el("p", { class: "suave", text: "Para controlar o que a barbearia usa no dia a dia. Não aparece para vender." }),
+    campo("Nome do material", { name: "mNome", required: true, minlength: "2", maxlength: "80", autocomplete: "off", placeholder: "Ex.: Lâmina descartável" }),
+    el("div", { class: "lado-a-lado" },
+      campo("Quantidade que já tem (opcional)", { name: "mQtd", type: "number", min: "0", inputmode: "numeric" }),
+      campo("Custo de cada um (R$)", { name: "mCusto", inputmode: "decimal" })),
+    el("div", { class: "lado-a-lado" },
+      campo("Avisar quando ficar abaixo de", { name: "mMin", type: "number", min: "0", inputmode: "numeric", value: "0" }),
+      campo("Validade (opcional)", { name: "mVal", type: "date" })),
+    campo("Código (opcional)", { name: "mCod", maxlength: "40", autocomplete: "off" })
+  ], {
+    ok: "Cadastrar material",
+    aoConfirmar: async f => {
+      const q = parseInt(f.mQtd.value || "0", 10);
+      let estoqueInicial;
+      if (q > 0) {
+        const c = paraCentavos(f.mCusto.value || "0");
+        if (c === null) throw new Error("Custo inválido. Exemplo: 0,35");
+        estoqueInicial = { quantidade: q, custoUnitCentavos: c };
+      }
+      await api("/estoque/material", { metodo: "POST", corpo: { nome: f.mNome.value.trim(), codigo: f.mCod.value.trim() || null,
+        estoqueMinimo: parseInt(f.mMin.value || "0", 10) || 0, validade: f.mVal.value || null, ...(estoqueInicial ? { estoqueInicial } : {}) } });
+      avisar("Material cadastrado no estoque.");
+      telaEstoque();
+    }
+  });
 }
 
 function janelaEntrada(p) {
@@ -2737,10 +2772,10 @@ function janelaEntrada(p) {
   });
 }
 
-function janelaAjuste(p, motivos) {
-  return abrirJanela(`Ajuste de ${p.nome}`, [
+function janelaAjuste(p, motivos, motivoPadrao = null) {
+  return abrirJanela(motivoPadrao === "uso_interno" ? `Usei ${p.nome}` : `Ajuste de ${p.nome}`, [
     el("p", { class: "suave", text: `Estoque atual: ${p.saldo}. Perda, vencimento, quebra e uso interno são saídas.` }),
-    campo("Motivo", { tag: "select", name: "motivoAj", opcoes: Object.entries(motivos) }),
+    campo("Motivo", { tag: "select", name: "motivoAj", opcoes: Object.entries(motivos), valor: motivoPadrao }),
     campo("Quantidade", { name: "qtd", type: "number", min: "1", inputmode: "numeric", required: true }),
     caixaMarcar("É entrada (só para correção de contagem)", { name: "entra" }),
     campo("Observação (opcional)", { name: "obsAj", maxlength: "200" })
@@ -3381,7 +3416,16 @@ function janelaEditarConta(c) {
 }
 
 async function telaContas() {
-  const { contas } = await api("/contas");
+  const [{ contas }, { produtos: itensEstoque }] = await Promise.all([api("/contas"), api("/estoque")]);
+  const doEstoque = itensEstoque.filter(p => p.ativo);
+  // Despesa que já lança o material/produto no estoque (pedido de 16/11/2026): custo de cada = valor ÷ quantidade.
+  const blocoEst = el("fieldset", { class: "servicos-escolha", "data-teste": "conta-estoque", hidden: true },
+    el("legend", { text: "Lançar no estoque" }),
+    doEstoque.length
+      ? [campo("Material ou produto", { tag: "select", name: "estProd", opcoes: doEstoque.map(p => [p.id, `${p.nome}${p.usoInterno ? " (uso da barbearia)" : ""} · tem ${p.saldo}`]) }),
+        campo("Quantidade que chegou", { name: "estQtd", type: "number", min: "1", inputmode: "numeric" }),
+        el("p", { class: "suave", "data-teste": "custo-unidade", text: "" })]
+      : el("p", { class: "suave", text: "Nenhum material ou produto no estoque. Cadastre primeiro em Estoque → + Material de uso (ou em Produtos)." }));
   const form = el("form", { class: "cartao" },
     el("h3", { text: "Nova conta" }),
     campo("Descrição", { name: "desc", required: true, maxlength: "100" }),
@@ -3390,14 +3434,31 @@ async function telaContas() {
       campo("Valor (R$)", { name: "valor", inputmode: "decimal", required: true })),
     campo("Vencimento", { name: "venc", type: "date", required: true, value: hojeLocal() }),
     caixaMarcar("Recorrente (todo mês)", { name: "rec" }),
+    caixaMarcar("É compra de material/produto: lançar no estoque", { name: "lancaEst" }),
+    blocoEst,
     el("button", { type: "submit", class: "botao principal", text: "Salvar conta" }));
+  const custoUnidade = () => {
+    const out = blocoEst.querySelector("[data-teste=custo-unidade]");
+    if (!out) return;
+    const v = paraCentavos(form.valor.value || ""), q = parseInt(form.estQtd?.value || "0", 10);
+    out.textContent = v && q > 0 ? `Custo de cada unidade: ${reais(Math.round(v / q))} (entra no estoque com esse custo).` : "";
+  };
+  form.addEventListener("input", custoUnidade);
+  form.addEventListener("change", () => { blocoEst.hidden = !form.lancaEst.checked; if (form.lancaEst.checked) form.rec.checked = false; custoUnidade(); });
   form.addEventListener("submit", ev => {
     ev.preventDefault();
     enviar(form, async () => {
       const v = paraCentavos(form.valor.value);
       if (!v) throw new Error("Valor inválido. Exemplo: 1500,00");
-      await api("/contas", { metodo: "POST", corpo: { descricao: form.desc.value, categoria: form.cat.value, valorCentavos: v, vencimento: form.venc.value, recorrente: form.rec.checked } });
-      avisar("Conta cadastrada."); telaContas();
+      let estoque;
+      if (form.lancaEst.checked) {
+        if (!doEstoque.length) throw new Error("Cadastre o material primeiro em Estoque → + Material de uso.");
+        const q = parseInt(form.estQtd.value, 10);
+        if (!q || q < 1) throw new Error("Informe a quantidade que chegou.");
+        estoque = { produtoId: form.estProd.value, quantidade: q };
+      }
+      await api("/contas", { metodo: "POST", corpo: { descricao: form.desc.value, categoria: form.cat.value, valorCentavos: v, vencimento: form.venc.value, recorrente: form.rec.checked, ...(estoque ? { estoque } : {}) } });
+      avisar(estoque ? "Conta cadastrada e material lançado no estoque." : "Conta cadastrada."); telaContas();
     });
   });
   const lista = contas.length
@@ -3406,6 +3467,7 @@ async function telaContas() {
         el("span", { class: `etiqueta ${STATUS_CONTA[c.status][1]}`, text: STATUS_CONTA[c.status][0] })),
       el("p", { class: "suave", text: [NOME_CATEGORIA[c.categoria], `vence ${dataBR(c.vencimento)}`, c.recorrente ? "mensal" : null,
         c.pagoEm ? `paga em ${dataBR(c.pagoEm)}${c.pagoComCaixa ? " com dinheiro do caixa" : ""}` : null, c.motivoCancelamento].filter(Boolean).join(" · ") }),
+      c.estoque ? el("p", { class: "suave", "data-teste": "conta-no-estoque", text: `+${c.estoque.quantidade} ${c.estoque.produto} no estoque${c.situacao === "cancelada" ? " (devolvido ao cancelar)" : ""}` }) : null,
       c.situacao === "paga" ? el("div", { class: "item-acoes" }, botao("Editar", () => janelaEditarConta(c), "pequeno")) : null,
       c.situacao === "aberta" ? el("div", { class: "item-acoes" },
         botao("Editar", () => janelaEditarConta(c), "pequeno"),
@@ -3719,7 +3781,7 @@ async function telaServicos() {
 
 // PRODUTOS
 async function telaProdutos() {
-  const { produtos } = await api("/produtos");
+  const produtos = (await api("/produtos")).produtos.filter(p => !p.usoInterno);   // material de uso fica só em Estoque
   if (!gestao()) {
     mostrar(cabecalho("Produtos", "Preços para consulta", usuario.perfil === "caixa" ? "#/caixa" : "#/inicio"),
       produtos.length
