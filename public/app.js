@@ -930,7 +930,8 @@ function blocoPlanos(info) {
 async function telaInicio() {
   const info = await carregarPlanos();
   const { alterna, area } = blocoPlanos(info);
-  const duvidas = AJUDA().duvidas.filter(d => LP_DUVIDAS.includes(d.p));
+  const todas = AJUDA().duvidas;
+  const duvidas = LP_DUVIDAS.map(q => todas.find(d => d.p === q)).filter(Boolean).slice(0, 4);
   const contato = info.contato || {};
   const whats = contato.whatsapp ? `https://wa.me/55${contato.whatsapp}?text=${encodeURIComponent("Olá! Quero conhecer o 4blade para a minha barbearia.")}` : null;
   const cta = (classe = "") => el("div", { class: `lp-acoes ${classe}` },
