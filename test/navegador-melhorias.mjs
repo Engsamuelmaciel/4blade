@@ -371,7 +371,7 @@ async function rodar(tela) {
     await page.check('[data-destino="Gil Fila Fictício"] input');
     await page.check('[data-destino="Fábio Fixo Fictício"] input');
     // mensagem pronta também para clientes cadastrados (sem horário)
-    await page.selectOption("#env-modelo", "pronta:saudade");
+    await page.click('#env-modelo [data-modelo="pronta:saudade"]');
     assert.match(await page.inputValue("#env-texto"), /^Olá, \{cliente\}! Faz tempo/);
     await print("mensagem-pronta-cadastrados", false);
     await page.click("[data-teste=enviar-mensagem] button[type=submit]");

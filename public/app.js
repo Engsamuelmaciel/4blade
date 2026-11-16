@@ -3822,17 +3822,26 @@ async function blocoEnviarMensagem(modelos, campos) {
   atualizarContador();
   const usar = tipo => { const m = modelos.find(x => x.tipo === tipo); if (m) { textoEl.value = m.texto; textoEl.focus(); } };
   // Mensagens prontas: servem para qualquer cliente (só {cliente} e {barbearia}); os modelos da agenda só para clientes do dia.
-  const escolhaModelo = el("select", { id: "env-modelo" },
-    el("option", { value: "", text: "Escrever do zero" }),
-    doDia ? el("optgroup", { label: "Modelos da agenda (com data e hora)" },
-      [["confirmacao", "Confirmação de horário"], ["lembrete", "Lembrete"], ["proposta", "Proposta de horário"]].map(([v, t]) => el("option", { value: v, text: t }))) : null,
-    el("optgroup", { label: "Mensagens prontas" },
-      Object.entries(MENSAGENS_PRONTAS).map(([v, [t]]) => el("option", { value: `pronta:${v}`, text: t }))));
-  escolhaModelo.addEventListener("change", () => {
-    const v = escolhaModelo.value;
-    if (v.startsWith("pronta:")) { textoEl.value = MENSAGENS_PRONTAS[v.slice(7)][1]; textoEl.focus(); }
-    else if (v) usar(v);
-  });
+  // Escolha por botões em dois grupos (no celular a lista suspensa ficava confusa).
+  const opcoesModelo = [];
+  const botaoModelo = (valor, texto, aplicar) => {
+    const b = el("button", { type: "button", class: "chip-modelo", "data-modelo": valor, "aria-pressed": "false", text: texto, onclick: () => {
+      opcoesModelo.forEach(o => { o.classList.toggle("ativo", o === b); o.setAttribute("aria-pressed", String(o === b)); });
+      aplicar();
+    } });
+    opcoesModelo.push(b);
+    return b;
+  };
+  const grupoModelo = (titulo, botoes) => el("div", { class: "grupo-modelos" }, el("span", { class: "grupo-modelos-tit", text: titulo }), el("div", { class: "chips-modelo" }, botoes));
+  const escolhaModelo = el("div", { id: "env-modelo", class: "escolha-modelos", role: "group", "aria-labelledby": "env-modelo-tit" },
+    doDia ? grupoModelo("Do horário marcado (com data e hora)",
+      [["confirmacao", "Confirmação"], ["lembrete", "Lembrete"], ["proposta", "Proposta de horário"]].map(([v, t]) => botaoModelo(v, t, () => usar(v)))) : null,
+    grupoModelo("Para qualquer cliente",
+      Object.entries(MENSAGENS_PRONTAS).map(([v, [t, texto]]) => botaoModelo(`pronta:${v}`, t, () => { textoEl.value = texto; textoEl.focus(); }))),
+    el("button", { type: "button", class: "botao pequeno limpar-modelo", text: "Escrever do zero", onclick: () => {
+      opcoesModelo.forEach(o => { o.classList.remove("ativo"); o.setAttribute("aria-pressed", "false"); });
+      textoEl.value = ""; textoEl.focus();
+    } }));
   const camposUsaveis = doDia ? campos : campos.filter(c => c === "cliente" || c === "barbearia");
   const fila = el("div", { class: "fila-envio", "data-teste": "fila-envio" });
   const form = el("form", { class: "cartao enviar-mensagem", "data-teste": "enviar-mensagem" },
@@ -3843,7 +3852,7 @@ async function blocoEnviarMensagem(modelos, campos) {
         : el("div", { class: "campo" }, el("label", { for: "env-filtro", text: "Buscar" }), filtro),
       el("div", { class: "campo alinhar-fim" }, selecionaveis.length ? todos : null)),
     lista, contador,
-    el("div", { class: "campo" }, el("label", { for: "env-modelo", text: "Escolher uma mensagem pronta (opcional)" }), escolhaModelo),
+    el("div", { class: "campo" }, el("span", { id: "env-modelo-tit", class: "rotulo-campo", text: "Mensagem pronta (opcional): toque para usar" }), escolhaModelo),
     el("div", { class: "campo" }, el("label", { for: "env-texto", text: "Mensagem" }), textoEl),
     el("div", { class: "chips" }, camposUsaveis.map(c => el("button", {
       type: "button", class: "chip", text: `{${c}}`,

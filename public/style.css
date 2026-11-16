@@ -935,3 +935,16 @@ i.marca-saida { background: var(--serie-saida); }
 .fin-navega .fin-titulo { text-transform: none; }
 .grafico-fin .rotulo { font-size: 19px; }
 @media (min-width: 700px) { .grafico-fin .rotulo { font-size: 13px; } .grafico-fin { max-width: 1100px; } }
+
+/* Mensagens: escolha da mensagem pronta por botões em grupos */
+.rotulo-campo { display: block; font-weight: 600; margin-bottom: 6px; font-size: 13.5px; }
+.escolha-modelos { display: grid; gap: 10px; padding: 10px; border: 1px solid var(--borda); border-radius: 10px; background: var(--neutro-2); }
+.grupo-modelos { display: grid; gap: 6px; }
+.grupo-modelos-tit { font-size: 12px; font-weight: 700; color: var(--suave); text-transform: uppercase; letter-spacing: .03em; }
+.chips-modelo { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-modelo { min-height: 36px; padding: 0 12px; border: 1px solid var(--campo-borda); border-radius: 999px; background: var(--cartao); color: var(--texto);
+  font: inherit; font-size: 14px; cursor: pointer; }
+.chip-modelo:hover { border-color: var(--dourado); }
+.chip-modelo.ativo { background: var(--dourado); border-color: var(--dourado); color: var(--sobre-dourado); font-weight: 700; }
+:root[data-tema="escuro"] .chip-modelo.ativo { color: #111317; }
+.escolha-modelos .limpar-modelo { justify-self: start; }
