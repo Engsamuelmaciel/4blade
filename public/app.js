@@ -2598,6 +2598,13 @@ const estadoMensagens = { modelo: null };
 
 // ENVIAR MENSAGEM: escolhe clientes do dia (com telefone), escreve o texto e abre o WhatsApp de cada um, já personalizado.
 let dataEnvioMensagem = null;
+// Mensagens prontas para enviar a clientes (com ou sem horário). Dá para mudar o texto antes de enviar.
+const MENSAGENS_PRONTAS = {
+  saudade: ["Sentimos sua falta", "Olá, {cliente}! Faz tempo que você não passa aqui na {barbearia}. Que tal marcar um horário esta semana? É só responder esta mensagem."],
+  promocao: ["Promoção", "Olá, {cliente}! Temos uma promoção especial na {barbearia} nesta semana. Responda esta mensagem para garantir o seu horário!"],
+  aviso: ["Aviso (feriado ou horário)", "Olá, {cliente}! Aviso da {barbearia}: (escreva aqui o aviso, por exemplo: no feriado estaremos fechados)."],
+  obrigado: ["Agradecimento", "Olá, {cliente}! Obrigado pela preferência na {barbearia}. Esperamos você na próxima!"]
+};
 let origemEnvio = "dia";   // "dia" = clientes com horário no dia; "cadastrados" = qualquer cliente com telefone
 async function blocoEnviarMensagem(modelos, campos) {
   dataEnvioMensagem ||= hojeLocal();
@@ -2642,10 +2649,18 @@ async function blocoEnviarMensagem(modelos, campos) {
   caixas.forEach(c => c.addEventListener("change", atualizarContador));
   atualizarContador();
   const usar = tipo => { const m = modelos.find(x => x.tipo === tipo); if (m) { textoEl.value = m.texto; textoEl.focus(); } };
+  // Mensagens prontas: servem para qualquer cliente (só {cliente} e {barbearia}); os modelos da agenda só para clientes do dia.
   const escolhaModelo = el("select", { id: "env-modelo" },
     el("option", { value: "", text: "Escrever do zero" }),
-    [["confirmacao", "Confirmação de horário"], ["lembrete", "Lembrete"], ["proposta", "Proposta de horário"]].map(([v, t]) => el("option", { value: v, text: t })));
-  escolhaModelo.addEventListener("change", () => { if (escolhaModelo.value) usar(escolhaModelo.value); });
+    doDia ? el("optgroup", { label: "Modelos da agenda (com data e hora)" },
+      [["confirmacao", "Confirmação de horário"], ["lembrete", "Lembrete"], ["proposta", "Proposta de horário"]].map(([v, t]) => el("option", { value: v, text: t }))) : null,
+    el("optgroup", { label: "Mensagens prontas" },
+      Object.entries(MENSAGENS_PRONTAS).map(([v, [t]]) => el("option", { value: `pronta:${v}`, text: t }))));
+  escolhaModelo.addEventListener("change", () => {
+    const v = escolhaModelo.value;
+    if (v.startsWith("pronta:")) { textoEl.value = MENSAGENS_PRONTAS[v.slice(7)][1]; textoEl.focus(); }
+    else if (v) usar(v);
+  });
   const camposUsaveis = doDia ? campos : campos.filter(c => c === "cliente" || c === "barbearia");
   const fila = el("div", { class: "fila-envio", "data-teste": "fila-envio" });
   const form = el("form", { class: "cartao enviar-mensagem", "data-teste": "enviar-mensagem" },
@@ -2656,7 +2671,7 @@ async function blocoEnviarMensagem(modelos, campos) {
         : el("div", { class: "campo" }, el("label", { for: "env-filtro", text: "Buscar" }), filtro),
       el("div", { class: "campo alinhar-fim" }, selecionaveis.length ? todos : null)),
     lista, contador,
-    doDia ? el("div", { class: "campo" }, el("label", { for: "env-modelo", text: "Começar com um modelo (opcional)" }), escolhaModelo) : null,
+    el("div", { class: "campo" }, el("label", { for: "env-modelo", text: "Escolher uma mensagem pronta (opcional)" }), escolhaModelo),
     el("div", { class: "campo" }, el("label", { for: "env-texto", text: "Mensagem" }), textoEl),
     el("div", { class: "chips" }, camposUsaveis.map(c => el("button", {
       type: "button", class: "chip", text: `{${c}}`,

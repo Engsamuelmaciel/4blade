@@ -367,12 +367,15 @@ async function rodar(tela) {
     await page.waitForSelector('[data-destino="Gil Fila Fictício"]');
     await page.check('[data-destino="Gil Fila Fictício"] input');
     await page.check('[data-destino="Fábio Fixo Fictício"] input');
-    await page.fill("#env-texto", "Olá {cliente}! Novidade na {barbearia}.");
+    // mensagem pronta também para clientes cadastrados (sem horário)
+    await page.selectOption("#env-modelo", "pronta:saudade");
+    assert.match(await page.inputValue("#env-texto"), /^Olá, \{cliente\}! Faz tempo/);
+    await print("mensagem-pronta-cadastrados", false);
     await page.click("[data-teste=enviar-mensagem] button[type=submit]");
     await page.waitForSelector("[data-teste=abrir-proximo]");
     for (let i = 0; i < 2; i++) {
       const [abaN] = await Promise.all([page.context().waitForEvent("page"), page.click("[data-teste=abrir-proximo]")]);
-      assert.match(decodeURIComponent(abaN.url()), /Novidade na/);
+      assert.match(decodeURIComponent(abaN.url()), /Faz tempo que você não passa aqui/);
       await abaN.close();
     }
     await page.waitForSelector("[data-teste=progresso-envio] >> text=Pronto: WhatsApp aberto para os 2");
