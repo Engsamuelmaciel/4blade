@@ -143,7 +143,7 @@ async function rodar(tela) {
     await page.fill("#c-troco", "100,00");
     await print("caixa-abrir");
     await page.click("button:has-text('Abrir caixa')");
-    await page.waitForSelector("text=Nenhuma entrada ainda");
+    await page.waitForSelector("text=Nenhum lançamento ainda");
     await sair();
 
     // ---------- BARBEIRO: marca, bloqueia, envia lembrete, finaliza com valor alterado ----------

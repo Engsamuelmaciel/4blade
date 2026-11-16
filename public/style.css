@@ -380,6 +380,23 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
   .acoes-agenda { margin-left: auto; }
 }
 
+/* ---------- E3: caixa completo e estoque ---------- */
+.acoes-caixa { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+.conferencia { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 10px 0; }
+.conferencia dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.conferencia .forte { font-weight: 800; font-size: 19px; border-top: 1px solid var(--borda); padding-top: 4px; }
+.ok-texto { color: var(--ok); }
+.erro-texto { color: var(--erro); }
+.destaque-texto { color: #9a3412; font-weight: 600; }
+.fechamento { border-left: 6px solid var(--primaria); }
+.saldo { font-weight: 800; font-size: 18px; }
+.item-link { display: block; color: inherit; text-decoration: none; }
+.item.mov-sangria { border-left-color: var(--erro); }
+.item.mov-suprimento { border-left-color: var(--ok); }
+.item.mov-venda { border-left-color: #0369a1; }
+.lista.historico .item { padding: 8px 12px; }
+.linha-servico input[type=number] { min-height: 44px; text-align: right; }
+
 /* ---------- computador ---------- */
 @media (min-width: 900px) {
   .duas-colunas { display: grid; grid-template-columns: 3fr 2fr; gap: 20px; align-items: start; }

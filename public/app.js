@@ -348,10 +348,11 @@ function telaInicio() {
   const itens = gestao()
     ? [
       ["#/agenda", "Agenda", "Todos os profissionais"],
-      ["#/caixa", "Caixa", "Abertura e entradas do dia"],
+      ["#/caixa", "Caixa", "Entradas, vendas e fechamento"],
       ["#/equipe", "Equipe", "Usuários, comissões e horários"],
       ["#/servicos", "Serviços", "Preços e duração"],
-      ["#/produtos", "Produtos", "Preço, custo e margem"],
+      ["#/estoque", "Estoque", "Entradas, ajustes e inventário"],
+      ["#/produtos", "Produtos", "Cadastro, preço e validade"],
       ["#/clientes", "Clientes", "Cadastro com aceite LGPD"],
       ["#/funcionamento", "Funcionamento", "Dias, horários e datas fechadas"],
       ["#/mensagens", "Mensagens", "Modelos para o WhatsApp"]
@@ -530,6 +531,8 @@ function cartaoAgendamento(a, mostrarNome) {
           avisar("Horário cancelado."); telaAgenda();
         }, "Cancelar horário"), "pequeno perigo")
       ] : null,
+      a.situacao === "finalizado" || a.situacao === "agendado"
+        ? botao("Vender produto", () => janelaVenda({ agendamento: a, aoTerminar: telaAgenda }), "pequeno") : null,
       a.situacao === "finalizado" ? botao("Reabrir", () => pedirMotivo("Reabrir atendimento", "Estorna a entrada no caixa e a comissão, e o horário volta para agendado. Fica registrado.", async motivo => {
         await api("/agenda/reabrir", { metodo: "POST", corpo: { id: a.id, motivo } });
         avisar("Atendimento reaberto."); telaAgenda();
@@ -806,13 +809,200 @@ async function janelaHorario(u) {
   });
 }
 
-// ---------- CAIXA (abertura mínima + entradas do dia) ----------
+// ---------- PAGAMENTO (1 ou 2 formas) — usado na venda ----------
+function blocoPagamento(totalAtual) {
+  const forma1 = campo("Forma de pagamento", { tag: "select", name: "forma1", valor: "pix", opcoes: Object.entries(NOME_FORMA) });
+  const dividir = caixaMarcar("Dividir em 2 formas", { name: "dividir" });
+  const valor1 = campo("Valor na 1ª forma (R$)", { name: "valor1", inputmode: "decimal" });
+  const segunda = el("div", { class: "lado-a-lado" },
+    campo("2ª forma", { tag: "select", name: "forma2", valor: "dinheiro", opcoes: Object.entries(NOME_FORMA) }),
+    el("div", { class: "campo" }, el("label", { text: "Valor na 2ª forma" }), el("p", { class: "valor2", "data-teste": "valor2" })));
+  const atualizar = () => {
+    const d = dividir.querySelector("input").checked;
+    valor1.hidden = !d;
+    segunda.hidden = !d;
+    segunda.querySelector(".valor2").textContent = reais(totalAtual() - (paraCentavos(valor1.querySelector("input").value) ?? 0));
+  };
+  const ler = f => {
+    const t = totalAtual();
+    if (t <= 0) return [];
+    if (!f.dividir.checked) return [{ forma: f.forma1.value, valorCentavos: t }];
+    const v1 = paraCentavos(f.valor1.value);
+    if (v1 === null || v1 <= 0 || v1 >= t) throw new Error("Valor da 1ª forma inválido: precisa ser maior que zero e menor que o total.");
+    return [{ forma: f.forma1.value, valorCentavos: v1 }, { forma: f.forma2.value, valorCentavos: t - v1 }];
+  };
+  return { elementos: [forma1, dividir, valor1, segunda], atualizar, ler };
+}
+
+// ---------- VENDA DE PRODUTO (caixa, gestão ou barbeiro) ----------
+async function janelaVenda({ agendamento = null, aoTerminar } = {}) {
+  const produtos = (await api("/produtos")).produtos.filter(p => (p.disponivel ?? (p.ativo && p.saldo > 0)));
+  if (!produtos.length) { avisar("Nenhum produto com estoque para vender.", "erro"); return; }
+  const linhas = produtos.map(p => {
+    const qtd = el("input", { type: "number", min: "0", max: String(p.saldo ?? 999), step: "1", value: "0", inputmode: "numeric", name: `q-${p.id}`, "aria-label": `Quantidade de ${p.nome}` });
+    return { p, qtd, el: el("div", { class: "linha-servico", "data-venda-produto": p.nome },
+      el("span", { text: `${p.nome} · ${reais(p.precoCentavos)}${p.saldo !== undefined ? ` · estoque ${p.saldo}` : ""}` }), qtd) };
+  });
+  const totalEl = el("p", { class: "total-final", "data-teste": "total-venda" });
+  const total = () => linhas.reduce((t, l) => t + (Math.max(0, parseInt(l.qtd.value, 10) || 0) * l.p.precoCentavos), 0);
+  const pag = blocoPagamento(total);
+  const atualizar = () => { totalEl.textContent = `Total: ${reais(total())}`; pag.atualizar(); };
+  const promessa = abrirJanela(agendamento ? `Vender para ${agendamento.cliente.nome}` : "Vender produto", [
+    el("p", { class: "suave", text: "Informe a quantidade de cada produto. A venda baixa o estoque na hora." }),
+    el("div", { class: "lista-servicos" }, linhas.map(l => l.el)),
+    totalEl, ...pag.elementos
+  ], {
+    ok: "Registrar venda",
+    aoConfirmar: async f => {
+      const itens = linhas.map(l => ({ produtoId: l.p.id, quantidade: parseInt(l.qtd.value, 10) || 0 })).filter(i => i.quantidade > 0);
+      if (!itens.length) throw new Error("Informe a quantidade de pelo menos um produto.");
+      await api("/vendas", {
+        metodo: "POST",
+        corpo: {
+          itens, pagamentos: pag.ler(f),
+          ...(agendamento ? { agendamentoId: agendamento.id, vendedorId: agendamento.barbeiroId } : {})
+        }
+      });
+      avisar(`Venda registrada: ${reais(total())}.`);
+      aoTerminar?.();
+    }
+  });
+  janela.querySelector("form").addEventListener("input", atualizar);
+  janela.querySelector("form").addEventListener("change", atualizar);
+  atualizar();
+  return promessa;
+}
+
+// ---------- CAIXA ----------
 let timerCaixa;
-async function telaCaixa() {
+const NOME_TIPO_CAIXA = {
+  atendimento: "Atendimento", estorno_atendimento: "Estorno (atendimento reaberto)", venda: "Venda",
+  estorno_venda: "Estorno (venda cancelada)", sangria: "Sangria", suprimento: "Suprimento"
+};
+
+function listaCaixa(c, recarregar) {
+  if (!c.lancamentos.length) return el("p", { class: "vazio", text: "Nenhum lançamento ainda. Atendimentos finalizados e vendas aparecem aqui na hora." });
+  return el("ul", { class: "lista" }, c.lancamentos.map(l => el("li", {
+    class: `item mov-${l.tipo} ${l.valorCentavos < 0 ? "estorno" : ""} ${l.vendaCancelada ? "inativo" : ""}`,
+    "data-lancamento": l.cliente || l.descricao || l.tipo
+  },
+    el("div", { class: "item-topo" },
+      el("strong", { text: [l.hora, l.cliente || NOME_TIPO_CAIXA[l.tipo]].filter(Boolean).join(" ") }),
+      el("span", { class: `preco ${l.valorCentavos < 0 ? "negativo" : ""}`, text: reais(l.valorCentavos) })),
+    el("p", { class: "suave", text: [
+      l.cliente ? NOME_TIPO_CAIXA[l.tipo] : null, l.barbeiro, l.descricao,
+      l.tipo === "sangria" || l.tipo === "suprimento" ? null : NOME_FORMA[l.formaAtual]
+    ].filter(Boolean).join(" · ") }),
+    l.corrigido ? el("p", { class: "suave destaque-texto", text: `Forma corrigida: ${NOME_FORMA[l.forma]} → ${NOME_FORMA[l.formaAtual]}` }) : null,
+    l.vendaCancelada && l.tipo === "venda" ? el("p", { class: "suave", text: "Venda cancelada" }) : null,
+    l.podeCorrigir || l.podeCancelarVenda ? el("div", { class: "item-acoes" },
+      l.podeCorrigir ? botao("Corrigir forma", () => abrirJanela("Corrigir forma de pagamento", [
+        el("p", { text: `${reais(l.valorCentavos)} está em ${NOME_FORMA[l.formaAtual]}. Qual a forma certa?` }),
+        campo("Forma certa", { tag: "select", name: "nova", opcoes: Object.entries(NOME_FORMA).filter(([f]) => f !== l.formaAtual) }),
+        campo("Motivo", { name: "motivo", required: true, minlength: "3" })
+      ], {
+        ok: "Corrigir",
+        aoConfirmar: async f => {
+          await api("/caixa/corrigir-forma", { metodo: "POST", corpo: { id: l.id, novaForma: f.nova.value, motivo: f.motivo.value } });
+          avisar("Forma corrigida."); recarregar();
+        }
+      }), "pequeno") : null,
+      l.podeCancelarVenda ? botao("Cancelar venda", () => pedirMotivo("Cancelar venda", "O estoque volta e a entrada é estornada. Nada é apagado.", async motivo => {
+        await api("/vendas/cancelar", { metodo: "POST", corpo: { id: l.vendaId, motivo } });
+        avisar("Venda cancelada."); recarregar();
+      }, "Cancelar venda"), "pequeno perigo") : null) : null)));
+}
+
+function resumoTotais(c) {
+  const t = c.totais;
+  return [
+    el("div", { class: "resumo-caixa" },
+      el("div", { class: "vaga" }, el("strong", { text: reais(c.caixa.trocoCentavos) }), el("span", { text: "Troco inicial" })),
+      el("div", { class: "vaga" }, el("strong", { "data-teste": "entradas", text: reais(t.entradasCentavos) }), el("span", { text: "Entradas (bruto)" })),
+      el("div", { class: "vaga" }, el("strong", { "data-teste": "esperado", text: reais(t.dinheiroEsperadoCentavos) }), el("span", { text: "Dinheiro na gaveta" }))),
+    el("div", { class: "formas" },
+      Object.entries(t.porForma).map(([f, v]) => el("span", { class: "etiqueta", text: `${NOME_FORMA[f]}: ${reais(v)}` })),
+      el("span", { class: "etiqueta", text: `Atendimentos: ${reais(t.atendimentosCentavos)}` }),
+      el("span", { class: "etiqueta", text: `Vendas: ${reais(t.vendasCentavos)}` }),
+      t.sangriasCentavos ? el("span", { class: "etiqueta vermelha", text: `Sangrias: ${reais(t.sangriasCentavos)}` }) : null,
+      t.suprimentosCentavos ? el("span", { class: "etiqueta verde", text: `Suprimentos: ${reais(t.suprimentosCentavos)}` }) : null)
+  ];
+}
+
+function janelaMovimento(tipo, recarregar) {
+  return abrirJanela(tipo === "sangria" ? "Sangria (retirada de dinheiro)" : "Suprimento (reforço de dinheiro)", [
+    campo("Valor (R$)", { name: "valor", inputmode: "decimal", required: true }),
+    campo("Motivo", { name: "motivo", required: true, minlength: "3", placeholder: tipo === "sangria" ? "Ex.: depósito no banco" : "Ex.: troco extra" })
+  ], {
+    ok: "Registrar",
+    aoConfirmar: async f => {
+      const v = paraCentavos(f.valor.value);
+      if (!v) throw new Error("Valor inválido. Exemplo: 50,00");
+      await api("/caixa/movimento", { metodo: "POST", corpo: { tipo, valorCentavos: v, motivo: f.motivo.value } });
+      avisar(tipo === "sangria" ? "Sangria registrada." : "Suprimento registrado.");
+      recarregar();
+    }
+  });
+}
+
+function janelaFechar(c, recarregar, data = null) {
+  const t = c.totais;
+  const dif = el("p", { class: "total-final", "data-teste": "diferenca" });
+  const promessa = abrirJanela("Fechar o caixa", [
+    el("dl", { class: "conferencia" },
+      el("dt", { text: "Troco inicial" }), el("dd", { text: reais(c.caixa.trocoCentavos) }),
+      el("dt", { text: "Entradas em dinheiro" }), el("dd", { text: reais(t.porForma.dinheiro) }),
+      el("dt", { text: "Suprimentos" }), el("dd", { text: `+ ${reais(t.suprimentosCentavos)}` }),
+      el("dt", { text: "Sangrias" }), el("dd", { text: `− ${reais(t.sangriasCentavos)}` }),
+      el("dt", { class: "forte", text: "Dinheiro esperado" }), el("dd", { class: "forte", text: reais(t.dinheiroEsperadoCentavos) })),
+    el("p", { class: "suave", text: `Pix ${reais(t.porForma.pix)} · Débito ${reais(t.porForma.debito)} · Crédito ${reais(t.porForma.credito)} (conferir na maquininha/banco).` }),
+    campo("Dinheiro contado na gaveta (R$)", { name: "contado", inputmode: "decimal", required: true }),
+    dif,
+    campo("Observação (obrigatória se houver diferença)", { name: "obs", maxlength: "300" })
+  ], {
+    ok: "Fechar caixa", perigo: true,
+    aoConfirmar: async f => {
+      const contado = paraCentavos(f.contado.value);
+      if (contado === null) throw new Error("Valor contado inválido. Exemplo: 248,50");
+      await api("/caixa/fechar", { metodo: "POST", corpo: { contadoCentavos: contado, observacao: f.obs.value || null, ...(data ? { data } : {}) } });
+      avisar("Caixa fechado.");
+      recarregar();
+    }
+  });
+  const atualizar = () => {
+    const v = paraCentavos(janela.querySelector("[name=contado]").value);
+    if (v === null) { dif.textContent = ""; return; }
+    const d = v - t.dinheiroEsperadoCentavos;
+    dif.textContent = d === 0 ? "Sem diferença" : d > 0 ? `Sobra de ${reais(d)}` : `Falta de ${reais(-d)}`;
+    dif.className = `total-final ${d === 0 ? "ok-texto" : "erro-texto"}`;
+  };
+  janela.querySelector("form").addEventListener("input", atualizar);
+  return promessa;
+}
+
+function blocoFechamento(c) {
+  const f = c.fechamento;
+  return el("div", { class: "cartao fechamento", "data-tela": "caixa-fechado" },
+    el("p", { class: "grande", text: "Caixa fechado" }),
+    el("dl", { class: "conferencia" },
+      el("dt", { text: "Dinheiro esperado" }), el("dd", { text: reais(f.esperadoCentavos) }),
+      el("dt", { text: "Dinheiro contado" }), el("dd", { text: reais(f.contadoCentavos) }),
+      el("dt", { class: "forte", text: "Diferença" }),
+      el("dd", { class: `forte ${f.diferencaCentavos ? "erro-texto" : "ok-texto"}`, "data-teste": "diferenca-fechada",
+        text: f.diferencaCentavos === 0 ? "Sem diferença" : f.diferencaCentavos > 0 ? `Sobra de ${reais(f.diferencaCentavos)}` : `Falta de ${reais(-f.diferencaCentavos)}` })),
+    f.observacao ? el("p", { class: "suave", text: `Observação: ${f.observacao}` }) : null,
+    el("p", { class: "suave", text: `Fechado por ${f.fechadoPor} às ${horaLocal(f.fechadoEm)}` }));
+}
+
+async function telaCaixa(dataHistorico = null) {
   clearTimeout(timerCaixa);
-  const c = await api("/caixa/hoje");
-  const voltar = gestao() ? "#/inicio" : null;
+  const c = dataHistorico ? await api(`/caixa/dia?data=${dataHistorico}`) : await api("/caixa/hoje");
+  const recarregar = () => telaCaixa(dataHistorico);
+  const voltar = dataHistorico ? "#/caixa-historico" : gestao() ? "#/inicio" : null;
+  const linkHistorico = gestao() && !dataHistorico ? el("a", { class: "botao pequeno", href: "#/caixa-historico", text: "Caixas de outros dias" }) : null;
+
   if (!c.caixa) {
+    if (dataHistorico) { mostrar(cabecalho("Caixa", dataBR(dataHistorico), voltar), el("p", { class: "vazio", text: "Não houve caixa nesse dia." })); return; }
     const form = el("form", { class: "cartao" },
       el("h3", { text: "Abrir o caixa de hoje" }),
       campo("Troco inicial (R$)", { name: "troco", inputmode: "decimal", required: true, placeholder: "100,00" }),
@@ -828,31 +1018,169 @@ async function telaCaixa() {
       });
     });
     mostrar(cabecalho("Caixa", `${dataBR(c.data)} · ${usuario.barbearia.nome}`, voltar),
-      el("p", { class: "info", text: "Enquanto o caixa não for aberto, os barbeiros não conseguem finalizar atendimentos." }),
-      el("section", { class: "estreito-esq", "data-tela": "caixa" }, form));
+      el("p", { class: "info", text: "Enquanto o caixa não for aberto, ninguém consegue finalizar atendimentos nem vender." }),
+      el("section", { class: "estreito-esq", "data-tela": "caixa" }, form), linkHistorico);
     return;
   }
-  const t = c.totais;
+
+  const aberto = c.caixa.situacao === "aberto";
+  const ehHoje = !dataHistorico || dataHistorico === hojeLocal();
   mostrar(
-    cabecalho("Caixa", `${dataBR(c.data)} · aberto por ${c.caixa.abertoPor}`, voltar),
-    el("div", { class: "resumo-caixa", "data-tela": "caixa" },
-      el("div", { class: "vaga" }, el("strong", { text: reais(c.caixa.trocoCentavos) }), el("span", { text: "Troco inicial" })),
-      el("div", { class: "vaga" }, el("strong", { "data-teste": "entradas", text: reais(t.entradasCentavos) }), el("span", { text: "Entradas (bruto)" })),
-      el("div", { class: "vaga" }, el("strong", { text: reais(t.dinheiroEsperadoCentavos) }), el("span", { text: "Dinheiro na gaveta" }))),
-    el("div", { class: "formas" }, Object.entries(t.porForma).map(([f, v]) =>
-      el("span", { class: "etiqueta", text: `${NOME_FORMA[f]}: ${reais(v)}` }))),
-    el("h3", { text: "Entradas do dia" }),
-    c.lancamentos.length
-      ? el("ul", { class: "lista" }, c.lancamentos.map(l => el("li", { class: `item ${l.tipo === "estorno_atendimento" ? "estorno" : ""}`, "data-lancamento": l.cliente || "" },
+    cabecalho(dataHistorico ? `Caixa de ${dataBR(dataHistorico)}` : "Caixa", `${dataBR(c.data)} · aberto por ${c.caixa.abertoPor}`, voltar),
+    el("div", { "data-tela": "caixa" }, resumoTotais(c)),
+    aberto
+      ? el("div", { class: "acoes-caixa" },
+        ehHoje ? botao("Vender produto", () => janelaVenda({ aoTerminar: recarregar }), "principal pequeno") : null,
+        ehHoje ? botao("Sangria", () => janelaMovimento("sangria", recarregar), "pequeno") : null,
+        ehHoje ? botao("Suprimento", () => janelaMovimento("suprimento", recarregar), "pequeno") : null,
+        botao("Fechar caixa", () => janelaFechar(c, recarregar, dataHistorico), "pequeno perigo"))
+      : el("div", {}, blocoFechamento(c),
+        gestao() ? botao("Reabrir caixa", () => pedirMotivo("Reabrir o caixa", "Permite corrigir lançamentos deste dia. Depois, feche de novo.", async motivo => {
+          await api("/caixa/reabrir", { metodo: "POST", corpo: { data: c.data, motivo } });
+          avisar("Caixa reaberto."); recarregar();
+        }, "Reabrir"), "pequeno") : null),
+    c.reaberturas?.length ? el("p", { class: "suave", text: `Reaberto ${c.reaberturas.length}x (último motivo: ${c.reaberturas[0].motivo})` }) : null,
+    el("h3", { text: "Lançamentos do dia" }),
+    listaCaixa(c, recarregar),
+    el("div", { class: "acoes-caixa" }, botao("Atualizar", recarregar, "pequeno"), linkHistorico));
+  if (aberto && !dataHistorico) {
+    timerCaixa = setTimeout(() => { if (location.hash === "#/caixa" && !janela.open) telaCaixa().catch(() => {}); }, 20000);
+  }
+}
+
+async function telaHistoricoCaixa() {
+  const { caixas } = await api("/caixa/historico");
+  mostrar(cabecalho("Caixas de outros dias", "Toque num dia para ver os lançamentos e o fechamento.", "#/caixa"),
+    caixas.length
+      ? el("ul", { class: "lista" }, caixas.map(c => el("li", { class: "item", "data-caixa-dia": c.data },
+        el("a", { class: "item-link", href: `#/caixa-dia/${c.data}` },
+          el("div", { class: "item-topo" },
+            el("strong", { text: `${DIAS[diaDaSemana(c.data)]}, ${dataBR(c.data)}` }),
+            el("span", { class: `etiqueta ${c.situacao === "aberto" ? "amarela" : ""}`, text: c.situacao === "aberto" ? "Aberto" : "Fechado" })),
+          el("p", { class: "suave", text: [
+            `Entradas ${reais(c.entradasCentavos)}`,
+            c.diferencaCentavos === null ? null : c.diferencaCentavos === 0 ? "sem diferença" : c.diferencaCentavos > 0 ? `sobra ${reais(c.diferencaCentavos)}` : `falta ${reais(-c.diferencaCentavos)}`
+          ].filter(Boolean).join(" · ") })))))
+      : el("p", { class: "vazio", text: "Nenhum caixa ainda." }));
+}
+
+// ---------- ESTOQUE (gestão) ----------
+const NOME_AVISO = { repor: ["Repor", "vermelha"], vencendo: ["Vencendo", "amarela"], vencido: ["Vencido", "vermelha"] };
+
+async function telaEstoque() {
+  const { produtos, motivosAjuste } = await api("/estoque");
+  const ativos = produtos.filter(p => p.ativo);
+  const avisos = ativos.filter(p => p.avisos.length);
+  mostrar(
+    cabecalho("Estoque", "Entradas recalculam o custo médio. Vendas baixam sozinhas; cancelamentos devolvem."),
+    avisos.length ? el("p", { class: "info", "data-teste": "avisos-estoque", text: `Atenção: ${avisos.map(p => `${p.nome} (${p.avisos.map(a => NOME_AVISO[a][0].toLowerCase()).join(", ")})`).join(" · ")}` }) : null,
+    el("div", { class: "acoes-caixa" }, botao("Inventário (contagem)", () => janelaInventario(ativos), "pequeno")),
+    ativos.length
+      ? el("ul", { class: "lista" }, ativos.map(p => el("li", { class: "item", "data-estoque": p.nome },
         el("div", { class: "item-topo" },
-          el("strong", { text: `${l.hora || ""} ${l.cliente || ""}`.trim() }),
-          el("span", { class: `preco ${l.valorCentavos < 0 ? "negativo" : ""}`, text: reais(l.valorCentavos) })),
-        el("p", { class: "suave", text: [l.barbeiro, l.servicos, NOME_FORMA[l.forma], l.tipo === "estorno_atendimento" ? "ESTORNO (atendimento reaberto)" : null].filter(Boolean).join(" · ") }))))
-      : el("p", { class: "vazio", text: "Nenhuma entrada ainda. Os atendimentos finalizados aparecem aqui na hora." }),
-    botao("Atualizar", telaCaixa, ""),
-    el("p", { class: "suave", text: "Venda de produtos, sangria, suprimento e fechamento do caixa chegam na próxima entrega." }));
-  // Atualiza sozinho a cada 20 s enquanto a tela estiver aberta.
-  timerCaixa = setTimeout(() => { if (location.hash === "#/caixa" && !janela.open) telaCaixa().catch(() => {}); }, 20000);
+          el("strong", { text: p.nome }),
+          el("span", { class: "saldo", "data-teste": "saldo", text: `${p.saldo} un.` }),
+          p.avisos.map(a => el("span", { class: `etiqueta ${NOME_AVISO[a][1]}`, text: NOME_AVISO[a][0] }))),
+        el("p", { class: "suave", text: [
+          `Mínimo ${p.estoqueMinimo}`, `Preço ${reais(p.precoCentavos)}`,
+          `Custo médio ${p.custoMedioCentavos ? reais(p.custoMedioCentavos) : "—"}`,
+          p.margemBp === null ? null : `Margem ${pct(p.margemBp)}`,
+          p.validade ? `Validade ${dataBR(p.validade)}` : null
+        ].filter(Boolean).join(" · ") }),
+        el("div", { class: "item-acoes" },
+          botao("Entrada", () => janelaEntrada(p), "pequeno principal"),
+          botao("Ajuste", () => janelaAjuste(p, motivosAjuste), "pequeno"),
+          botao("Histórico", () => janelaHistorico(p), "pequeno")))))
+      : el("p", { class: "vazio", text: "Nenhum produto cadastrado. Cadastre em Produtos." }));
+}
+
+function janelaEntrada(p) {
+  return abrirJanela(`Entrada de ${p.nome}`, [
+    el("p", { class: "suave", text: `Estoque atual: ${p.saldo} · custo médio ${p.custoMedioCentavos ? reais(p.custoMedioCentavos) : "—"}` }),
+    el("div", { class: "lado-a-lado" },
+      campo("Quantidade", { name: "qtd", type: "number", min: "1", inputmode: "numeric", required: true }),
+      campo("Custo unitário (R$)", { name: "custo", inputmode: "decimal", required: true })),
+    campo("Fornecedor (opcional)", { name: "forn", maxlength: "80", autocomplete: "off" }),
+    campo("Validade (opcional)", { name: "val", type: "date" })
+  ], {
+    ok: "Registrar entrada",
+    aoConfirmar: async f => {
+      const custo = paraCentavos(f.custo.value);
+      if (custo === null) throw new Error("Custo inválido. Exemplo: 22,50");
+      const r = await api("/estoque/entrada", { metodo: "POST", corpo: { produtoId: p.id, quantidade: parseInt(f.qtd.value, 10), custoUnitCentavos: custo, fornecedor: f.forn.value || null, validade: f.val.value || null } });
+      avisar(`Entrada registrada. Novo custo médio: ${reais(r.produto.custoMedioCentavos)}.`);
+      telaEstoque();
+    }
+  });
+}
+
+function janelaAjuste(p, motivos) {
+  return abrirJanela(`Ajuste de ${p.nome}`, [
+    el("p", { class: "suave", text: `Estoque atual: ${p.saldo}. Perda, vencimento, quebra e uso interno são saídas.` }),
+    campo("Motivo", { tag: "select", name: "motivoAj", opcoes: Object.entries(motivos) }),
+    campo("Quantidade", { name: "qtd", type: "number", min: "1", inputmode: "numeric", required: true }),
+    caixaMarcar("É entrada (só para correção de contagem)", { name: "entra" }),
+    campo("Observação (opcional)", { name: "obsAj", maxlength: "200" })
+  ], {
+    ok: "Registrar ajuste",
+    aoConfirmar: async f => {
+      const q = parseInt(f.qtd.value, 10);
+      if (!q || q < 1) throw new Error("Quantidade inválida.");
+      await api("/estoque/ajuste", { metodo: "POST", corpo: { produtoId: p.id, motivo: f.motivoAj.value, quantidade: f.entra.checked ? q : -q, observacao: f.obsAj.value || null } });
+      avisar("Ajuste registrado.");
+      telaEstoque();
+    }
+  });
+}
+
+const NOME_MOV = { entrada: "Entrada", venda: "Venda", cancelamento_venda: "Venda cancelada", ajuste: "Ajuste", inventario: "Inventário" };
+async function janelaHistorico(p) {
+  const h = await api(`/estoque/historico?produtoId=${p.id}`);
+  return abrirJanela(`Histórico de ${p.nome}`, [
+    el("p", { class: "suave", text: `Saldo atual: ${h.produto.saldo}` }),
+    h.movimentos.length
+      ? el("ul", { class: "lista historico" }, h.movimentos.map(m => el("li", { class: "item" },
+        el("div", { class: "item-topo" },
+          el("strong", { text: NOME_MOV[m.tipo] }),
+          el("span", { class: `preco ${m.quantidade < 0 ? "negativo" : ""}`, text: `${m.quantidade > 0 ? "+" : ""}${m.quantidade}` })),
+        el("p", { class: "suave", text: [
+          dataBR(m.em.slice(0, 10)), m.usuario,
+          m.tipo === "entrada" ? `custo ${reais(m.custoUnitCentavos)} · médio ${reais(m.custoMedioAposCentavos)}` : null,
+          m.fornecedor, m.validade ? `validade ${dataBR(m.validade)}` : null, m.motivo
+        ].filter(Boolean).join(" · ") }))))
+      : el("p", { class: "suave", text: "Sem movimentos." })
+  ], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
+}
+
+function janelaInventario(produtos) {
+  const linhas = produtos.map(p => {
+    const inp = el("input", { type: "number", min: "0", inputmode: "numeric", name: `c-${p.id}`, value: String(p.saldo), "aria-label": `Contado de ${p.nome}` });
+    const dif = el("span", { class: "alterado" });
+    return { p, inp, dif, el: el("div", { class: "linha-servico", "data-inventario": p.nome }, el("span", { text: `${p.nome} (sistema: ${p.saldo})` }), inp, dif) };
+  });
+  const promessa = abrirJanela("Inventário", [
+    el("p", { class: "suave", text: "Digite quanto tem de cada produto na prateleira. O sistema mostra a diferença e ajusta." }),
+    el("div", { class: "lista-servicos" }, linhas.map(l => l.el)),
+    campo("Motivo", { name: "motivoInv", required: true, minlength: "3", value: "Contagem de estoque" })
+  ], {
+    ok: "Ajustar estoque",
+    aoConfirmar: async f => {
+      const itens = linhas.map(l => ({ produtoId: l.p.id, contado: parseInt(l.inp.value, 10) }));
+      if (itens.some(i => !Number.isInteger(i.contado) || i.contado < 0)) throw new Error("Contagem inválida.");
+      const r = await api("/estoque/inventario", { metodo: "POST", corpo: { itens, motivo: f.motivoInv.value } });
+      avisar(r.ajustados ? `${r.ajustados} produto(s) ajustado(s).` : "Contagem confere: nada a ajustar.");
+      telaEstoque();
+    }
+  });
+  const atualizar = () => {
+    for (const l of linhas) {
+      const d = (parseInt(l.inp.value, 10) || 0) - l.p.saldo;
+      l.dif.textContent = d === 0 ? "" : `diferença ${d > 0 ? "+" : ""}${d}`;
+    }
+  };
+  janela.querySelector("form").addEventListener("input", atualizar);
+  atualizar();
+  return promessa;
 }
 
 // ---------- EQUIPE ----------
@@ -1176,6 +1504,9 @@ const ROTAS = {
   inicio: { perfis: ["proprietario", "gerente", "barbeiro"], tela: telaInicio },
   caixa: { perfis: ["caixa", "proprietario", "gerente"], tela: telaCaixa },
   funcionamento: { perfis: ["proprietario", "gerente"], tela: telaFuncionamento },
+  estoque: { perfis: ["proprietario", "gerente"], tela: telaEstoque },
+  "caixa-historico": { perfis: ["proprietario", "gerente"], tela: telaHistoricoCaixa },
+  "caixa-dia": { perfis: ["proprietario", "gerente"], tela: data => telaCaixa(/^\d{4}-\d{2}-\d{2}$/.test(data || "") ? data : hojeLocal()) },
   equipe: { perfis: ["proprietario", "gerente"], tela: telaEquipe },
   servicos: { perfis: ["proprietario", "gerente", "barbeiro"], tela: telaServicos },
   produtos: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaProdutos },
@@ -1189,14 +1520,14 @@ async function rotear() {
   if (!usuario) return telaLogin();
   if (usuario.trocaObrigatoria) return telaTrocarSenha();
   atualizarTopo();
-  const nome = location.hash.replace(/^#\/?/, "") || usuario.telaInicial;
+  const [nome, parametro] = (location.hash.replace(/^#\/?/, "") || usuario.telaInicial).split("/");
   const rota = ROTAS[nome];
   if (!rota || !rota.perfis.includes(usuario.perfil)) {
     if (nome !== usuario.telaInicial) return irParaInicial();
     return mostrar(el("p", { class: "erro", text: "Tela não disponível para o seu perfil." }));
   }
   try {
-    await rota.tela();
+    await rota.tela(parametro);
   } catch (e) {
     if (e.message !== "Sessão encerrada") mostrar(el("div", { class: "cartao" }, el("p", { class: "erro", text: e.message }), botao("Tentar de novo", rotear)));
   }

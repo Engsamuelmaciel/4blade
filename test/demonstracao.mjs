@@ -37,8 +37,9 @@ export async function semearDemonstracao(amb) {
   for (const [nome, preco, dur] of [["Corte masculino", 4000, 30], ["Barba completa", 3000, 20], ["Corte + barba", 6500, 50], ["Pigmentação", 5000, 40]]) {
     s[nome] = (await ok(await amb.post("/api/servicos", ger, { nome, precoCentavos: preco, duracaoMin: dur }), nome)).servico.id;
   }
-  for (const [nome, preco, cod] of [["Pomada modeladora", 4500, "7890000000011"], ["Óleo para barba", 3850, null], ["Shampoo anticaspa", 3200, null]]) {
-    await ok(await amb.post("/api/produtos", ger, { nome, precoCentavos: preco, codigo: cod, estoqueMinimo: 2 }), nome);
+  for (const [nome, preco, cod, qtd, custo] of [["Pomada modeladora", 4500, "7890000000011", 12, 2200], ["Óleo para barba", 3850, null, 1, 1500], ["Shampoo anticaspa", 3200, null, 0, 0]]) {
+    const p = (await ok(await amb.post("/api/produtos", ger, { nome, precoCentavos: preco, codigo: cod, estoqueMinimo: 2 }), nome)).produto;
+    if (qtd) await ok(await amb.post("/api/estoque/entrada", ger, { produtoId: p.id, quantidade: qtd, custoUnitCentavos: custo, fornecedor: "Distribuidora Fictícia" }), `entrada ${nome}`);
   }
   const hoje = hojeBrasil();
   const marcar = (barbeiro, data, hora, servs, telefone, nome) => amb.post("/api/agenda", ger, {

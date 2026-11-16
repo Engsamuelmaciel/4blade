@@ -9,10 +9,10 @@ import { isGestao, atende } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
 import {
   horaParaMin, exigirData, exigirMomento, somarDias, regrasDoDia, conferirHorario, momento,
-  carregarModelos, linksWhatsapp
+  carregarModelos, linksWhatsapp, lerPagamentos, formaEfetiva, FORMAS
 } from "./agenda-util.js";
 
-export const FORMAS = ["dinheiro", "pix", "debito", "credito"];
+export { FORMAS };
 const erro = (msg, status = 400) => { throw new HttpError(msg, status); };
 
 function exigirAgenda(ctx) {
@@ -80,7 +80,7 @@ async function listarAgenda(ctx) {
     db.prepare(`SELECT f.* FROM finalizacoes f JOIN agendamentos a ON a.id = f.agendamento_id WHERE ${condA} AND f.estornada = 0`).bind(...pa).all(),
     db.prepare(`SELECT i.* FROM finalizacao_itens i JOIN finalizacoes f ON f.id = i.finalizacao_id JOIN agendamentos a ON a.id = f.agendamento_id
                 WHERE ${condA} AND f.estornada = 0 ORDER BY i.rowid`).bind(...pa).all(),
-    db.prepare(`SELECT l.* FROM caixa_lancamentos l JOIN finalizacoes f ON f.id = l.finalizacao_id JOIN agendamentos a ON a.id = f.agendamento_id
+    db.prepare(`SELECT l.id, l.finalizacao_id, l.valor_centavos, ${formaEfetiva("l.id", "l.forma")} AS forma FROM caixa_lancamentos l JOIN finalizacoes f ON f.id = l.finalizacao_id JOIN agendamentos a ON a.id = f.agendamento_id
                 WHERE ${condA} AND f.estornada = 0 AND l.tipo = 'atendimento'`).bind(...pa).all(),
     db.prepare(`SELECT m.* FROM comissoes m JOIN finalizacoes f ON f.id = m.finalizacao_id JOIN agendamentos a ON a.id = f.agendamento_id
                 WHERE ${condA} AND m.estornada = 0`).bind(...pa).all(),
@@ -239,15 +239,7 @@ async function finalizar(ctx) {
   const total = itens.reduce((t, i) => t + i.cobrado, 0);
 
   // Até 2 formas de pagamento; a soma tem de bater com o total.
-  const pagIn = Array.isArray(input.pagamentos) ? input.pagamentos : erro("Informe a forma de pagamento.");
-  if (total > 0 && (pagIn.length < 1 || pagIn.length > 2)) erro("Use 1 ou 2 formas de pagamento.");
-  if (total === 0 && pagIn.length !== 0) erro("Atendimento sem valor não tem pagamento.");
-  const formas = pagIn.map(p => p?.forma);
-  if (!formas.every(f => FORMAS.includes(f))) erro("Forma de pagamento inválida (dinheiro, pix, débito ou crédito).");
-  if (new Set(formas).size !== formas.length) erro("Use formas de pagamento diferentes.");
-  if (!pagIn.every(p => validCentavos(p.valorCentavos) && p.valorCentavos > 0)) erro("Valor de pagamento inválido.");
-  const soma = pagIn.reduce((t, p) => t + p.valorCentavos, 0);
-  if (soma !== total) erro(`A soma dos pagamentos (${(soma / 100).toFixed(2).replace(".", ",")}) precisa ser igual ao total (${(total / 100).toFixed(2).replace(".", ",")}).`);
+  const pagIn = lerPagamentos(input.pagamentos, total);
 
   const anterior = await db.prepare("SELECT total_centavos FROM finalizacoes WHERE agendamento_id = ? AND estornada = 1 ORDER BY criado_em DESC, rowid DESC LIMIT 1")
     .bind(a.id).first();
@@ -313,7 +305,8 @@ async function reabrir(ctx) {
       .bind(estornoId, user.id, motivo, f.id, ctx.barbeariaId, f.caixa_id),
     // Estorno da entrada: lançamentos negativos no mesmo caixa (nada é apagado).
     db.prepare(`INSERT INTO caixa_lancamentos (id, barbearia_id, caixa_id, tipo, finalizacao_id, forma, valor_centavos, criado_por)
-                SELECT 'est-' || lower(hex(randomblob(16))), barbearia_id, caixa_id, 'estorno_atendimento', finalizacao_id, forma, -valor_centavos, ?
+                SELECT 'est-' || lower(hex(randomblob(16))), barbearia_id, caixa_id, 'estorno_atendimento', finalizacao_id,
+                  ${formaEfetiva("caixa_lancamentos.id", "caixa_lancamentos.forma")}, -valor_centavos, ?
                 FROM caixa_lancamentos WHERE finalizacao_id = ? AND tipo = 'atendimento' AND ${feito[0]}`).bind(user.id, f.id, ...feito[1]),
     db.prepare(`UPDATE comissoes SET estornada = 1 WHERE finalizacao_id = ? AND ${feito[0]}`).bind(f.id, ...feito[1]),
     db.prepare(`UPDATE agendamentos SET situacao = 'agendado', atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND ${feito[0]}`).bind(a.id, ...feito[1]),

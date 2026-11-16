@@ -76,9 +76,12 @@ describe("cada perfil recusado nas rotas que não pode", () => {
     assert.equal(gestao.margemBp, 5556);   // (4500 − 2000) ÷ 4500 = 55,56%
     assert.equal((await get("/api/produtos", prop)).dados.produtos[0].margemBp, 5556);
 
+    // sem estoque: indisponível; com entrada de mercadoria: disponível
+    assert.equal((await get("/api/produtos", barb.token)).dados.produtos[0].disponivel, false);
+    await post("/api/estoque/entrada", ger.token, { produtoId: prod.id, quantidade: 4, custoUnitCentavos: 2000 });
     for (const token of [barb.token, cx.token]) {
       const lista = (await get("/api/produtos", token)).dados.produtos;
-      assert.deepEqual(lista, [{ id: prod.id, nome: "Pomada Teste", precoCentavos: 4500, disponivel: true }]);
+      assert.deepEqual(lista, [{ id: prod.id, nome: "Pomada Teste", precoCentavos: 4500, disponivel: true, ...(token === cx.token ? { saldo: 4 } : {}) }]);
       const texto = JSON.stringify(lista);
       assert.ok(!/custo|margem/i.test(texto));
     }

@@ -34,7 +34,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - Testes: `npm test` (44 automáticos) e `node test/navegador-e1.mjs` (Playwright, 1366 e 390 px; prints em `docs/prints/e1/`). Tela local: `npm run tela` (usuário `suporte`, senha `Nova-suporte-senha`).
   - Deixado para a E2: horário de trabalho do colaborador (depende do funcionamento, 4.9); busca de cliente pelo barbeiro na marcação. Estoque/custo médio: E3 (barbeiro e caixa veem "disponível" = produto ativo por enquanto).
   - `wrangler.toml` com ids MARCADORES: nada criado na Cloudflare, nenhum deploy.
-- 16/11/2026: **E2 (Agenda e finalização) pronta** na ramificação `e2-agenda` (criada a partir da `e1-base`), aguardando avaliação. Próximo: E3 (Caixa e estoque).
+- 16/11/2026: **E2 (Agenda e finalização) pronta** na ramificação `e2-agenda` (criada a partir da `e1-base`); o responsável mandou seguir.
   - Banco: `migrations/0002_agenda.sql` (funcionamento, datas_fechadas, horario_trabalho, bloqueios, agendamentos, agendamento_servicos, caixas, finalizacoes, finalizacao_itens, caixa_lancamentos, comissoes, mensagens_enviadas). Horas em minutos; início/fim de horário em texto local `AAAA-MM-DDTHH:MM`.
   - API: `src/funcionamento.js` (funcionamento, datas fechadas com lista para remarcar, horário de trabalho), `src/agenda.js` (agenda, marcar, faltou/cancelado, mensagem wa.me registrada, finalizar, reabrir, bloqueios), `src/caixa.js` (abrir caixa + entradas do dia), `src/agenda-util.js`.
   - Gravações críticas em um só lote com condição (sem sobreposição por corrida; finalização só com caixa aberto; no máximo 1 finalização válida por horário — índice único). Reabrir = estorno (lançamento negativo + comissão estornada), nada apagado.
@@ -42,6 +42,14 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - Regras que decidi (confirmar com o responsável): sem funcionamento cadastrado a agenda não aceita horário; bloqueio por cima de horário marcado é recusado; finalizar só horários de hoje ou anteriores (a entrada vai para o caixa de hoje); "Propor horário" usa a data/hora do próprio horário; proprietário não tem agenda própria (só gerente e barbeiro).
   - Pendente para a E3: fechar/reabrir caixa (o gerente reabrir atendimento com caixa fechado depende disso), sangria, suprimento, vendas.
   - Testes: `npm test` (61) + `node test/navegador-e1.mjs` e `node test/navegador-e2.mjs` (prints em `docs/prints/e1/` e `docs/prints/e2/`).
+- 16/11/2026: **E3 (Caixa e estoque) pronta** na ramificação `e3-caixa-estoque` (a partir da `e2-agenda`), aguardando avaliação. Próximo: E4 (Gestão).
+  - Banco: `migrations/0003_caixa_estoque.sql` (só tabelas novas): produto_estoque (saldo com CHECK ≥ 0), estoque_movimentos, vendas, venda_itens, caixa_movimentos (venda, estorno_venda, sangria, suprimento, correcao_saida/entrada), caixa_fechamentos.
+  - API: `src/caixa.js` (resumo, sangria/suprimento, corrigir forma, fechar, reabrir, histórico/dia), `src/estoque.js` (estoque, entrada com custo médio, ajuste, inventário, histórico, vendas e cancelamento).
+  - Correção de forma = par de movimentos (sai da forma antiga, entra na nova) ligado ao lançamento; estornos usam a forma ATUAL (`formaEfetiva`).
+  - Dinheiro esperado = troco + entradas em dinheiro + suprimentos − sangrias. Diferença ≠ 0 exige observação. Fechado não muda; só gestão reabre (com motivo).
+  - Venda guarda vendedor (barbeiro) e custo unitário do momento — base para comissão de produto e lucro na E4. Barbeiro vende em seu nome (botão no horário da agenda).
+  - Regras que decidi (confirmar): sangria não pode passar do dinheiro na gaveta; preço do produto na venda é o de tabela (sem alterar); "repor" quando saldo < mínimo; validade do produto = a mais próxima entre a atual e a da nova entrada.
+  - Testes: `npm test` (72, inclui o dia simulado conferido à mão) + navegador E1, E2 e E3. Demonstração local: `npm run demo` (senha dos usuários *.demo: `Demo-4blade-2026`).
 
 ## Pendências fora do código
 - Conferir domínios 4blade.com.br e forblade.com.br (registro.br) e a marca no INPI (classe 42).

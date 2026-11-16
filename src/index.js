@@ -18,8 +18,9 @@ import { rotasCadastros } from "./cadastros.js";
 import { rotasFuncionamento } from "./funcionamento.js";
 import { rotasAgenda } from "./agenda.js";
 import { rotasCaixa } from "./caixa.js";
+import { rotasEstoque, rotasVendas } from "./estoque.js";
 
-export const VERSAO = "0.2.0";
+export const VERSAO = "0.3.0";
 const SESSAO_HORAS = 12;
 
 async function rateLimit(db, key, max, windowSeconds) {
@@ -246,7 +247,7 @@ export default {
 
       // ---------- DADOS DA BARBEARIA: exige usuário de barbearia ----------
       const r = (await rotasFuncionamento(ctx, path, method)) || (await rotasAgenda(ctx, path, method)) ||
-        (await rotasCaixa(ctx, path, method)) || (await rotasUsuarios(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
+        (await rotasCaixa(ctx, path, method)) || (await rotasEstoque(ctx, path, method)) || (await rotasVendas(ctx, path, method)) || (await rotasUsuarios(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
       if (r) {
         return r;
       }

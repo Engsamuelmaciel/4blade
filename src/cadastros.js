@@ -74,10 +74,15 @@ const CADASTROS = {
         ? Math.round(((r.preco_centavos - r.custo_medio_centavos) * 10000) / r.preco_centavos)
         : null,
       validade: r.validade || null, estoqueMinimo: r.estoque_minimo, mostrarSite: Boolean(r.mostrar_site),
+      saldo: r.saldo ?? 0,
       ativo: Boolean(r.ativo), motivoDesativacao: r.motivo_desativacao || null
     }),
-    // Barbeiro e caixa: só nome, preço e disponível. NUNCA custo ou margem.
-    publicoRestrito: r => ({ id: r.id, nome: r.nome, precoCentavos: r.preco_centavos, disponivel: Boolean(r.ativo) }),
+    // Barbeiro e caixa: só nome, preço e disponível (ativo e com saldo). NUNCA custo ou margem. O caixa vê também o saldo (para vender).
+    publicoRestrito: (r, user) => ({
+      id: r.id, nome: r.nome, precoCentavos: r.preco_centavos, disponivel: Boolean(r.ativo) && r.saldo > 0,
+      ...(user?.perfil === "caixa" ? { saldo: r.saldo } : {})
+    }),
+    selectLista: "SELECT p.*, COALESCE(e.saldo, 0) AS saldo FROM produtos p LEFT JOIN produto_estoque e ON e.produto_id = p.id WHERE p.barbearia_id = ?",
     leituraRestrita: true
   },
   clientes: {
@@ -122,9 +127,9 @@ async function rotasCadastro(ctx, nome, def, path, method) {
     const gestao = isGestao(user);
     if (!gestao && !def.leituraRestrita) return fail("Sem permissão", 403);
     const url = new URL(request.url);
-    let sql = `SELECT * FROM ${def.tabela} WHERE barbearia_id = ?`;
+    let sql = def.selectLista || `SELECT * FROM ${def.tabela} WHERE barbearia_id = ?`;
     const params = [ctx.barbeariaId];
-    if (!gestao) sql += " AND ativo = 1";
+    if (!gestao) sql += def.selectLista ? " AND p.ativo = 1" : " AND ativo = 1";
     const busca = (url.searchParams.get("busca") || "").trim().slice(0, 60);
     if (busca && nome === "clientes") {
       const digitos = busca.replace(/\D/g, "");
@@ -134,7 +139,7 @@ async function rotasCadastro(ctx, nome, def, path, method) {
     }
     sql += ` ORDER BY ${def.ordem} LIMIT 500`;
     const r = await db.prepare(sql).bind(...params).all();
-    return json({ [nome]: r.results.map(gestao ? def.publico : def.publicoRestrito) });
+    return json({ [nome]: r.results.map(x => (gestao ? def.publico(x) : def.publicoRestrito(x, user))) });
   }
 
   if (path === base && method === "POST") {

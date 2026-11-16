@@ -87,7 +87,7 @@ describe("produtos", () => {
     assert.deepEqual(ok.dados.produto, {
       id: ok.dados.produto.id, nome: "Pomada Modeladora", codigo: "7891234567890", precoCentavos: 4500,
       custoMedioCentavos: 0, margemBp: null, validade: "2027-06-30", estoqueMinimo: 3, mostrarSite: true,
-      ativo: true, motivoDesativacao: null
+      saldo: 0, ativo: true, motivoDesativacao: null
     });
     assert.equal((await post("/api/produtos", ger, { nome: "Outro", codigo: "7891234567890", precoCentavos: 100 })).status, 409);
     // sem código: vários produtos podem ficar sem código
