@@ -119,7 +119,7 @@ async function rodar(tela) {
     assert.equal(await page.inputValue("#c-telefone"), "(11) 98765-4321");
     await page.locator("#c-propTel").pressSequentially("1133334444");
     assert.equal(await page.inputValue("#c-propTel"), "(11) 3333-4444");
-    assert.equal(await page.locator("#menu [data-nav]").count(), 1, "plataforma: só a tela de barbearias");
+    assert.deepEqual(await page.locator("#menu [data-nav]").allInnerTexts(), ["Barbearias", "Chamados"], "plataforma: barbearias e chamados");
     assert.match(await page.textContent("[data-teste=explicacao-plataforma]"), /entre com o usuário do proprietário/);
     await page.click("button:has-text('Criar barbearia')");
     const senhaProp = await lerSenhaDaJanela();

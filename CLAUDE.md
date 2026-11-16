@@ -85,6 +85,12 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - Tela: `#/planos`, `#/assinar/<plano>`, `#/termos`, `#/privacidade` (sem login, `ROTAS_PUBLICAS`/`montarTela`), boas-vindas, `#/assinatura` (Minha assinatura, menu Equipe e ajustes), faixa `#faixa-assinatura`; textos legais RASCUNHO em `public/legal.js` (cache do sw `4blade-v11`).
   - Testes: `npm test` (117) + `npm run teste-navegador` (inclui `test/navegador-assinatura.mjs`; prints em `docs/prints/assinatura/`). Asaas de mentira: `test/asaas-falso.mjs`; servidor local tem `/__teste/pago-ate` e `/__teste/pagar` (só local).
 
+- 16/11/2026: **Ajuda e suporte** na mesma ramificação `planos-assinatura` (ESPECIFICACAO.md seção 12). NÃO publicada ainda.
+  - Banco: `migrations/0012_suporte.sql` (suporte_chamados com `numero` a partir de 101, suporte_mensagens com `lado` barbearia|suporte, plataforma_config para o contato do suporte — configuração da plataforma, sem barbearia_id).
+  - API: `src/suporte.js`: `GET /suporte`, `GET /suporte/chamado?id=`, `POST /suporte/chamados|responder|encerrar` (proprietário/gerente, só a própria barbearia); plataforma: `GET /plataforma/chamados?situacao=abertos|encerrados`, `GET /plataforma/chamado?id=`, `POST /plataforma/chamados/responder|encerrar`, `GET|POST /plataforma/contato-suporte`.
+  - Tela: menu "Ajuda" (`gruposDoMenu` acrescenta a todos; `gruposDoPerfil` = menus antigos), `#/duvidas` (também pública), `#/tutoriais[/id]`, `#/suporte[/id]`, plataforma `#/chamados[/id]`; botão `#btn-ajuda` (? no topo, `ajudaDaTela` usa `rotas` de cada tutorial). Conteúdo em `public/ajuda.js` (window.AJUDA). Prints dos tutoriais: `public/tutoriais/*.jpg` gerados por `npm run tutoriais` (test/gerar-tutoriais.mjs, que também gera `src/arquivos-tutoriais.js` para o Worker). Tela mudou → rodar de novo. Cache do sw `4blade-v12`.
+  - Testes: `npm test` (122) + `test/navegador-ajuda.mjs` (prints em `docs/prints/ajuda/`).
+
 ## Versão de teste publicada (Cloudflare)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.
@@ -98,7 +104,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 - Publicar de novo / migrar o banco REAL: SEMPRE pedir confirmação antes (`npx wrangler deploy`; `npx wrangler d1 migrations apply 4blade-db --remote`). Testar primeiro na versão de teste.
 
 ## Pendências fora do código
-- Conferir domínios 4blade.com.br e forblade.com.br (registro.br) e a marca no INPI (classe 42).
+- Domínio **forblade.com.br** já é do responsável (registro.br). Para usar no 4blade: colocar o domínio na Cloudflare (trocar os servidores DNS no registro.br) e ligar ao Worker — pedir confirmação antes (cria recurso na Cloudflare). Conferir 4blade.com.br e a marca no INPI (classe 42).
 - Termos de uso e política de privacidade (LGPD) antes de vender.
 - Forma de cobrança da mensalidade (boleto/Pix recorrente) — fora do sistema na fase 1.
 - Contador: CNAE, anexo do Simples (Fator R) e se as barbearias clientes usam a Lei do Salão-Parceiro.

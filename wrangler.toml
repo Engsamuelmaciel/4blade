@@ -16,7 +16,7 @@ fallthrough = false
 
 [[rules]]
 type = "Data"
-globs = ["**/*.png"]
+globs = ["**/*.png", "**/*.jpg"]
 fallthrough = false
 
 [[d1_databases]]

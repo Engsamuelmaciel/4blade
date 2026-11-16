@@ -6,6 +6,8 @@ import indexHtml from "../public/index.html";
 import appJs from "../public/app.js";
 import temaJs from "../public/tema.js";
 import legalJs from "../public/legal.js";
+import ajudaJs from "../public/ajuda.js";
+import { IMAGENS_TUTORIAIS } from "./arquivos-tutoriais.js";
 import styleCss from "../public/style.css";
 import swJs from "../public/sw.js";
 import manifest from "../public/manifest.json";
@@ -24,6 +26,7 @@ const ARQUIVOS = {
   "/app.js": [appJs, "text/javascript; charset=utf-8"],
   "/tema.js": [temaJs, "text/javascript; charset=utf-8"],
   "/legal.js": [legalJs, "text/javascript; charset=utf-8"],
+  "/ajuda.js": [ajudaJs, "text/javascript; charset=utf-8"],
   "/style.css": [styleCss, "text/css; charset=utf-8"],
   "/sw.js": [swJs, "text/javascript; charset=utf-8"],
   "/manifest.json": [manifest, "application/manifest+json"],
@@ -39,6 +42,7 @@ const ARQUIVOS = {
   "/icons/icon-192.png": [icone192, "image/png"],
   "/icons/icon-512.png": [icone512, "image/png"]
 };
+for (const [caminho, dados] of Object.entries(IMAGENS_TUTORIAIS)) ARQUIVOS[caminho] = [dados, "image/jpeg"];
 const SEGURANCA = {};
 for (const l of String(cabecalhosTexto).split("\n")) {
   const m = l.match(/^\s+([A-Za-z-]+):\s*(.+)$/);

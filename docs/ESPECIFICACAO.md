@@ -194,3 +194,10 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - **Um cadastro por CPF/CNPJ** (evita teste grátis repetido); outra filial: pelo suporte. Mudança de plano: pelo suporte (plataforma); se a cobrança é pelo Asaas, o valor lá muda junto.
 - Barbearias criadas pela plataforma continuam com cobrança "combinada com o suporte" (nunca bloqueiam sozinhas).
 - Regras que decidi (confirmar): valor do adicional do Standard (R$ 20); limite de 5 cadastros por hora por aparelho; textos de termos/privacidade são RASCUNHO (`public/legal.js`, campos [ ] a preencher; revisar com advogado).
+
+## 12. Ajuda e suporte (16/11/2026, pedido do responsável)
+- **Menu Ajuda** (todos os perfis): **Dúvidas frequentes** (28 perguntas por assunto, com busca; também aberta sem login, a partir da página de planos) e **Tutoriais** (23, um por tela/tarefa: onde acessar, passo a passo, exemplo, dica e print com dados fictícios). Cada perfil vê só os tutoriais do que pode fazer.
+- **Botão "?" no topo, em todas as telas:** abre os tutoriais da tela em que a pessoa está, com atalhos para todos os tutoriais, dúvidas e suporte.
+- **Suporte (só proprietário e gerente):** WhatsApp do suporte (link wa.me com mensagem pronta), e-mail e horário (configurados pela plataforma) + **chamados** em forma de conversa: tipo (dúvida, problema, assinatura e pagamento, sugestão), assunto e mensagem; número curto (#101); situação "Aguardando o suporte", "Respondido", "Encerrado"; responder um encerrado reabre. O chamado guarda a tela em que a pessoa estava. Máximo de 10 chamados em aberto por barbearia. Com a mensalidade atrasada além da tolerância, o proprietário ainda acessa o suporte.
+- **Plataforma:** menu "Chamados" (fila de abertos/encerrados de todas as barbearias, conversa, responder, responder e encerrar, WhatsApp de quem abriu) e o contato do suporte que aparece para as barbearias.
+- Domínio próprio: **forblade.com.br** (registrado pelo responsável). Sugestão do e-mail do suporte: suporte@forblade.com.br.

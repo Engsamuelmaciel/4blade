@@ -270,6 +270,7 @@ describe("atraso, bloqueio e cancelamento", () => {
     assert.equal(ld.dados.usuario.assinatura.situacao, "bloqueada");
     assert.equal((await amb.get("/api/servicos", ld.dados.token)).status, 402);
     assert.equal((await amb.get("/api/assinatura", ld.dados.token)).status, 200);
+    assert.equal((await amb.get("/api/suporte", ld.dados.token)).status, 200, "pode pedir ajuda ao suporte");
 
     // pagou (Asaas avisa): libera na hora
     const ev = amb.asaas.pagar(sub.id);

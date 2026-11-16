@@ -140,7 +140,7 @@ async function rodar(tela) {
     await page.waitForSelector('[data-situacao="bloqueada"]');
     await pronto();
     assert.equal(await page.evaluate(() => location.hash), "#/assinatura");
-    assert.equal(await page.locator("#menu .nav-item").count(), 1, "menu só com a assinatura");
+    assert.deepEqual(await page.locator("#menu .nav-item").allInnerTexts(), ["Minha assinatura", "Suporte"], "menu só com a assinatura e o suporte");
     await print("bloqueada");
     passo("bloqueio: o dono só vê a assinatura para pagar");
 

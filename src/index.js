@@ -23,6 +23,7 @@ import { rotasCaixa } from "./caixa.js";
 import { rotasEstoque, rotasVendas } from "./estoque.js";
 import { rotasGestao } from "./gestao.js";
 import { rotasContador } from "./contador.js";
+import { rotasSuporte, rotasSuportePlataforma } from "./suporte.js";
 import { rotasPublicasAssinatura, rotasAssinatura, situacaoAssinatura, SQL_PLANO } from "./assinatura.js";
 
 export const VERSAO = "0.4.0";
@@ -72,7 +73,8 @@ const situacaoDoUsuario = u => (u.barbearia_id ? situacaoAssinatura({
 }) : { situacao: "manual", bloqueada: false });
 
 // Com a mensalidade atrasada além da tolerância, só o proprietário entra, e só para ver/pagar a assinatura.
-const ROTAS_LIBERADAS_NO_ATRASO = new Set(["/auth/me", "/auth/logout", "/auth/trocar-senha", "/assinatura", "/assinatura/cancelar"]);
+const ROTAS_LIBERADAS_NO_ATRASO = new Set(["/auth/me", "/auth/logout", "/auth/trocar-senha", "/assinatura", "/assinatura/cancelar",
+  "/suporte", "/suporte/chamado", "/suporte/chamados", "/suporte/responder", "/suporte/encerrar"]);
 const MSG_ATRASO_EQUIPE = "O acesso da barbearia está suspenso por mensalidade do 4blade em atraso. Fale com o proprietário.";
 
 // Sessão válida + usuário ativo + barbearia não bloqueada (pela plataforma).
@@ -280,7 +282,7 @@ export default {
       // ---------- PLATAFORMA (nós) ----------
       if (path.startsWith("/plataforma/")) {
         if (user.perfil !== "plataforma") return fail("Sem permissão", 403);
-        const r = await rotasPlataforma(ctx, path, method);
+        const r = (await rotasSuportePlataforma(ctx, path, method)) || (await rotasPlataforma(ctx, path, method));
         if (r) return r;
         return fail("Rota não encontrada", 404);
       }
@@ -288,7 +290,7 @@ export default {
       // ---------- DADOS DA BARBEARIA: exige usuário de barbearia ----------
       const r = (await rotasFuncionamento(ctx, path, method)) || (await rotasAgenda(ctx, path, method)) ||
         (await rotasCaixa(ctx, path, method)) || (await rotasEstoque(ctx, path, method)) || (await rotasVendas(ctx, path, method)) ||
-        (await rotasGestao(ctx, path, method)) || (await rotasContador(ctx, path, method)) || (await rotasMensagens(ctx, path, method)) || (await rotasPromissorias(ctx, path, method)) || (await rotasAssinatura(ctx, path, method)) || (await rotasUsuarios(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
+        (await rotasGestao(ctx, path, method)) || (await rotasContador(ctx, path, method)) || (await rotasMensagens(ctx, path, method)) || (await rotasPromissorias(ctx, path, method)) || (await rotasAssinatura(ctx, path, method)) || (await rotasSuporte(ctx, path, method)) || (await rotasUsuarios(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
       if (r) {
         return r;
       }

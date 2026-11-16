@@ -450,6 +450,7 @@ async function telaPlanos() {
         el("li", { text: "A 1ª mensalidade vence no fim do teste. Você paga por Pix, boleto ou cartão, pelo Asaas." }),
         el("li", { text: "Cadastre sua equipe, serviços e horários de funcionamento e comece a usar." }))),
     el("p", { class: "centro" }, "Já usa o 4blade? ", el("a", { href: "#/entrar", text: "Entrar" }), " · ",
+      el("a", { href: "#/duvidas", text: "Dúvidas frequentes" }), " · ",
       el("a", { href: "#/termos", text: "Termos de uso" }), " · ", el("a", { href: "#/privacidade", text: "Privacidade" }))));
 }
 
@@ -651,6 +652,215 @@ function atualizarFaixa() {
   f.className = `faixa-assinatura ${a.situacao === "teste" || a.situacao === "cancelada_ate_fim" ? "amarela" : "vermelha"}`;
   f.replaceChildren(...[el("span", { text: textoSituacao(a) }),
     rotaAtual() === "assinatura" ? null : el("a", { href: "#/assinatura", text: a.situacao === "teste" || a.situacao.startsWith("cancelada") ? "Ver assinatura" : "Pagar agora" })].filter(Boolean));
+}
+
+// ---------- AJUDA: dúvidas frequentes, tutoriais e suporte ----------
+const AJUDA = () => window.AJUDA || { duvidas: [], tutoriais: [] };
+const tutoriaisDoPerfil = () => AJUDA().tutoriais.filter(t => !usuario || usuario.perfil === "plataforma" || t.perfis.includes(usuario.perfil));
+const semAcento = t => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+async function telaDuvidas() {
+  const lista = el("div", { class: "duvidas" });
+  const busca = el("input", { type: "search", class: "busca-ajuda", placeholder: "Buscar dúvida (ex.: senha, caixa, comissão)", "aria-label": "Buscar dúvida" });
+  const desenhar = () => {
+    const q = semAcento(busca.value.trim());
+    const itens = AJUDA().duvidas.filter(d => !q || semAcento(`${d.p} ${d.r} ${d.cat}`).includes(q));
+    const cats = [...new Set(itens.map(d => d.cat))];
+    lista.replaceChildren(...(cats.length ? cats.map(c => el("section", { class: "duvidas-grupo" },
+      el("h3", { text: c }),
+      ...itens.filter(d => d.cat === c).map(d => el("details", { class: "duvida", "data-duvida": d.p },
+        el("summary", { text: d.p }), el("p", { text: d.r })))))
+      : [el("p", { class: "vazio", text: "Nenhuma dúvida com essas palavras. Veja os tutoriais ou fale com o suporte." })]));
+  };
+  busca.addEventListener("input", desenhar);
+  desenhar();
+  const rodape = usuario
+    ? el("p", { class: "suave centro" }, "Não achou? ", el("a", { href: "#/tutoriais", text: "Veja os tutoriais" }),
+      gestao() ? el("span", {}, " ou ", el("a", { href: "#/suporte", text: "fale com o suporte" })) : el("span", { text: " ou fale com o gerente da barbearia." }))
+    : el("p", { class: "suave centro" }, el("a", { href: "#/planos", text: "‹ Ver os planos" }), " · ", el("a", { href: "#/entrar", text: "Entrar" }));
+  mostrar(el("section", { class: usuario ? "" : "publica estreita" },
+    cabecalho("Dúvidas frequentes", "Respostas rápidas sobre o uso do 4blade"),
+    busca, lista, rodape));
+}
+
+function cartaoTutorial(t) {
+  return el("a", { class: "tutorial-cartao", href: `#/tutoriais/${t.id}`, "data-tutorial": t.id },
+    el("img", { src: `/tutoriais/${t.id}.jpg`, alt: "", width: "390", height: "300", loading: "lazy", onerror: e => { e.target.hidden = true; } }),
+    el("strong", { text: t.titulo }),
+    el("span", { class: "suave", text: t.onde }));
+}
+
+function conteudoTutorial(t, { comVoltar = true } = {}) {
+  return el("article", { class: "tutorial", "data-tutorial-aberto": t.id },
+    comVoltar ? el("a", { class: "voltar", href: "#/tutoriais", text: "‹ Todos os tutoriais" }) : null,
+    el("h2", { text: t.titulo }),
+    el("p", { class: "tutorial-onde" }, el("strong", { text: "Onde acessar: " }), t.onde),
+    el("div", { class: "tutorial-corpo" },
+      el("figure", { class: "tutorial-print" },
+        el("img", { src: `/tutoriais/${t.id}.jpg`, alt: `Tela: ${t.titulo}`, width: "390", height: "600", loading: "lazy", onerror: e => { e.target.closest("figure").hidden = true; } }),
+        el("figcaption", { class: "suave", text: "Exemplo com dados fictícios." })),
+      el("div", {},
+        el("h3", { text: "Como fazer" }),
+        el("ol", { class: "tutorial-passos" }, t.passos.map(p => el("li", { text: p }))),
+        t.exemplo ? el("div", { class: "tutorial-exemplo" }, el("strong", { text: "Exemplo" }), el("p", { text: t.exemplo })) : null,
+        t.dica ? el("div", { class: "tutorial-dica" }, el("strong", { text: "Dica" }), el("p", { text: t.dica })) : null)));
+}
+
+async function telaTutoriais(id) {
+  const lista = tutoriaisDoPerfil();
+  const t = lista.find(x => x.id === id);
+  if (t) return mostrar(conteudoTutorial(t));
+  mostrar(cabecalho("Tutoriais", "Passo a passo de cada tela, com exemplos"),
+    el("div", { class: "tutoriais-grade" }, lista.map(cartaoTutorial)));
+}
+
+// Botão "?" no topo: tutoriais da tela aberta.
+function ajudaDaTela() {
+  const rota = rotaAtual();
+  const daTela = tutoriaisDoPerfil().filter(t => t.rotas.includes(rota));
+  return abrirJanela(daTela.length ? "Ajuda desta tela" : "Ajuda", [
+    ...(daTela.length ? daTela.map(t => conteudoTutorial(t, { comVoltar: false })) : [el("p", { text: "Esta tela não tem tutorial próprio. Veja todos os tutoriais ou as dúvidas frequentes." })]),
+    el("div", { class: "item-acoes" },
+      el("a", { class: "botao pequeno", href: "#/tutoriais", onclick: () => janela.close(), text: "Todos os tutoriais" }),
+      el("a", { class: "botao pequeno", href: "#/duvidas", onclick: () => janela.close(), text: "Dúvidas frequentes" }),
+      gestao() ? el("a", { class: "botao pequeno", href: "#/suporte", onclick: () => janela.close(), text: "Falar com o suporte" }) : null)
+  ], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
+}
+
+const NOME_SIT_CHAMADO = { aguardando_suporte: ["Aguardando o suporte", "amarela"], respondido: ["Respondido", "verde"], encerrado: ["Encerrado", ""] };
+const horaCurta = utc => `${dataBR(utc.slice(0, 10)).slice(0, 5)} ${horaLocal(utc)}`;
+
+function conversaChamado(mensagens) {
+  return el("div", { class: "conversa" }, mensagens.map(m => el("div", { class: `balao ${m.lado}` },
+    el("span", { class: "balao-autor", text: `${m.autor} · ${horaCurta(m.criadoEm)}` }),
+    el("p", { text: m.texto }))));
+}
+
+function itemChamado(c, href, comBarbearia = false) {
+  const [rot, cor] = NOME_SIT_CHAMADO[c.situacao];
+  return el("li", { class: "item" }, el("a", { class: "item-link", href, "data-chamado": c.numero },
+    el("div", { class: "item-topo" },
+      el("strong", { text: `#${c.numero} · ${c.assunto}` }),
+      el("span", { class: `etiqueta ${cor}`, text: rot })),
+    el("p", { class: "suave", text: [comBarbearia ? c.barbearia : null, c.abertoPor, horaCurta(c.atualizadoEm)].filter(Boolean).join(" · ") }),
+    c.ultima ? el("p", { class: "suave", text: `${c.ultima.lado === "suporte" ? "Suporte: " : ""}${c.ultima.texto}` }) : null));
+}
+
+async function telaSuporte(id) {
+  if (id) {
+    const { chamado: c, mensagens } = await api(`/suporte/chamado?id=${encodeURIComponent(id)}`);
+    const [rot, cor] = NOME_SIT_CHAMADO[c.situacao];
+    const form = el("form", { class: "cartao" },
+      campo(c.situacao === "encerrado" ? "Escrever de novo (reabre o chamado)" : "Responder", { tag: "textarea", name: "msg", required: true, rows: "3", maxlength: "3000" }),
+      el("div", { class: "item-acoes" },
+        el("button", { type: "submit", class: "botao principal", text: "Enviar" }),
+        c.situacao !== "encerrado" ? botao("Encerrar chamado", async () => {
+          await api("/suporte/encerrar", { metodo: "POST", corpo: { id: c.id } });
+          avisar("Chamado encerrado.");
+          telaSuporte(c.id);
+        }) : null));
+    form.addEventListener("submit", ev => {
+      ev.preventDefault();
+      enviar(form, async () => {
+        await api("/suporte/responder", { metodo: "POST", corpo: { id: c.id, mensagem: form.msg.value } });
+        avisar("Mensagem enviada ao suporte.");
+        telaSuporte(c.id);
+      });
+    });
+    return mostrar(
+      el("a", { class: "voltar", href: "#/suporte", text: "‹ Meus chamados" }),
+      el("div", { class: "item-topo" }, el("h2", { text: `Chamado #${c.numero}` }), el("span", { class: `etiqueta ${cor}`, "data-situacao-chamado": c.situacao, text: rot })),
+      el("p", { class: "suave", text: `${CATEGORIAS_CHAMADO[c.categoria]} · ${c.assunto}` }),
+      conversaChamado(mensagens), form);
+  }
+
+  const { contato, categorias, chamados } = await api("/suporte");
+  const b = usuario.barbearia;
+  const textoWhats = `Olá, suporte 4blade! Sou ${usuario.nome} (${NOME_PERFIL[usuario.perfil]}) da ${b.nome}. Preciso de ajuda com: `;
+  const contatoEl = el("section", { class: "cartao contato-suporte", "data-teste": "contato-suporte" },
+    el("h3", { text: "Fale com a gente" }),
+    contato.whatsapp ? el("a", { class: "botao principal largo whats", href: `https://wa.me/55${contato.whatsapp}?text=${encodeURIComponent(textoWhats)}`, target: "_blank", rel: "noopener", "data-teste": "whats-suporte", text: "Chamar no WhatsApp" }) : null,
+    contato.email ? el("p", {}, "E-mail: ", el("a", { href: `mailto:${contato.email}`, text: contato.email })) : null,
+    contato.horario ? el("p", { class: "suave", text: `Atendimento: ${contato.horario}` }) : null,
+    !contato.whatsapp && !contato.email ? el("p", { class: "suave", text: "Abra um chamado ao lado: a resposta aparece aqui mesmo, em Meus chamados." }) : null,
+    el("p", { class: "suave" }, "Antes, veja se a resposta está nas ", el("a", { href: "#/duvidas", text: "dúvidas frequentes" }), " ou nos ", el("a", { href: "#/tutoriais", text: "tutoriais" }), "."));
+
+  const form = el("form", { class: "cartao" },
+    el("h3", { text: "Abrir chamado" }),
+    campo("Tipo", { tag: "select", name: "categoria", opcoes: Object.entries(categorias) }),
+    campo("Assunto", { name: "assunto", required: true, maxlength: "100", placeholder: "Ex.: Caixa não fecha" }),
+    campo("O que aconteceu?", { tag: "textarea", name: "mensagem", required: true, rows: "4", maxlength: "3000" }, "Conte em qual tela estava, o que fez e o que apareceu."),
+    el("button", { type: "submit", class: "botao principal", text: "Enviar chamado" }));
+  form.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(form, async () => {
+      const r = await api("/suporte/chamados", { metodo: "POST", corpo: { categoria: form.categoria.value, assunto: form.assunto.value, mensagem: form.mensagem.value, tela: telaAnterior || null } });
+      avisar(`Chamado #${r.chamado.numero} aberto. A resposta aparece aqui.`);
+      telaSuporte();
+    });
+  });
+
+  mostrar(cabecalho("Suporte", "Atendimento do 4blade para proprietário e gerente"),
+    el("div", { class: "duas-colunas" },
+      el("div", {}, contatoEl, form),
+      el("section", {},
+        el("h3", { text: "Meus chamados" }),
+        chamados.length ? el("ul", { class: "lista" }, chamados.map(c => itemChamado(c, `#/suporte/${c.id}`)))
+          : el("p", { class: "vazio", text: "Nenhum chamado ainda." }))));
+}
+const CATEGORIAS_CHAMADO = { duvida: "Dúvida", problema: "Problema no sistema", assinatura: "Assinatura e pagamento", sugestao: "Sugestão" };
+
+// Plataforma: fila de chamados e contato do suporte.
+let filtroChamados = "abertos";
+async function telaChamados(id) {
+  if (id) {
+    const { chamado: c, mensagens } = await api(`/plataforma/chamado?id=${encodeURIComponent(id)}`);
+    const [rot, cor] = NOME_SIT_CHAMADO[c.situacao];
+    const form = el("form", { class: "cartao" },
+      campo("Resposta", { tag: "textarea", name: "msg", required: true, rows: "4", maxlength: "3000" }),
+      caixaMarcar("Encerrar o chamado junto com a resposta", { name: "encerrar" }),
+      el("div", { class: "item-acoes" },
+        el("button", { type: "submit", class: "botao principal", text: "Responder" }),
+        c.situacao !== "encerrado" ? botao("Encerrar sem responder", async () => {
+          await api("/plataforma/chamados/encerrar", { metodo: "POST", corpo: { id: c.id } });
+          avisar("Chamado encerrado."); telaChamados(c.id);
+        }) : null));
+    form.addEventListener("submit", ev => {
+      ev.preventDefault();
+      enviar(form, async () => {
+        await api("/plataforma/chamados/responder", { metodo: "POST", corpo: { id: c.id, mensagem: form.msg.value, encerrar: form.encerrar.checked } });
+        avisar("Resposta enviada."); telaChamados(c.id);
+      });
+    });
+    const tel = c.telefone ? `https://wa.me/55${c.telefone}?text=${encodeURIComponent(`Olá, ${c.abertoPor}! Aqui é o suporte do 4blade, sobre o chamado #${c.numero}.`)}` : null;
+    return mostrar(
+      el("a", { class: "voltar", href: "#/chamados", text: "‹ Chamados" }),
+      el("div", { class: "item-topo" }, el("h2", { text: `Chamado #${c.numero}` }), el("span", { class: `etiqueta ${cor}`, text: rot })),
+      el("p", { class: "suave", text: `${c.barbearia} · ${c.abertoPor} (${NOME_PERFIL[c.perfil] || c.perfil}) · ${CATEGORIAS_CHAMADO[c.categoria]} · ${c.assunto}${c.tela ? ` · tela: ${c.tela}` : ""}` }),
+      tel ? el("a", { class: "botao pequeno whats", href: tel, target: "_blank", rel: "noopener", text: "Chamar no WhatsApp" }) : null,
+      conversaChamado(mensagens), form);
+  }
+  const [{ chamados, aguardando }, { contato }] = await Promise.all([api(`/plataforma/chamados?situacao=${filtroChamados}`), api("/plataforma/contato-suporte")]);
+  const formContato = el("form", { class: "cartao" },
+    el("h3", { text: "Contato do suporte (aparece para as barbearias)" }),
+    campo("WhatsApp do suporte", { name: "whatsapp", inputmode: "tel", value: contato.whatsapp || "" }),
+    campo("E-mail do suporte", { name: "email", type: "email", value: contato.email || "", placeholder: "suporte@forblade.com.br" }),
+    campo("Horário de atendimento", { name: "horario", value: contato.horario || "", placeholder: "Seg a sex, 9h às 18h" }),
+    el("button", { type: "submit", class: "botao principal", text: "Salvar contato" }));
+  formContato.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(formContato, async () => {
+      await api("/plataforma/contato-suporte", { metodo: "POST", corpo: { whatsapp: formContato.whatsapp.value, email: formContato.email.value, horario: formContato.horario.value } });
+      avisar("Contato salvo.");
+    });
+  });
+  mostrar(cabecalho("Chamados", `${aguardando} aguardando resposta`),
+    el("div", { class: "alterna" }, [["abertos", "Abertos"], ["encerrados", "Encerrados"]].map(([f, t]) =>
+      el("button", { type: "button", class: `botao pequeno ${filtroChamados === f ? "ativo" : ""}`, text: t, onclick: () => { filtroChamados = f; telaChamados(); } }))),
+    el("div", { class: "duas-colunas" },
+      el("section", {}, chamados.length ? el("ul", { class: "lista" }, chamados.map(c => itemChamado(c, `#/chamados/${c.id}`, true)))
+        : el("p", { class: "vazio", text: "Nenhum chamado aqui." })),
+      el("section", {}, formContato)));
 }
 
 function atualizarTopo() {
@@ -3108,6 +3318,9 @@ function janelaReceberNota(c) {
 }
 
 const ICONES = {
+  ajuda: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01",
+  suporte: "M3 18v-6a9 9 0 0 1 18 0v6M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z",
+  tutorial: "M4 5h16v11H4zM10 8.5l4 2-4 2zM8 20h8",
   menu: "M4 6h16M4 12h16M4 18h16",
   seta: "M9 6l6 6-6 6",
   painel: "M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-4H4zM14 4v4h6V4z",
@@ -3136,8 +3349,14 @@ function icone(nome) {
 // Categorias de cada perfil. Rota = endereço da tela (#/rota).
 function gruposDoMenu() {
   const p = usuario.perfil;
-  if (p === "plataforma") return [{ id: "plataforma", titulo: "Plataforma", icone: "loja", itens: [["plataforma", "Barbearias", "loja"]] }];
-  if (usuario.assinatura?.bloqueada) return [{ id: "config", titulo: "Assinatura", icone: "dinheiro", itens: [["assinatura", "Minha assinatura", "dinheiro"]] }];
+  if (p === "plataforma") return [{ id: "plataforma", titulo: "Plataforma", icone: "loja", itens: [["plataforma", "Barbearias", "loja"], ["chamados", "Chamados", "suporte"]] }];
+  if (usuario.assinatura?.bloqueada) return [{ id: "config", titulo: "Assinatura", icone: "dinheiro", itens: [["assinatura", "Minha assinatura", "dinheiro"], ["suporte", "Suporte", "suporte"]] }];
+  return [...gruposDoPerfil(p), {
+    id: "ajuda", titulo: "Ajuda", icone: "ajuda",
+    itens: [["duvidas", "Dúvidas frequentes", "ajuda"], ["tutoriais", "Tutoriais", "tutorial"], ...(p === "proprietario" || p === "gerente" ? [["suporte", "Suporte", "suporte"]] : [])]
+  }];
+}
+function gruposDoPerfil(p) {
   if (p === "caixa") return [
     { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["notas", "Notas em aberto", "contas"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
     { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
@@ -3224,12 +3443,17 @@ const ROTAS = {
   agenda: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgenda },
   notas: { perfis: ["proprietario", "gerente", "caixa"], tela: telaNotas },
   assinatura: { perfis: ["proprietario", "gerente"], tela: telaAssinatura },
+  duvidas: { perfis: ["plataforma", "proprietario", "gerente", "barbeiro", "caixa"], tela: telaDuvidas },
+  tutoriais: { perfis: ["plataforma", "proprietario", "gerente", "barbeiro", "caixa"], tela: telaTutoriais },
+  suporte: { perfis: ["proprietario", "gerente"], tela: telaSuporte },
+  chamados: { perfis: ["plataforma"], tela: telaChamados },
   termos: { perfis: ["plataforma", "proprietario", "gerente", "barbeiro", "caixa"], tela: () => telaLegal("termos") },
   privacidade: { perfis: ["plataforma", "proprietario", "gerente", "barbeiro", "caixa"], tela: () => telaLegal("privacidade") }
 };
 // Telas sem login (página de planos, assinar e textos legais).
 const ROTAS_PUBLICAS = {
   planos: telaPlanos,
+  duvidas: telaDuvidas,
   assinar: plano => telaAssinar(plano),
   termos: () => telaLegal("termos"),
   privacidade: () => telaLegal("privacidade")
@@ -3258,7 +3482,7 @@ async function rotear() {
   }
   if (usuario.trocaObrigatoria) return telaTrocarSenha();
   // Mensalidade atrasada além da tolerância: o proprietário só vê a assinatura.
-  if (usuario.assinatura?.bloqueada && !location.hash.startsWith("#/assinatura")) { location.hash = "#/assinatura"; return; }
+  if (usuario.assinatura?.bloqueada && !/^#\/(assinatura|suporte)/.test(location.hash)) { location.hash = "#/assinatura"; return; }
   atualizarTopo();
   const [nome, parametro] = (location.hash.replace(/^#\/?/, "") || usuario.telaInicial).split("/");
   const rota = ROTAS[nome];
@@ -3266,8 +3490,10 @@ async function rotear() {
     if (nome !== usuario.telaInicial) return irParaInicial();
     return mostrar(el("p", { class: "erro", text: "Tela não disponível para o seu perfil." }));
   }
+  if (!["suporte", "duvidas", "tutoriais"].includes(nome)) telaAnterior = nome;
   return montarTela(rota.tela, parametro);
 }
+let telaAnterior = null;   // última tela de trabalho (vai junto no chamado de suporte)
 let vezRota = 0;
 
 async function sairDoSistema() {
@@ -3331,6 +3557,9 @@ async function iniciar() {
   const btnConta = document.getElementById("btn-conta");
   btnConta.prepend(icone("usuario"));
   btnConta.addEventListener("click", janelaConta);
+  const btnAjuda = document.getElementById("btn-ajuda");
+  btnAjuda.append(icone("ajuda"));
+  btnAjuda.addEventListener("click", ajudaDaTela);
   const btnMenu = document.getElementById("btn-menu");
   btnMenu.append(icone("menu"));
   btnMenu.addEventListener("click", () => (menuEl().classList.contains("aberto") ? fecharMenu() : abrirMenu()));
