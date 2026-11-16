@@ -124,6 +124,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 - 16/11/2026: **Mensagens: escolha da mensagem pronta por botões** (pedido do responsável: a lista suspensa ficava bagunçada no celular). `#env-modelo` virou um quadro com 2 grupos de botões (`.chip-modelo[data-modelo]`, ativo destacado): "Do horário marcado" (só no modo do dia) e "Para qualquer cliente", + "Escrever do zero". Cache do sw `4blade-v14`. Testado em `test/navegador-melhorias.mjs`.
 
 - 16/11/2026: Painel da plataforma: "Equipe ativa" conta o dono como gerente (`textoGerentes`: "1 gerente (o dono)" / "N gerentes (o dono + X)"). Testado em `test/navegador-e1.mjs`.
+  - Mensagens por botões + contagem do dono publicados em 16/11/2026 (autorizado): oficial 10ef5ab0, teste b0fc7031 (conferido no forblade.com.br: sw `4blade-v14`).
 
 ## Versão de teste publicada (Cloudflare)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
