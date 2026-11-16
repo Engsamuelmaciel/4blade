@@ -202,7 +202,12 @@ async function rodar(tela) {
     await page.waitForSelector('[data-cobrar="Gil Fila Fictício"]');
     const entradas0 = await page.textContent("[data-teste=entradas]");
     await print("caixa-pdv-fila");
-    await page.click('[data-cobrar="Gil Fila Fictício"] button:has-text("Cobrar")');
+    // botão "Concluir atendimento": escolhe o horário da agenda e lança a entrada
+    await page.click("button:has-text('Concluir atendimento')");
+    await page.waitForSelector('dialog[open] [data-concluir="Gil Fila Fictício"]');
+    await print("concluir-atendimento-escolher", false);
+    await page.click('dialog[open] [data-concluir="Gil Fila Fictício"]');
+    await page.waitForSelector("dialog[open] >> text=Concluir atendimento de Gil Fila Fictício");
     await page.waitForSelector("dialog[open] [data-teste=total]:has-text('40,00')");
     await page.selectOption("dialog[open] #c-forma1", "dinheiro");
     // troco: cliente entrega 50,00 para pagar 40,00
@@ -297,6 +302,13 @@ async function rodar(tela) {
     assert.equal(await page.locator('[data-agendamento="Ivo Recepção Fictício"] button:has-text("Finalizar")').count(), 0, "caixa cobra pela tela do caixa");
     assert.ok(await page.locator('[data-prof="Ana Barbeira"]').isVisible(), "vê a agenda da Ana também");
     await print("caixa-agenda-todos");
+    // remanejar: o horário das 17:00 vai para as 18:00 (mesmo dia e barbeiro)
+    await page.click('[data-agendamento="Ivo Recepção Fictício"] button:has-text("Remarcar")');
+    await page.waitForSelector('dialog[open] [data-teste=disponibilidade] [data-hora-livre="18:00"]');
+    await page.click('dialog[open] [data-hora-livre="18:00"]');
+    await print("remarcar-horario", false);
+    await ok();
+    await page.waitForSelector('[data-prof="Beto Barbeiro"] [data-agendamento="Ivo Recepção Fictício"] >> text=18:00');
     await ir(page, "Clientes");
     await page.waitForSelector('[data-cliente="Ivo Recepção Fictício"]');
     assert.equal(await page.locator('[data-cliente="Ivo Recepção Fictício"] button:has-text("Desativar")').count(), 0);

@@ -507,7 +507,8 @@ const COR_SITUACAO = { agendado: "", finalizado: "verde", faltou: "amarela", can
 
 // ---------- AGENDA ----------
 const estadoAgenda = { data: null, visao: "dia", barbeiroId: "" };
-let marcarParaCliente = null;   // cliente escolhido na tela Clientes → abre o "Novo horário" já com ele
+let marcarParaCliente = null;
+let ultimaAgenda = null;   // profissionais da agenda aberta (usados ao remarcar)   // cliente escolhido na tela Clientes → abre o "Novo horário" já com ele
 let servicosCache = null;
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 const NOME_STATUS = { livre: "livre", poucos: "poucos horários", cheio: "agenda cheia", fechado: "fechado" };
@@ -531,6 +532,7 @@ async function telaAgenda() {
   const qd = new URLSearchParams({ data: d0, ...(veTodas() && estadoAgenda.barbeiroId ? { barbeiroId: estadoAgenda.barbeiroId } : {}) });
   const [ag, oc, , disp] = await Promise.all([api(`/agenda?${q}`), qo ? api(`/agenda/ocupacao?${qo}`) : null, carregarServicos(),
     v === "dia" ? api(`/agenda/disponibilidade?${qd}`) : null]);
+  ultimaAgenda = ag;
   // Dia: situação de cada profissional e horários livres (tocar abre o "Novo horário" já preenchido).
   const dispDe = id => disp?.profissionais.find(x => x.id === id);
   const resumoDia = p => {
@@ -732,6 +734,7 @@ function cartaoAgendamento(a, mostrarNome) {
     el("div", { class: "item-acoes" },
       a.situacao === "agendado" ? [
         ehCaixa() ? null : botao("Finalizar", () => janelaFinalizar(a), "pequeno principal"),
+        botao("Remarcar", () => janelaRemarcar(a, ultimaAgenda), "pequeno"),
         botaoWhatsapp(a, "lembrete", "Enviar lembrete"),
         botaoWhatsapp(a, "proposta", "Propor horário"),
         botao("Faltou", () => abrirJanela(`${a.cliente.nome} faltou?`, el("p", { text: "O horário fica registrado como falta." }), {
@@ -932,6 +935,43 @@ function janelaMarcar(ag, pre = {}) {
         ], { ok: "Pronto", semCancelar: true, aoConfirmar: () => true });
       }
       avisar("Horário marcado.");
+    }
+  });
+}
+
+// Remarcar: mesmo cliente e serviços (mesma duração), em outra hora/dia/profissional. Mostra o dia escolhido com os livres.
+function janelaRemarcar(a, ag) {
+  const durMin = (h => Number(h.slice(0, 2)) * 60 + Number(h.slice(3)));
+  const duracao = durMin(a.fim) - durMin(a.inicio);
+  const disp = painelDisponibilidade();
+  setTimeout(() => {
+    const f = janela.querySelector("form");
+    if (!f?.rData) return;
+    const recalcular = () => disp.atualizar({ data: f.rData.value, barbeiroId: f.prof?.value || a.barbeiroId, duracao, hora: f.rHora.value, aoEscolher: h => { f.rHora.value = h; } });
+    f.rData.addEventListener("change", recalcular);
+    f.prof?.addEventListener("change", recalcular);
+    recalcular();
+  });
+  return abrirJanela(`Remarcar ${a.cliente.nome}`, [
+    el("p", { class: "info", text: `Está marcado para ${dataBR(a.data)} às ${a.inicio} com ${a.barbeiroNome} · ${a.servicos.map(x => x.nome).join(" + ")} (${duracao} min).` }),
+    veTodas() && ag ? campoProfissional(ag, a.barbeiroId) : null,
+    el("div", { class: "lado-a-lado" },
+      campo("Nova data", { name: "rData", id: "c-rData", type: "date", value: a.data, required: true }),
+      campo("Nova hora", { name: "rHora", id: "c-rHora", type: "time", required: true })),
+    disp.el
+  ], {
+    ok: "Remarcar",
+    aoConfirmar: async f => {
+      const r = await api("/agenda/remarcar", { metodo: "POST", corpo: { id: a.id, data: f.rData.value, hora: f.rHora.value, ...(f.prof ? { barbeiroId: f.prof.value } : {}) } });
+      estadoAgenda.data = f.rData.value;
+      telaAgenda();
+      if (r.whatsapp) {
+        return abrirJanela("Horário remarcado", [
+          el("p", { text: r.mensagem }),
+          el("a", { class: "botao whats largo", href: r.whatsapp, target: "_blank", rel: "noopener", "data-teste": "avisar-remarcado", text: "Avisar o cliente no WhatsApp" })
+        ], { ok: "Pronto", semCancelar: true, aoConfirmar: () => true });
+      }
+      avisar(r.mensagem);
     }
   });
 }
@@ -1465,19 +1505,47 @@ async function abaCobrar(recarregar) {
   const aCobrar = atendimentos.filter(a => a.situacao === "agendado");
   const pagos = atendimentos.filter(a => a.situacao === "finalizado");
   const tabela = s => s.reduce((t, x) => t + (x.precoCentavos || 0), 0);
-  const ticket = a => el("div", { class: `ticket-at ${a.situacao === "finalizado" ? "pago" : ""}`, "data-cobrar": a.cliente.nome },
-    el("span", { class: "hora", text: a.inicio }),
-    el("div", { class: "dados" }, el("strong", { text: a.cliente.nome }), el("span", { text: `${a.barbeiro} · ${a.servicos.map(x => x.nome).join(" + ")}` })),
+  const cobrar = a => janelaFinalizar(a, { endpoint: "/caixa/cobrar", aoTerminar: recarregar, titulo: `Concluir atendimento de ${a.cliente.nome}` });
+  const quando = a => (a.atrasado ? `${dataBR(a.data).slice(0, 5)} ${a.inicio}` : a.inicio);
+  const ticket = a => el("div", { class: `ticket-at ${a.situacao === "finalizado" ? "pago" : ""} ${a.atrasado ? "atrasado" : ""}`, "data-cobrar": a.cliente.nome },
+    el("span", { class: "hora", text: quando(a) }),
+    el("div", { class: "dados" }, el("strong", { text: a.cliente.nome }), el("span", { text: `${a.barbeiro} · ${a.servicos.map(x => x.nome).join(" + ")}${a.atrasado ? " · ficou sem cobrar" : ""}` })),
     a.situacao === "finalizado"
       ? el("span", { class: "etiqueta verde", text: `Pago ${reais(a.totalCentavos)}` })
-      : [el("span", { class: "valor", text: reais(tabela(a.servicos)) }),
-        botao("Cobrar", () => janelaFinalizar(a, { endpoint: "/caixa/cobrar", aoTerminar: recarregar, titulo: `Cobrar ${a.cliente.nome}` }), "pequeno principal")]);
+      : [el("span", { class: "valor", text: reais(tabela(a.servicos)) }), botao("Cobrar", () => cobrar(a), "pequeno principal")]);
   return el("div", { class: "pdv-cobrar" },
-    el("div", { class: "pdv-barra" },
-      el("h3", { text: `Aguardando pagamento (${aCobrar.length})` }),
-      el("div", { class: "pdv-acoes" }, botao("+ Atendimento sem horário", () => janelaAvulso(profissionais, recarregar), "pequeno dourado"))),
-    aCobrar.length ? el("div", { class: "fila" }, aCobrar.map(ticket)) : el("p", { class: "vazio", text: "Nenhum atendimento de hoje aguardando pagamento." }),
+    el("div", { class: "pdv-concluir" },
+      botao("✓ Concluir atendimento", () => janelaConcluir(aCobrar, profissionais, cobrar, recarregar), "principal grande-acao"),
+      botao("+ Atendimento sem horário", () => janelaAvulso(profissionais, recarregar), "dourado grande-acao")),
+    el("div", { class: "pdv-barra" }, el("h3", { text: `Aguardando pagamento (${aCobrar.length})` })),
+    aCobrar.length ? el("div", { class: "fila" }, aCobrar.map(ticket)) : el("p", { class: "vazio", text: "Nenhum atendimento da agenda aguardando pagamento." }),
     pagos.length ? [el("h3", { class: "titulo-pagos", text: `Pagos hoje (${pagos.length})` }), el("div", { class: "fila" }, pagos.map(ticket))] : null);
+}
+
+// Concluir atendimento: escolhe um horário da agenda (de hoje ou que ficou sem cobrar) e lança a entrada.
+// O horário fica "Finalizado" na agenda do cliente e a comissão vai para o barbeiro.
+function janelaConcluir(aCobrar, profissionais, cobrar, recarregar) {
+  const busca = el("input", { type: "search", id: "concluir-busca", autocomplete: "off", placeholder: "Buscar cliente ou barbeiro", "aria-label": "Buscar atendimento" });
+  const lista = el("ul", { class: "lista-concluir", "data-teste": "lista-concluir" });
+  const desenhar = () => {
+    const t = busca.value.trim().toLowerCase();
+    const itens = aCobrar.filter(a => !t || a.cliente.nome.toLowerCase().includes(t) || a.barbeiro.toLowerCase().includes(t));
+    lista.replaceChildren(...(itens.length ? itens.map(a => el("li", {},
+      el("button", { type: "button", class: "concluir-opcao", "data-concluir": a.cliente.nome, onclick: () => { janela.close(); setTimeout(() => cobrar(a)); } },
+        el("span", { class: "hora", text: a.atrasado ? `${dataBR(a.data).slice(0, 5)} ${a.inicio}` : a.inicio }),
+        el("span", { class: "dados" }, el("strong", { text: a.cliente.nome }), el("small", { text: `${a.barbeiro} · ${a.servicos.map(x => x.nome).join(" + ")}` })),
+        el("strong", { class: "valor", text: reais(a.servicos.reduce((x, s) => x + (s.precoCentavos || 0), 0)) }))))
+      : [el("li", { class: "suave sem-resultado", text: aCobrar.length ? "Nenhum atendimento com esse nome." : "Nenhum horário da agenda aguardando pagamento." })]));
+  };
+  busca.addEventListener("input", desenhar);
+  desenhar();
+  return abrirJanela("Concluir atendimento", [
+    el("p", { class: "suave", text: "Escolha o atendimento que o barbeiro terminou. Depois confira o valor e a forma de pagamento: o horário fica concluído na agenda." }),
+    aCobrar.length > 4 ? busca : null,
+    lista,
+    el("p", { class: "suave centro" }, "O cliente não estava na agenda? ",
+      el("button", { type: "button", class: "link-acao", text: "Lançar atendimento sem horário", onclick: () => { janela.close(); setTimeout(() => janelaAvulso(profissionais, recarregar)); } }))
+  ], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
 }
 
 // Atendimento sem horário marcado (cliente chegou na hora): registra e já cobra.

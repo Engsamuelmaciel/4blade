@@ -645,3 +645,17 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
 .troco-resultado.ok { color: var(--ok); font-size: 20px; }
 .troco-resultado.falta { color: var(--erro); }
 
+/* ---------- concluir atendimento (caixa) ---------- */
+.pdv-concluir { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.botao.grande-acao { min-height: 52px; font-size: 16px; font-weight: 800; border-radius: 12px; }
+@media (max-width: 699px) { .pdv-concluir { grid-template-columns: 1fr; } }
+.lista-concluir { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; max-height: 55vh; overflow-y: auto; }
+.concluir-opcao { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; border: 1px solid var(--borda); background: var(--cartao); color: var(--texto); font: inherit; text-align: left; cursor: pointer; }
+.concluir-opcao:hover { border-color: var(--dourado); }
+.concluir-opcao .hora { font-weight: 800; min-width: 52px; }
+.concluir-opcao .dados { flex: 1; min-width: 0; }
+.concluir-opcao .dados strong, .concluir-opcao .dados small { display: block; }
+.concluir-opcao .dados small { color: var(--suave); }
+.ticket-at.atrasado { border-left-color: var(--erro); }
+.link-acao { border: 0; background: none; color: var(--destaque); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 0; }
+

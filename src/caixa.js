@@ -4,7 +4,7 @@
 import { json, fail, HttpError, readJson, validCentavos, validDate, textoOpcional, exigirMotivo, auditoria, auditoriaSe, hojeBrasil } from "./util.js";
 import { isGestao } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
-import { FORMAS, formaEfetiva, telefoneReal } from "./agenda-util.js";
+import { FORMAS, formaEfetiva, telefoneReal, somarDias } from "./agenda-util.js";
 import { finalizarDados, atendimentoAvulso } from "./agenda.js";
 
 const erro = (msg, status = 400) => { throw new HttpError(msg, status); };
@@ -196,15 +196,18 @@ export async function rotasCaixa(ctx, path, method) {
                     f.total_centavos
                   FROM agendamentos a JOIN usuarios u ON u.id = a.barbeiro_id JOIN clientes c ON c.id = a.cliente_id
                   LEFT JOIN finalizacoes f ON f.agendamento_id = a.id AND f.estornada = 0
-                  WHERE a.barbearia_id = ? AND a.data = ? AND a.situacao IN ('agendado','finalizado') ORDER BY a.inicio`).bind(ctx.barbeariaId, hoje).all(),
+                  WHERE a.barbearia_id = ? AND ((a.data = ? AND a.situacao IN ('agendado','finalizado'))
+                    OR (a.data BETWEEN ? AND ? AND a.situacao = 'agendado'))   -- atendimentos dos últimos 7 dias que ficaram sem cobrar
+                  ORDER BY a.inicio`).bind(ctx.barbeariaId, hoje, somarDias(hoje, -7), somarDias(hoje, -1)).all(),
       db.prepare(`SELECT s.agendamento_id, s.servico_id, s.nome, sv.preco_centavos FROM agendamento_servicos s JOIN agendamentos a ON a.id = s.agendamento_id
-                  LEFT JOIN servicos sv ON sv.id = s.servico_id WHERE a.barbearia_id = ? AND a.data = ? ORDER BY s.rowid`).bind(ctx.barbeariaId, hoje).all(),
+                  LEFT JOIN servicos sv ON sv.id = s.servico_id WHERE a.barbearia_id = ? AND a.data BETWEEN ? AND ? ORDER BY s.rowid`).bind(ctx.barbeariaId, somarDias(hoje, -7), hoje).all(),
       db.prepare(`SELECT id, nome FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('gerente','barbeiro') ORDER BY nome`).bind(ctx.barbeariaId).all()
     ]);
     return json({
       profissionais: profs.results,
       atendimentos: ags.results.map(a => ({
-        id: a.id, inicio: a.inicio.slice(11), fim: a.fim.slice(11), situacao: a.situacao, barbeiroId: a.barbeiro_id, barbeiro: a.barbeiro,
+        id: a.id, data: a.inicio.slice(0, 10), atrasado: a.inicio.slice(0, 10) < hoje,
+        inicio: a.inicio.slice(11), fim: a.fim.slice(11), situacao: a.situacao, barbeiroId: a.barbeiro_id, barbeiro: a.barbeiro,
         cliente: { nome: a.cliente, telefone: telefoneReal(a.telefone) }, totalCentavos: a.total_centavos ?? null,
         servicos: servs.results.filter(s => s.agendamento_id === a.id).map(s => ({ id: s.servico_id, nome: s.nome, precoCentavos: s.preco_centavos ?? 0 }))
       }))

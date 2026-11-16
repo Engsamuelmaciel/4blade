@@ -48,9 +48,9 @@ async function agendamentoPermitido(ctx, id, { cobrar = false } = {}) {
     WHERE a.id = ? AND a.barbearia_id = ?
   `).bind(id, ctx.barbeariaId).first();
   if (!a) erro("Horário não encontrado.", 404);
-  // Caixa (recepção): mexe em qualquer agenda (marcar, faltou, cancelar, WhatsApp), mas só cobra atendimentos de hoje.
+  // Caixa (recepção): mexe em qualquer agenda (marcar, remarcar, faltou, cancelar, WhatsApp); cobra de hoje ou de dias anteriores (entra no caixa de hoje).
   if (ctx.user.perfil === "caixa") {
-    if (cobrar && a.data !== hojeBrasil()) erro("No caixa só dá para cobrar atendimentos de hoje.", 403);
+    if (cobrar && a.data > hojeBrasil()) erro("Não dá para cobrar um atendimento de um dia que ainda não chegou.", 403);
     return a;
   }
   if (!isGestao(ctx.user) && a.barbeiro_id !== ctx.user.id) erro("Esse horário é da agenda de outro profissional.", 403);
@@ -454,6 +454,50 @@ async function reabrir(ctx) {
   return json({ mensagem: "Atendimento reaberto: entrada e comissão estornadas. O horário voltou para agendado." });
 }
 
+// ---------- REMARCAR (remanejar um horário agendado: outra hora, outro dia e/ou outro profissional) ----------
+// Mantém cliente e serviços (mesma duração). Confere funcionamento/horário/datas fechadas e, na gravação, conflito e bloqueio.
+async function remarcar(ctx) {
+  const { db, user, request } = ctx;
+  const input = await readJson(request);
+  const a = await agendamentoPermitido(ctx, input.id);
+  if (a.situacao !== "agendado") erro("Só dá para remarcar um horário agendado.", 409);
+  const data = exigirData(input.data);
+  if (data < hojeBrasil() || data > somarDias(hojeBrasil(), 366)) erro("Escolha uma data de hoje até daqui a um ano.");
+  const ini = horaParaMin(input.hora);
+  if (ini === null) erro("Hora inválida (HH:MM).");
+  const prof = input.barbeiroId && input.barbeiroId !== a.barbeiro_id ? await profissional(ctx, input.barbeiroId)
+    : { id: a.barbeiro_id };
+  const dur = horaParaMin(a.fim.slice(11)) - horaParaMin(a.inicio.slice(11));
+  const fim = ini + dur;
+  if (fim > 24 * 60) erro("O horário passa da meia-noite.");
+  const inicio = momento(data, ini), termino = momento(data, fim);
+  if (prof.id === a.barbeiro_id && inicio === a.inicio) erro("Escolha outro horário, dia ou profissional.");
+  conferirHorario(await regrasDoDia(db, ctx.barbeariaId, prof.id, data), ini, fim);
+  const depois = ["EXISTS (SELECT 1 FROM agendamentos WHERE id = ? AND barbeiro_id = ? AND inicio = ? AND fim = ?)", [a.id, prof.id, inicio, termino]];
+  const r = await db.batch([
+    db.prepare(`UPDATE agendamentos SET barbeiro_id = ?, data = ?, inicio = ?, fim = ?, atualizado_em = CURRENT_TIMESTAMP
+                WHERE id = ? AND barbearia_id = ? AND situacao = 'agendado'
+                  AND NOT EXISTS (SELECT 1 FROM agendamentos o WHERE o.barbearia_id = ? AND o.barbeiro_id = ? AND o.id <> ? AND o.situacao IN ('agendado','finalizado') AND o.inicio < ? AND o.fim > ?)
+                  AND NOT EXISTS (SELECT 1 FROM bloqueios WHERE barbearia_id = ? AND barbeiro_id = ? AND ativo = 1 AND inicio < ? AND fim > ?)`)
+      .bind(prof.id, data, inicio, termino, a.id, ctx.barbeariaId, ctx.barbeariaId, prof.id, a.id, termino, inicio, ctx.barbeariaId, prof.id, termino, inicio),
+    auditoriaSe(ctx, ...depois, "agendamento_remarcado", a.id, {
+      antes: { barbeiro: a.barbeiro_id, inicio: a.inicio, fim: a.fim }, depois: { barbeiro: prof.id, inicio, fim: termino }
+    })
+  ]);
+  if (!r[0].meta?.changes) {
+    const b = await db.prepare("SELECT 1 FROM bloqueios WHERE barbearia_id = ? AND barbeiro_id = ? AND ativo = 1 AND inicio < ? AND fim > ?").bind(ctx.barbeariaId, prof.id, termino, inicio).first();
+    erro(b ? "Esse horário está bloqueado na agenda do profissional." : "Já existe outro atendimento nesse horário. Escolha um horário livre.", 409);
+  }
+  // Link pronto para avisar o cliente do novo horário (lembrete), se ele tiver telefone.
+  const novo = await agendamentoPermitido(ctx, a.id);
+  const modelos = await carregarModelos(db, ctx.barbeariaId);
+  return json({
+    mensagem: `Horário remarcado para ${data.split("-").reverse().slice(0, 2).join("/")} às ${minParaHora(ini)}.`,
+    agendamento: { id: a.id, data, inicio: minParaHora(ini), fim: minParaHora(fim), barbeiroId: prof.id },
+    whatsapp: linksWhatsapp(novo, { lembrete: modelos.lembrete }, user.barbearia_nome)?.lembrete || null
+  });
+}
+
 // ---------- FALTOU / CANCELADO ----------
 async function mudarSituacao(ctx) {
   const { db, request } = ctx;
@@ -716,6 +760,7 @@ export async function rotasAgenda(ctx, path, method) {
   if (path === "/agenda/finalizar" && method === "POST") return finalizar(ctx);
   if (path === "/agenda/reabrir" && method === "POST") return reabrir(ctx);
   if (path === "/agenda/situacao" && method === "POST") return mudarSituacao(ctx);
+  if (path === "/agenda/remarcar" && method === "POST") return remarcar(ctx);
   if (path === "/agenda/mensagem" && method === "POST") return registrarMensagem(ctx);
   if (path === "/agenda/bloqueios" && method === "POST") return bloquear(ctx);
   if (path === "/agenda/bloqueios/cancelar" && method === "POST") return cancelarBloqueio(ctx);
