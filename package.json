@@ -1,0 +1,18 @@
+{
+  "name": "4blade",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --no-warnings test/*.test.js",
+    "tela": "node test/servidor-local.mjs 8787",
+    "teste-navegador": "node test/navegador-e1.mjs",
+    "dev": "wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "4.149.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

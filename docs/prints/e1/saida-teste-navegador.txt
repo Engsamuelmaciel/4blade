@@ -1,0 +1,47 @@
+[computador] plataforma entra e cria a barbearia
+  print: docs/prints/e1/computador-01-login.png
+  print: docs/prints/e1/computador-02-plataforma-senha-do-proprietario.png
+  print: docs/prints/e1/computador-03-plataforma-painel.png
+[computador] proprietário troca a senha e cria gerente, barbeiro e caixa
+  print: docs/prints/e1/computador-04-troca-de-senha.png
+  print: docs/prints/e1/computador-05-proprietario-inicio.png
+  print: docs/prints/e1/computador-06-senha-provisoria-da-equipe.png
+  print: docs/prints/e1/computador-07-proprietario-equipe-limite-do-plano.png
+[computador] gerente cadastra 2 serviços, 2 produtos e 1 cliente
+  print: docs/prints/e1/computador-08-gerente-servicos.png
+  print: docs/prints/e1/computador-09-gerente-produtos-com-custo-e-margem.png
+  print: docs/prints/e1/computador-10-gerente-clientes.png
+  print: docs/prints/e1/computador-11-gerente-modelos-de-mensagem.png
+[computador] barbeiro entra e não vê custo/margem
+  print: docs/prints/e1/computador-12-barbeiro-inicio.png
+  print: docs/prints/e1/computador-13-barbeiro-produtos-sem-custo.png
+[computador] caixa entra e abre direto na tela do caixa
+  print: docs/prints/e1/computador-14-caixa-tela-inicial.png
+[computador] plataforma bloqueia a barbearia: ninguém entra
+  print: docs/prints/e1/computador-15-plataforma-barbearia-bloqueada.png
+  print: docs/prints/e1/computador-16-login-recusado-barbearia-bloqueada.png
+[computador] OK — nenhum erro no console (inclui bloqueios de CSP)
+[celular] plataforma entra e cria a barbearia
+  print: docs/prints/e1/celular-01-login.png
+  print: docs/prints/e1/celular-02-plataforma-senha-do-proprietario.png
+  print: docs/prints/e1/celular-03-plataforma-painel.png
+[celular] proprietário troca a senha e cria gerente, barbeiro e caixa
+  print: docs/prints/e1/celular-04-troca-de-senha.png
+  print: docs/prints/e1/celular-05-proprietario-inicio.png
+  print: docs/prints/e1/celular-06-senha-provisoria-da-equipe.png
+  print: docs/prints/e1/celular-07-proprietario-equipe-limite-do-plano.png
+[celular] gerente cadastra 2 serviços, 2 produtos e 1 cliente
+  print: docs/prints/e1/celular-08-gerente-servicos.png
+  print: docs/prints/e1/celular-09-gerente-produtos-com-custo-e-margem.png
+  print: docs/prints/e1/celular-10-gerente-clientes.png
+  print: docs/prints/e1/celular-11-gerente-modelos-de-mensagem.png
+[celular] barbeiro entra e não vê custo/margem
+  print: docs/prints/e1/celular-12-barbeiro-inicio.png
+  print: docs/prints/e1/celular-13-barbeiro-produtos-sem-custo.png
+[celular] caixa entra e abre direto na tela do caixa
+  print: docs/prints/e1/celular-14-caixa-tela-inicial.png
+[celular] plataforma bloqueia a barbearia: ninguém entra
+  print: docs/prints/e1/celular-15-plataforma-barbearia-bloqueada.png
+  print: docs/prints/e1/celular-16-login-recusado-barbearia-bloqueada.png
+[celular] OK — nenhum erro no console (inclui bloqueios de CSP)
+TESTE NO NAVEGADOR: OK (computador 1366 px e celular 390 px)

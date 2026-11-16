@@ -25,7 +25,15 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 - Botão novo com ícone por máscara de SVG precisa da regra de ícone no CSS (senão vira quadrado cheio); conferir no celular e no computador.
 
 ## Estado
-- 15/11/2026: especificação aprovada (versão 4). Nenhum código ainda. Próximo: E1 (Base).
+- 15/11/2026: especificação aprovada (versão 4).
+- 16/11/2026: **E1 (Base) pronta** na ramificação `e1-base`, aguardando avaliação. Próximo: E2 (Agenda).
+  - Banco: `migrations/0001_base.sql` (barbearias com `plano`, usuarios, sessoes, limites_acesso, auditoria, servicos, produtos, clientes, modelos_mensagem). Comissão em centésimos de % (`*_bp`, 4000 = 40%).
+  - API: `src/index.js` (login, sessão 12 h, 5 tentativas/15 min, troca obrigatória), `src/plataforma.js`, `src/usuarios.js` (equipe + limite por plano), `src/cadastros.js`, `src/perfis.js` (limites e quem gerencia quem), `src/util.js`.
+  - Usuários = colaboradores; login único no sistema todo; senha provisória gerada pelo servidor (mostrada 1 vez). 1º usuário da plataforma: `POST /api/setup/plataforma` com o segredo `ADMIN_SETUP_TOKEN`.
+  - Tela: `public/` (index.html, app.js, style.css, sw.js, manifest, ícones). Caixa abre em `#/caixa` (em construção).
+  - Testes: `npm test` (44 automáticos) e `node test/navegador-e1.mjs` (Playwright, 1366 e 390 px; prints em `docs/prints/e1/`). Tela local: `npm run tela` (usuário `suporte`, senha `Nova-suporte-senha`).
+  - Deixado para a E2: horário de trabalho do colaborador (depende do funcionamento, 4.9); busca de cliente pelo barbeiro na marcação. Estoque/custo médio: E3 (barbeiro e caixa veem "disponível" = produto ativo por enquanto).
+  - `wrangler.toml` com ids MARCADORES: nada criado na Cloudflare, nenhum deploy.
 
 ## Pendências fora do código
 - Conferir domínios 4blade.com.br e forblade.com.br (registro.br) e a marca no INPI (classe 42).
