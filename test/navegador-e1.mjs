@@ -113,11 +113,19 @@ async function rodar(tela) {
     await page.selectOption("#c-plano", "basico");
     await page.fill("#c-propNome", "Carlos Fictício");
     await page.fill("#c-propLogin", "carlos.navalha");
+    // telefone formata enquanto digita
+    await page.locator("#c-telefone").pressSequentially("11987654321");
+    assert.equal(await page.inputValue("#c-telefone"), "(11) 98765-4321");
+    await page.locator("#c-propTel").pressSequentially("1133334444");
+    assert.equal(await page.inputValue("#c-propTel"), "(11) 3333-4444");
+    assert.equal(await page.locator("#btn-inicio").isVisible(), false, "plataforma não tem botão Início");
+    assert.match(await page.textContent("[data-teste=explicacao-plataforma]"), /entre com o usuário do proprietário/);
     await page.click("button:has-text('Criar barbearia')");
     const senhaProp = await lerSenhaDaJanela();
     await print("plataforma-senha-do-proprietario");
     await fecharJanela();
     await page.waitForSelector('[data-barbearia="Barbearia Navalha Fictícia"]');
+    assert.match(await page.textContent('[data-barbearia="Barbearia Navalha Fictícia"]'), /Telefone: \(11\) 98765-4321/);
     await print("plataforma-painel");
     await sair();
 
@@ -147,8 +155,9 @@ async function rodar(tela) {
     await page.click("a.menu-item:has-text('Serviços')");
     for (const [nome, preco, dur] of [["Corte masculino", "40,00", "30"], ["Barba completa", "30,00", "20"]]) {
       await page.fill("#c-nome", nome);
-      await page.fill("#c-preco", preco);
+      await page.fill("#c-preco", preco.replace(",00", ""));   // digita "40" → vira "40,00" ao sair do campo
       await page.fill("#c-duracao", dur);
+      assert.equal(await page.inputValue("#c-preco"), preco);
       await page.click("form.cartao button:has-text('Salvar')");
       await page.waitForSelector(`[data-servico="${nome}"]`);
     }

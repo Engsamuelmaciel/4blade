@@ -102,10 +102,44 @@ function campo(rotulo, attrs = {}, ajuda = null) {
     : attrs.tag === "select"
       ? el("select", { ...attrs, tag: null, opcoes: null, valor: null, id }, ...(attrs.opcoes || []).map(([v, t]) => el("option", { value: v, selected: v === attrs.valor || null, text: t })))
       : el("input", { type: "text", ...attrs, id });
+  if (attrs.inputmode === "tel") mascaraTelefone(controle);
+  else if (attrs.inputmode === "decimal" && !/^com/.test(attrs.name || "")) mascaraDinheiro(controle);   // % de comissão fica livre
   return el("div", { class: "campo" },
     el("label", { for: id, text: rotulo }),
     controle,
     ajuda ? el("p", { class: "ajuda", text: ajuda }) : null);
+}
+
+// Telefone formatado enquanto digita: (11) 91234-5678 ou (11) 3456-7890. Aceita +55 na frente.
+function formatarTelefone(v) {
+  let d = String(v || "").replace(/\D/g, "");
+  if (d.length > 11 && d.startsWith("55")) d = d.slice(2);
+  d = d.slice(0, 11);
+  if (d.length <= 2) return d ? `(${d}` : "";
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+function mascaraTelefone(input) {
+  input.setAttribute("maxlength", "16");
+  input.setAttribute("autocomplete", input.getAttribute("autocomplete") || "tel-national");
+  if (input.value) input.value = formatarTelefone(input.value);
+  input.addEventListener("input", () => {
+    const antes = input.value;
+    const digitosAntesDoCursor = antes.slice(0, input.selectionStart ?? antes.length).replace(/\D/g, "").length;
+    input.value = formatarTelefone(antes);
+    // mantém o cursor depois do mesmo número de dígitos
+    let pos = 0, vistos = 0;
+    while (pos < input.value.length && vistos < digitosAntesDoCursor) { if (/\d/.test(input.value[pos])) vistos++; pos++; }
+    if (document.activeElement === input) input.setSelectionRange(pos, pos);
+  });
+}
+// Dinheiro: ao sair do campo, "40" vira "40,00" e "1234,5" vira "1.234,50".
+function mascaraDinheiro(input) {
+  input.addEventListener("blur", () => {
+    const c = paraCentavos(input.value);
+    if (c !== null && input.value.trim()) input.value = (c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  });
 }
 
 function caixaMarcar(rotulo, attrs = {}) {
@@ -249,6 +283,7 @@ function atualizarTopo() {
   if (usuario && !usuario.trocaObrigatoria) {
     sub.textContent = usuario.barbearia ? `${usuario.barbearia.nome} · ${usuario.nome}` : `Plataforma · ${usuario.nome}`;
     acoes.hidden = false;
+    document.getElementById("btn-inicio").hidden = usuario.perfil === "plataforma";
   } else {
     sub.textContent = "Gestão para barbearias";
     acoes.hidden = true;
@@ -295,7 +330,8 @@ async function telaPlataforma() {
         el("strong", { text: b.nome }),
         el("span", { class: `etiqueta ${b.bloqueada ? "vermelha" : "verde"}`, text: b.bloqueada ? "Bloqueada" : "Ativa" }),
         el("span", { class: "etiqueta", text: `Plano ${NOME_PLANO[b.plano]}${b.barbeirosAdicionais ? ` +${b.barbeirosAdicionais}` : ""}` })),
-      el("p", { class: "suave", text: `Proprietário: ${b.proprietario?.nome || "—"} (${b.proprietario?.login || "—"})${b.proprietario?.trocaPendente ? " · ainda não entrou" : ""}` }),
+      el("p", { class: "suave", text: `Proprietário: ${b.proprietario?.nome || "—"} · usuário ${b.proprietario?.login || "—"}${b.proprietario?.trocaPendente ? " · ainda não entrou" : ""}` }),
+      b.telefone ? el("p", { class: "suave", text: `Telefone: ${fone(b.telefone)}` }) : null,
       el("p", { class: "suave", text: `Equipe ativa: ${b.usuariosAtivos.gerente} gerente(s), ${b.usuariosAtivos.barbeiro} barbeiro(s), ${b.usuariosAtivos.caixa} caixa(s)` }),
       b.bloqueada && b.motivoBloqueio ? el("p", { class: "suave", text: `Motivo do bloqueio: ${b.motivoBloqueio}` }) : null,
       el("div", { class: "item-acoes" },
@@ -319,6 +355,7 @@ async function telaPlataforma() {
 
   mostrar(
     cabecalho("Painel da plataforma", "Barbearias clientes do 4blade", null),
+    el("p", { class: "info", "data-teste": "explicacao-plataforma", text: "Este painel é só para administrar as barbearias (criar, bloquear, plano e senha do dono). Para usar o sistema de uma barbearia (agenda, caixa, equipe…), toque em Sair e entre com o usuário do proprietário. Se ele não tiver a senha, use \"Nova senha do proprietário\"." }),
     el("div", { class: "duas-colunas" },
       el("section", {}, el("h3", { text: `Barbearias (${barbearias.length})` }), lista),
       el("section", {}, form)));
