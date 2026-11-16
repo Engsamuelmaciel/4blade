@@ -332,9 +332,11 @@ async function finalizar(ctx) {
 }
 
 // Nota (promissória) só para cliente identificado e ativo: é para quem o caixa vai cobrar depois.
+// Promissória só para cliente já cadastrado na base de clientes (pedido de 16/11/2026): cliente avulso não fica na nota.
+export const MSG_NOTA_CADASTRO = "Para lançar promissória, o cliente precisa estar cadastrado na base de clientes. Escolha o cliente da lista (cliente avulso não pode ficar na nota).";
 export async function exigirClienteDaNota(ctx, clienteId) {
   const c = clienteId ? await ctx.db.prepare("SELECT nome, ativo FROM clientes WHERE id = ? AND barbearia_id = ?").bind(clienteId, ctx.barbeariaId).first() : null;
-  if (!c || c.nome === CLIENTE_NAO_IDENTIFICADO) erro("Para lançar na promissória, escolha o cliente (do cadastro ou com o nome).");
+  if (!c || c.nome === CLIENTE_NAO_IDENTIFICADO) erro(MSG_NOTA_CADASTRO);
   if (!c.ativo) erro("Esse cliente está desativado: não dá para lançar na promissória.", 409);
   return c;
 }
@@ -731,7 +733,9 @@ export async function atendimentoAvulso(ctx) {
   const itens = Array.isArray(input.itens) ? input.itens : erro("Escolha os serviços.");
   const servs = await servicosEscolhidos(ctx, itens.map(i => i?.servicoId));
   const total = itens.reduce((t, i) => t + (validCentavos(i.precoCobradoCentavos) ? i.precoCobradoCentavos : erro("Valor cobrado inválido.")), 0);
-  lerPagamentos(input.pagamentos, total, { promissoria: true });   // confere antes de gravar
+  const pagConf = lerPagamentos(input.pagamentos, total, { promissoria: true });   // confere antes de gravar
+  // Promissória no atendimento sem horário: só com cliente escolhido da base (não cria cliente na hora).
+  if (pagConf.some(p => p.forma === "promissoria") && !(input.cliente && input.cliente.id !== undefined)) erro(MSG_NOTA_CADASTRO);
   const caixa = await caixaDeHoje(ctx);
   if (!caixa || caixa.situacao !== "aberto") erro("O caixa de hoje não está aberto.", 409);
   // horário = agora (Brasília), arredondado para 5 min

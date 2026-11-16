@@ -2140,7 +2140,9 @@ function blocoPagamento(totalAtual, { nota = true } = {}) {
     return (f1 === "dinheiro" ? v1 : 0) + (segunda.querySelector("select").value === "dinheiro" ? t - v1 : 0);
   };
   const troco = campoTroco(emDinheiro);
+  const avisoNota = el("p", { class: "aviso-nota", "data-teste": "aviso-nota", hidden: true, text: "Para lançar promissória, o cliente precisa estar cadastrado na base de clientes (escolha o cliente da lista). Cliente avulso não pode ficar na nota." });
   const atualizar = () => {
+    avisoNota.hidden = !temNota();
     const d = dividir.querySelector("input").checked;
     valor1.hidden = !d;
     segunda.hidden = !d;
@@ -2157,7 +2159,7 @@ function blocoPagamento(totalAtual, { nota = true } = {}) {
   };
   // Alguma das formas escolhidas é promissória? (exige cliente identificado)
   const temNota = () => forma1.querySelector("select").value === "promissoria" || (dividir.querySelector("input").checked && segunda.querySelector("select").value === "promissoria");
-  return { elementos: [forma1, dividir, valor1, segunda, troco.el], atualizar, ler, temNota };
+  return { elementos: [forma1, dividir, valor1, segunda, avisoNota, troco.el], atualizar, ler, temNota };
 }
 
 // ---------- VENDA DE PRODUTO (caixa, gestão ou barbeiro) ----------
@@ -2485,6 +2487,7 @@ function janelaAvulso(profissionais, recarregar) {
         itens.push({ servicoId: l.s.id, precoCobradoCentavos: v });
       }
       if (!itens.length) throw new Error("Marque pelo menos um serviço.");
+      if (pag.temNota() && !seletor.escolhido()) throw new Error("Para lançar promissória, o cliente precisa estar cadastrado na base de clientes. Busque e escolha o cliente na lista (cliente avulso não pode ficar na nota).");
       await api("/caixa/atendimento-avulso", {
         metodo: "POST",
         corpo: { barbeiroId: f.prof.value, itens, pagamentos: pag.ler(f),
@@ -2577,7 +2580,7 @@ async function abaVender(recarregar) {
       if (bp === null) throw new Error("Desconto inválido: use um número de 0 a 99 (ex.: 10 ou 7,5).");
       const valor = total();
       const naNota = pag.temNota();
-      if (naNota && !seletor.escolhido()) throw new Error("Na promissória, escolha o cliente da nota.");
+      if (naNota && !seletor.escolhido()) throw new Error("Para lançar promissória, o cliente precisa estar cadastrado na base de clientes. Escolha o cliente da nota na lista.");
       await api("/vendas", { metodo: "POST", corpo: { itens, pagamentos: pag.ler(form), ...(bp ? { descontoBp: bp } : {}), ...(naNota ? { clienteId: seletor.escolhido().id } : {}) } });
       carrinho.clear();
       avisar(bp ? `Venda registrada: ${reais(valor)} (desconto de ${bpParaTexto(bp)}%).` : `Venda registrada: ${reais(valor)}.`);

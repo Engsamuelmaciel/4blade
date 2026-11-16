@@ -459,6 +459,14 @@ describe("promissória: nota em aberto do cliente (pedido de 16/11/2026)", () =>
     const anon = await post("/api/caixa/atendimento-avulso", cx.token, { barbeiroId: barb.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], pagamentos: [{ forma: "promissoria", valorCentavos: 4000 }], cliente: {} });
     assert.equal(anon.status, 400);
     assert.match(anon.dados.erro, /promissória/);
+    // cliente avulso (digitado na hora, mesmo com nome e telefone) também não: precisa estar cadastrado na base
+    const qtdClientes = () => amb.env.DB.raw.prepare("SELECT COUNT(*) AS n FROM clientes").get().n;
+    const antes = qtdClientes();
+    const avulso = await post("/api/caixa/atendimento-avulso", cx.token, { barbeiroId: barb.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }],
+      pagamentos: [{ forma: "promissoria", valorCentavos: 4000 }], cliente: { nome: "Avulso Fictício", telefone: "11 98888-1212", aceiteLgpd: true } });
+    assert.equal(avulso.status, 400);
+    assert.match(avulso.dados.erro, /cadastrado na base de clientes/);
+    assert.equal(qtdClientes(), antes, "não cria cliente nem horário quando recusa");
     assert.equal((await post("/api/vendas", cx.token, { itens: [{ produtoId: pom.id, quantidade: 1 }], pagamentos: [{ forma: "promissoria", valorCentavos: 2500 }] })).status, 400);
     // receber: soma tem de bater; entra no caixa de hoje em dinheiro
     const ids = notas.clientes[0].notas.map(n => n.id);

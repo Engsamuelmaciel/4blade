@@ -263,6 +263,16 @@ async function rodar(tela) {
     await page.click(".pdv-barra .alterna button:has-text('Cobrar')");
     await page.click("button:has-text('+ Atendimento sem horário')");
     await page.check("dialog[open] input[name=aserv] >> nth=0");
+    // cliente avulso (digitado na hora) não pode ficar na promissória: aviso na tela e recusa
+    await page.fill("dialog[open] input[name=aNome]", "Avulso Nota Fictício");
+    await page.selectOption("dialog[open] #c-forma1", "promissoria");
+    await page.waitForSelector("dialog[open] [data-teste=aviso-nota]:visible");
+    assert.match(await page.textContent("dialog[open] [data-teste=aviso-nota]"), /precisa estar cadastrado na base de clientes/);
+    await ok();
+    await page.waitForSelector("dialog[open] >> text=/cliente precisa estar cadastrado na base de clientes/");
+    await print("promissoria-avulso-recusada", false);
+    await page.selectOption("dialog[open] #c-forma1", "dinheiro");
+    assert.equal(await page.locator("dialog[open] [data-teste=aviso-nota]").isVisible(), false);
     await page.fill("#av-cli-busca", "Fábio");
     await page.click('dialog[open] [data-cliente-opcao="Fábio Fixo Fictício"]');
     await page.selectOption("dialog[open] #c-forma1", "promissoria");

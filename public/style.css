@@ -957,3 +957,4 @@ i.marca-saida { background: var(--serie-saida); }
 .slot.aberto .slot-seta::before { transform: translateY(2px) rotate(-135deg); }
 .slot-detalhes { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--borda); }
 @media (prefers-reduced-motion: reduce) { .slot-seta::before { transition: none; } }
+.aviso-nota { margin: 6px 0; padding: 8px 10px; border-radius: 8px; background: var(--amarelo-fundo); color: var(--amarelo); font-size: 13.5px; }
