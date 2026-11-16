@@ -212,3 +212,8 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - Desligado: landing page e página de planos sem preços, sem "dias grátis" e sem "Assinar" (o botão vira "Quero conhecer" pelo WhatsApp do suporte, quando configurado; `#/assinar` volta para os planos; `POST /api/assinar` recusado). Nenhuma barbearia é avisada ou bloqueada por mensalidade. Dúvidas e tutoriais de pagamento somem.
 - No app, o item **"Meu plano"** (Equipe e ajustes) mostra só o plano, as vagas de barbeiro (ativos/limite), gerentes e caixas sem limite, o que o plano inclui e o botão do suporte para mudar de plano.
 - Ligar de novo (quando o barbeiro entrar num plano pago): pôr `COBRANCA_ON_LINE = "sim"` no Worker e publicar; o Asaas (seção 11) volta a funcionar como estava.
+
+## 15. Solicitar teste grátis (16/11/2026, pedido do responsável)
+- Com a cobrança desligada, o site oferece **"Solicitar teste grátis"** (landing, cartões dos planos; `#/teste-gratis[/plano]`): nome da barbearia, seu nome, WhatsApp, cidade, quantos barbeiros, plano de interesse (opcional), mensagem (opcional) e aceite de contato + política de privacidade.
+- O pedido vai para a **plataforma** (menu "Pedidos de teste"): situação Novo → Em contato → Cadastrada | Descartado (com motivo). Botão de WhatsApp com mensagem pronta e **"Cadastrar barbearia"** já preenchido com os dados do pedido (plano sugerido pelo nº de barbeiros); ao cadastrar, mostra a senha provisória do proprietário e o pedido sai da fila.
+- Mesmo WhatsApp com pedido em aberto nos últimos 30 dias não duplica; no máximo 3 pedidos por hora por aparelho. Tabela `solicitacoes_teste` (migração 0013), da plataforma (sem barbearia_id até virar cliente).

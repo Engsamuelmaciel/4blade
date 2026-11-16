@@ -24,6 +24,7 @@ import { rotasEstoque, rotasVendas } from "./estoque.js";
 import { rotasGestao } from "./gestao.js";
 import { rotasContador } from "./contador.js";
 import { rotasSuporte, rotasSuportePlataforma } from "./suporte.js";
+import { rotaSolicitarTeste, rotasSolicitacoesPlataforma } from "./solicitacoes.js";
 import { rotasPublicasAssinatura, rotasAssinatura, situacaoAssinatura, SQL_PLANO, cobrancaAtiva } from "./assinatura.js";
 
 export const VERSAO = "0.4.0";
@@ -166,6 +167,9 @@ export default {
         db, request, env, ipHash, limitar: (chave, max, seg) => rateLimit(db, chave, max, seg)
       }, path, method);
       if (publica) return publica;
+      if (path === "/solicitar-teste" && method === "POST") {
+        return rotaSolicitarTeste({ db, request, ipHash, limitar: (chave, max, seg) => rateLimit(db, chave, max, seg) });
+      }
 
       // ---------- 1º USUÁRIO DA PLATAFORMA (só com o segredo e só se ainda não existir nenhum) ----------
       if (path === "/setup/plataforma" && method === "POST") {
@@ -284,7 +288,7 @@ export default {
       // ---------- PLATAFORMA (nós) ----------
       if (path.startsWith("/plataforma/")) {
         if (user.perfil !== "plataforma") return fail("Sem permissão", 403);
-        const r = (await rotasSuportePlataforma(ctx, path, method)) || (await rotasPlataforma(ctx, path, method));
+        const r = (await rotasSuportePlataforma(ctx, path, method)) || (await rotasSolicitacoesPlataforma(ctx, path, method)) || (await rotasPlataforma(ctx, path, method));
         if (r) return r;
         return fail("Rota não encontrada", 404);
       }

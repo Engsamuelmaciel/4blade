@@ -37,6 +37,7 @@ window.TEXTOS_LEGAIS = {
     ["p", "Esta política explica como o 4blade ([RAZÃO SOCIAL], CNPJ [CNPJ]) trata dados pessoais, conforme a Lei Geral de Proteção de Dados (LGPD, Lei 13.709/2018). Contato do encarregado (DPO): [E-MAIL DE CONTATO]."],
     ["h", "1. Dados do assinante (dono da barbearia)"],
     ["p", "Nome, CPF ou CNPJ, e-mail, WhatsApp, nome da barbearia, usuário e senha (guardada embaralhada, nunca em texto). Usamos para criar a conta, cobrar a assinatura (enviados ao Asaas), dar suporte e cumprir obrigações legais e fiscais."],
+    ["p", "Pedido de teste grátis pelo site: nome da barbearia, seu nome, WhatsApp, cidade e quantidade de barbeiros. Usamos só para entrar em contato e cadastrar a barbearia, se você quiser."],
     ["h", "2. Dados que a barbearia cadastra"],
     ["p", "Equipe (nome, telefone, usuário), clientes (nome e telefone), agenda, vendas, caixa e comissões. Nesses dados a barbearia é a CONTROLADORA e o 4blade é o OPERADOR: tratamos só para prestar o serviço, conforme as instruções da barbearia."],
     ["h", "3. Com quem compartilhamos"],

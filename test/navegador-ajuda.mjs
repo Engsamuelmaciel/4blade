@@ -81,6 +81,23 @@ async function rodar(tela) {
     assert.ok(!/R\$/.test(await page.locator("main").innerText()), "página de planos sem preço");
     passo("cobrança desligada: sem preço, sem cadastro on-line (assinar volta para planos)");
 
+    // pedido de teste grátis pelo site
+    await page.click('[data-teste-gratis="pro"]');
+    await page.waitForSelector("form.form-assinar #c-barbearia");
+    await pronto();
+    assert.equal(await page.inputValue("#c-plano"), "pro");
+    await page.fill("#c-barbearia", `Barbearia Pedido ${tela.nome}`);
+    await page.fill("#c-nome", "Pessoa Interessada Fictícia");
+    await page.locator("#c-telefone").pressSequentially(tela.movel ? "31900000071" : "31900000072");
+    await page.fill("#c-cidade", "Cidade Fictícia - MG");
+    await page.selectOption("#c-barbeiros", "6");
+    await page.check("#c-aceite");
+    await print("teste-gratis-form");
+    await page.click("form.form-assinar button[type=submit]");
+    await page.waitForSelector("[data-teste=teste-recebido]");
+    await print("teste-gratis-recebido");
+    passo("site: pedido de teste grátis enviado");
+
     // sem login: dúvidas pela página de planos
     await page.goto(`${base}/#/planos`);
     await page.waitForSelector('[data-plano="pro"]');
@@ -143,8 +160,21 @@ async function rodar(tela) {
     await print("suporte-chamado-aberto");
     await sair();
 
-    // plataforma responde
+    // plataforma: pedido de teste → cadastrar a barbearia
     await entrar("suporte", "Nova-suporte-senha");
+    await ir(page, "Pedidos de teste");
+    await page.waitForSelector(`[data-pedido] >> text=Barbearia Pedido ${tela.nome}`);
+    await print("plataforma-pedidos");
+    await page.click(`[data-pedido]:has-text("Barbearia Pedido ${tela.nome}") button:has-text("Cadastrar barbearia")`);
+    await page.waitForSelector("dialog[open] #c-propLogin");
+    assert.equal(await page.inputValue("dialog[open] #c-plano"), "pro");
+    await page.click("dialog[open] button[type=submit]");
+    await page.waitForSelector("dialog[open] [data-teste=senha]");
+    await page.click("dialog[open] button[type=submit]");
+    await page.waitForSelector("text=Nenhum pedido aguardando.");
+    passo("plataforma: pedido virou barbearia cadastrada (senha provisória mostrada)");
+
+    // plataforma responde
     await ir(page, "Chamados");
     await page.waitForSelector('[data-chamado="101"]');
     assert.match(await page.locator('[data-chamado="101"]').innerText(), /Barbearia Demonstração/);

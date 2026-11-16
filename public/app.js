@@ -424,14 +424,7 @@ function cartaoPlano(p, info, ciclo) {
       ...extras.map(t => el("li", { class: "extra", text: t }))),
     info.cobrancaAtiva
       ? el("a", { class: "botao principal largo", href: `#/assinar/${p.id}`, "data-assinar": p.id, text: `Começar ${info.testeDias} dias grátis` })
-      : linkConhecer(info, `Quero conhecer o plano ${p.nome}`, "botao principal largo"));
-}
-// Cobrança desligada: quem quer o 4blade fala com a gente (WhatsApp do suporte, se configurado).
-function linkConhecer(info, texto, classe) {
-  const w = info.contato?.whatsapp;
-  if (!w) return null;
-  return el("a", { class: classe, href: `https://wa.me/55${w}?text=${encodeURIComponent(`Olá! ${texto.replace(/^Quero/, "Quero")} — 4blade para a minha barbearia.`)}`,
-    target: "_blank", rel: "noopener", "data-teste": "conhecer", text: texto });
+      : el("a", { class: "botao principal largo", href: `#/teste-gratis/${p.id}`, "data-teste-gratis": p.id, text: "Solicitar teste grátis" }));
 }
 
 async function telaPlanos() {
@@ -440,7 +433,7 @@ async function telaPlanos() {
   mostrar(el("section", { class: "publica" },
     el("div", { class: "publica-topo" },
       el("h2", { text: "Escolha o plano da sua barbearia" }),
-      el("p", { class: "suave", text: info.cobrancaAtiva ? `Teste grátis por ${info.testeDias} dias, sem cartão. Cancele quando quiser.` : "Escolha pelo número de barbeiros. Gerentes e caixas sem limite em todos." }),
+      el("p", { class: "suave", text: info.cobrancaAtiva ? `Teste grátis por ${info.testeDias} dias, sem cartão. Cancele quando quiser.` : "Escolha pelo número de barbeiros e solicite um teste grátis: a gente cadastra sua barbearia e acompanha os primeiros dias." }),
       alterna),
     area,
     info.cobrancaAtiva ? el("div", { class: "cartao perguntas" },
@@ -937,8 +930,8 @@ async function telaInicio() {
   const cta = (classe = "") => el("div", { class: `lp-acoes ${classe}` },
     info.cobrancaAtiva
       ? el("a", { class: "botao lp-botao-principal", href: "#/planos", "data-teste": "lp-comecar", text: `Começar ${info.testeDias} dias grátis` })
-      : whats ? el("a", { class: "botao lp-botao-principal", href: whats, target: "_blank", rel: "noopener", "data-teste": "lp-conhecer", text: "Quero conhecer o 4blade" }) : null,
-    el("a", { class: `botao ${info.cobrancaAtiva || whats ? "lp-botao-secundario" : "lp-botao-principal"}`, href: "#/entrar", "data-teste": "lp-entrar", text: "Já sou cliente: entrar" }));
+      : el("a", { class: "botao lp-botao-principal", href: "#/teste-gratis", "data-teste": "lp-teste-gratis", text: "Solicitar teste grátis" }),
+    el("a", { class: "botao lp-botao-secundario", href: "#/entrar", "data-teste": "lp-entrar", text: "Já sou cliente: entrar" }));
 
   mostrar(el("div", { class: "lp" },
     el("header", { class: "lp-barra" },
@@ -951,7 +944,7 @@ async function telaInicio() {
         el("h1", {}, "Gestão ", el("span", { text: "afiada" }), " para sua barbearia."),
         el("p", { class: "lp-sub", text: "Agenda, caixa, estoque, comissões e WhatsApp num só lugar. Funciona no celular e no computador, sem instalar nada." }),
         cta(),
-        el("p", { class: "lp-miudo", text: info.cobrancaAtiva ? "Sem cartão para testar · Cancele quando quiser · Seus dados são seus" : "Funciona no celular e no computador · Seus dados são seus" })),
+        el("p", { class: "lp-miudo", text: info.cobrancaAtiva ? "Sem cartão para testar · Cancele quando quiser · Seus dados são seus" : "Teste grátis com acompanhamento · Funciona no celular e no computador · Seus dados são seus" })),
       el("div", { class: "lp-hero-print" },
         el("img", { src: "/tutoriais/agenda-dia.jpg", alt: "Agenda do 4blade no celular", width: "390", height: "760" }))),
     el("section", { class: "lp-secao", "data-teste": "lp-caderno" },
@@ -992,7 +985,7 @@ async function telaInicio() {
     el("section", { class: "lp-final" },
       el("h2", { text: "Corte certo nos números da sua barbearia." }),
       cta("centro"),
-      whats && info.cobrancaAtiva ? el("p", {}, el("a", { class: "lp-whats", href: whats, target: "_blank", rel: "noopener", "data-teste": "lp-whats", text: "Prefere conversar? Chame no WhatsApp" })) : null),
+      whats ? el("p", {}, el("a", { class: "lp-whats", href: whats, target: "_blank", rel: "noopener", "data-teste": "lp-whats", text: "Prefere conversar? Chame no WhatsApp" })) : null),
     el("footer", { class: "lp-rodape" },
       el("img", { src: "/icons/logo.png", alt: "4blade", width: "86", height: "35" }),
       el("nav", {},
@@ -1001,6 +994,100 @@ async function telaInicio() {
       contato.email ? el("p", {}, el("a", { href: `mailto:${contato.email}`, text: contato.email })) : null,
       el("p", { class: "lp-miudo", text: `© ${new Date().getFullYear()} 4blade · Gestão para barbearias` }))));
   document.body.classList.add("tela-entrada");
+}
+
+// ---------- SOLICITAR TESTE GRÁTIS (site, sem login) ----------
+async function telaSolicitarTeste(planoInicial) {
+  const info = await carregarPlanos();
+  const form = el("form", { class: "cartao form-assinar", autocomplete: "on" },
+    campo("Nome da barbearia", { name: "barbearia", required: true, maxlength: "80", autocomplete: "organization" }),
+    campo("Seu nome", { name: "nome", required: true, maxlength: "100", autocomplete: "name" }),
+    el("div", { class: "lado-a-lado" },
+      campo("WhatsApp", { name: "telefone", required: true, inputmode: "tel", autocomplete: "tel" }),
+      campo("Cidade", { name: "cidade", required: true, maxlength: "80", placeholder: "Ex.: Belo Horizonte - MG" })),
+    el("div", { class: "lado-a-lado" },
+      campo("Quantos barbeiros?", { tag: "select", name: "barbeiros", valor: "2", opcoes: [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"], ["6", "5 a 6"], ["10", "7 a 10"], ["11", "Mais de 10"]] }),
+      campo("Plano de interesse", { tag: "select", name: "plano", valor: info.planos.some(p => p.id === planoInicial) ? planoInicial : "", opcoes: [["", "Ainda não sei"], ...info.planos.map(p => [p.id, p.nome])] })),
+    campo("Quer contar algo? (opcional)", { tag: "textarea", name: "mensagem", rows: "3", maxlength: "500" }, "Ex.: hoje uso caderno; quero controlar comissão."),
+    el("div", { class: "marcar aceite" },
+      el("input", { type: "checkbox", name: "aceite", id: "c-aceite", required: true }),
+      el("label", { for: "c-aceite" }, "Aceito que o 4blade entre em contato pelo WhatsApp e li a ",
+        el("button", { type: "button", class: "link", text: "política de privacidade", onclick: () => janelaLegal("privacidade") }), ".")),
+    el("button", { type: "submit", class: "botao principal largo", text: "Solicitar teste grátis" }));
+  form.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(form, async () => {
+      const r = await api("/solicitar-teste", { metodo: "POST", corpo: {
+        barbearia: form.barbearia.value, nome: form.nome.value, telefone: form.telefone.value, cidade: form.cidade.value,
+        barbeiros: Number(form.barbeiros.value), planoInteresse: form.plano.value || null, mensagem: form.mensagem.value || undefined, aceite: form.aceite.checked
+      } });
+      mostrar(el("section", { class: "publica estreita" },
+        el("div", { class: "cartao boas-vindas", "data-teste": "teste-recebido" },
+          el("h2", { text: "Pedido recebido!" }),
+          el("p", { text: r.mensagem }),
+          el("p", { class: "suave", text: `Número do pedido: ${r.numero}. Enquanto isso, veja como o sistema funciona nos tutoriais e nas dúvidas frequentes.` }),
+          el("div", { class: "item-acoes" },
+            el("a", { class: "botao principal", href: "#/", text: "Voltar ao início" }),
+            el("a", { class: "botao", href: "#/duvidas", text: "Dúvidas frequentes" })))));
+    });
+  });
+  mostrar(el("section", { class: "publica estreita" },
+    el("a", { class: "voltar", href: "#/", text: "‹ Voltar" }),
+    el("h2", { text: "Solicitar teste grátis" }),
+    el("p", { class: "suave", text: "Preencha e a gente fala com você pelo WhatsApp para cadastrar sua barbearia e acompanhar os primeiros dias." }),
+    form));
+}
+
+// ---------- PLATAFORMA: pedidos de teste grátis ----------
+const NOME_SIT_PEDIDO = { nova: ["Novo", "amarela"], em_contato: ["Em contato", ""], cadastrada: ["Cadastrada", "verde"], descartada: ["Descartado", "vermelha"] };
+let filtroPedidos = "abertas";
+async function telaPedidos() {
+  const { solicitacoes, novas } = await api(`/plataforma/solicitacoes${filtroPedidos === "todas" ? "?situacao=todas" : ""}`);
+  const mudar = async (s, situacao, observacao) => {
+    await api("/plataforma/solicitacoes/situacao", { metodo: "POST", corpo: { id: s.id, situacao, observacao } });
+    avisar("Pedido atualizado."); telaPedidos();
+  };
+  const lista = solicitacoes.length ? el("ul", { class: "lista" }, solicitacoes.map(s => {
+    const [rot, cor] = NOME_SIT_PEDIDO[s.situacao];
+    const whats = `https://wa.me/55${s.telefone}?text=${encodeURIComponent(`Olá, ${s.nome.split(" ")[0]}! Aqui é do 4blade. Recebemos o seu pedido de teste grátis para a ${s.barbearia}.`)}`;
+    const aberto = s.situacao === "nova" || s.situacao === "em_contato";
+    return el("li", { class: "item", "data-pedido": s.numero },
+      el("div", { class: "item-topo" },
+        el("strong", { text: `#${s.numero} · ${s.barbearia}` }),
+        el("span", { class: `etiqueta ${cor}`, text: rot })),
+      el("p", { class: "suave", text: `${s.nome} · ${fone(s.telefone)} · ${s.cidade}` }),
+      el("p", { class: "suave", text: `${s.barbeiros} barbeiro(s)${s.planoInteresse ? ` · interesse: ${NOME_PLANO[s.planoInteresse]}` : ""} · pedido em ${dataBR(s.criadoEm)}` }),
+      s.mensagem ? el("p", { text: `"${s.mensagem}"` }) : null,
+      s.observacao ? el("p", { class: "suave", text: `Obs.: ${s.observacao}` }) : null,
+      aberto ? el("div", { class: "item-acoes" },
+        el("a", { class: "botao pequeno whats", href: whats, target: "_blank", rel: "noopener", text: "WhatsApp" }),
+        s.situacao === "nova" ? botao("Em contato", () => mudar(s, "em_contato"), "pequeno") : null,
+        botao("Cadastrar barbearia", () => janelaCadastrarPedido(s), "pequeno principal"),
+        botao("Descartar", () => pedirMotivo(`Descartar pedido #${s.numero}`, "O pedido sai da fila. Nada é apagado.", motivo => mudar(s, "descartada", motivo), "Descartar"), "pequeno perigo")) : null);
+  })) : el("p", { class: "vazio", text: filtroPedidos === "todas" ? "Nenhum pedido ainda." : "Nenhum pedido aguardando." });
+  mostrar(cabecalho("Pedidos de teste grátis", `${novas} novo(s) · vindos do site`),
+    el("div", { class: "alterna" }, [["abertas", "Em aberto"], ["todas", "Todos"]].map(([f, t]) =>
+      el("button", { type: "button", class: `botao pequeno ${filtroPedidos === f ? "ativo" : ""}`, text: t, onclick: () => { filtroPedidos = f; telaPedidos(); } }))),
+    lista);
+}
+
+function janelaCadastrarPedido(s) {
+  return abrirJanela(`Cadastrar ${s.barbearia}`, [
+    campo("Nome da barbearia", { name: "nome", required: true, value: s.barbearia, maxlength: "80" }),
+    campo("Plano", { tag: "select", name: "plano", valor: s.planoInteresse || (s.barbeiros > 4 ? "pro" : s.barbeiros > 2 ? "standard" : "basico"), opcoes: OPCOES_PLANO }),
+    campo("Nome do proprietário", { name: "propNome", required: true, value: s.nome }),
+    campo("Usuário de acesso", { name: "propLogin", required: true, value: sugerirLogin(s.barbearia), autocapitalize: "none", spellcheck: "false" }),
+    campo("WhatsApp do proprietário", { name: "propTel", inputmode: "tel", value: fone(s.telefone) })
+  ], {
+    ok: "Cadastrar",
+    aoConfirmar: async form => {
+      const r = await api("/plataforma/barbearias", { metodo: "POST", corpo: {
+        nome: form.nome.value, plano: form.plano.value, telefone: form.propTel.value || undefined, solicitacaoId: s.id,
+        proprietario: { nome: form.propNome.value, login: form.propLogin.value.trim().toLowerCase(), telefone: form.propTel.value || undefined }
+      } });
+      setTimeout(async () => { await mostrarSenha(r.proprietario.login, r.senhaProvisoria, `o proprietário (${r.proprietario.nome})`); telaPedidos(); }, 0);
+    }
+  });
 }
 
 function atualizarTopo() {
@@ -3489,7 +3576,7 @@ function icone(nome) {
 // Categorias de cada perfil. Rota = endereço da tela (#/rota).
 function gruposDoMenu() {
   const p = usuario.perfil;
-  if (p === "plataforma") return [{ id: "plataforma", titulo: "Plataforma", icone: "loja", itens: [["plataforma", "Barbearias", "loja"], ["chamados", "Chamados", "suporte"]] }];
+  if (p === "plataforma") return [{ id: "plataforma", titulo: "Plataforma", icone: "loja", itens: [["plataforma", "Barbearias", "loja"], ["pedidos", "Pedidos de teste", "clientes"], ["chamados", "Chamados", "suporte"]] }];
   if (usuario.assinatura?.bloqueada) return [{ id: "config", titulo: "Assinatura", icone: "dinheiro", itens: [["assinatura", "Minha assinatura", "dinheiro"], ["suporte", "Suporte", "suporte"]] }];
   return [...gruposDoPerfil(p), {
     id: "ajuda", titulo: "Ajuda", icone: "ajuda",
@@ -3587,6 +3674,7 @@ const ROTAS = {
   tutoriais: { perfis: ["plataforma", "proprietario", "gerente", "barbeiro", "caixa"], tela: telaTutoriais },
   suporte: { perfis: ["proprietario", "gerente"], tela: telaSuporte },
   chamados: { perfis: ["plataforma"], tela: telaChamados },
+  pedidos: { perfis: ["plataforma"], tela: telaPedidos },
   termos: { perfis: ["plataforma", "proprietario", "gerente", "barbeiro", "caixa"], tela: () => telaLegal("termos") },
   privacidade: { perfis: ["plataforma", "proprietario", "gerente", "barbeiro", "caixa"], tela: () => telaLegal("privacidade") }
 };
@@ -3595,6 +3683,7 @@ const ROTAS_PUBLICAS = {
   "": telaInicio,
   inicio: telaInicio,
   planos: telaPlanos,
+  "teste-gratis": plano => telaSolicitarTeste(plano),
   duvidas: telaDuvidas,
   assinar: plano => telaAssinar(plano),
   termos: () => telaLegal("termos"),

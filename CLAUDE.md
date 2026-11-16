@@ -103,6 +103,8 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - Testes: `test/ambiente.js` liga a cobrança (`COBRANCA_ON_LINE: "sim"`) para os testes antigos; testes do desligado em `test/assinatura.test.js`; navegador: `test/navegador-ajuda.mjs` roda com a cobrança desligada (`/__teste/cobranca?on=0` no servidor local). `npm test` (124). Tutorial novo `meu-plano` (24 prints).
   - Asaas Sandbox: chave e token já estão no `4blade-teste`; teste de assinatura real no Sandbox feito (cobrança criada + aviso PAYMENT_CREATED recebido). Para continuar o teste do Sandbox, pôr `COBRANCA_ON_LINE="sim"` só no `4blade-teste`.
 
+- 16/11/2026: **Solicitar teste grátis** (ESPECIFICACAO.md seção 15). `migrations/0013_solicitacoes_teste.sql`; `src/solicitacoes.js` (`POST /api/solicitar-teste` público com limite 3/h por IP e sem duplicar o mesmo WhatsApp em aberto; `GET /plataforma/solicitacoes[?situacao=todas]`, `POST /plataforma/solicitacoes/situacao`); `POST /plataforma/barbearias` aceita `solicitacaoId` (marca o pedido como cadastrado). Tela: `telaSolicitarTeste` (rota pública `teste-gratis`), plataforma `#/pedidos` (`telaPedidos`, `janelaCadastrarPedido`). Testes: `test/solicitacoes.test.js` + `test/navegador-ajuda.mjs`. `npm test` (126).
+
 ## Versão de teste publicada (Cloudflare)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.

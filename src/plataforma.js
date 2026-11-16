@@ -78,6 +78,15 @@ export async function rotasPlataforma(ctx, path, method) {
     if (await db.prepare("SELECT 1 FROM usuarios WHERE login = ?").bind(propLogin).first()) {
       return fail("Esse usuário de acesso já existe. Escolha outro.", 409);
     }
+    // Veio de um pedido de teste grátis do site? Marca o pedido como cadastrado.
+    let solicitacaoId = null;
+    if (input.solicitacaoId !== undefined && input.solicitacaoId !== null) {
+      if (!validId(input.solicitacaoId)) return fail("Pedido de teste inválido.");
+      const s = await db.prepare("SELECT situacao FROM solicitacoes_teste WHERE id = ?").bind(input.solicitacaoId).first();
+      if (!s) return fail("Pedido de teste não encontrado.", 404);
+      if (s.situacao === "cadastrada") return fail("Esse pedido já virou barbearia cadastrada.", 409);
+      solicitacaoId = input.solicitacaoId;
+    }
 
     const barbeariaId = crypto.randomUUID();
     const propId = crypto.randomUUID();
@@ -95,7 +104,9 @@ export async function rotasPlataforma(ctx, path, method) {
       ...Object.entries(MODELOS_PADRAO).map(([tipo, texto]) =>
         db.prepare("INSERT INTO modelos_mensagem (id, barbearia_id, tipo, texto) VALUES (?, ?, ?, ?)")
           .bind(crypto.randomUUID(), barbeariaId, tipo, texto)),
-      auditoria(actx, "barbearia_criada", barbeariaId, { depois: { nome, plano, telefone, proprietario: propLogin } })
+      auditoria(actx, "barbearia_criada", barbeariaId, { depois: { nome, plano, telefone, proprietario: propLogin, solicitacaoId } }),
+      ...(solicitacaoId ? [db.prepare(`UPDATE solicitacoes_teste SET situacao = 'cadastrada', barbearia_id = ?, atualizado_por = ?,
+        atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND situacao <> 'cadastrada'`).bind(barbeariaId, ctx.usuarioId, solicitacaoId)] : [])
     ]);
     return json({
       barbearia: { id: barbeariaId, nome, plano },
