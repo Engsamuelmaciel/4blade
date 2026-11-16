@@ -126,7 +126,7 @@ async function rodar(tela) {
     await print("boas-vindas");
     passo("assinou sozinho e já entrou (14 dias grátis)");
 
-    await ir(page, "Minha assinatura");
+    await ir(page, "Meu plano");
     await page.waitForSelector('[data-situacao="teste"]');
     assert.equal(await page.locator("[data-teste=pagar]").count(), 1, "link para deixar pago");
     await print("minha-assinatura-teste");

@@ -414,15 +414,24 @@ function cartaoPlano(p, info, ciclo) {
     p.id === "pro" ? el("span", { class: "plano-selo", text: "Mais completo" }) : null,
     el("h3", { text: p.nome }),
     el("p", { class: "plano-barbeiros", text: `Até ${p.barbeiros} barbeiros` }),
-    el("p", { class: "plano-preco" }, el("strong", { text: reaisInteiro(valor) }), el("span", { text: ciclo === "anual" ? "/ano" : "/mês" })),
-    el("p", { class: "suave plano-nota", text: ciclo === "anual"
+    info.cobrancaAtiva ? el("p", { class: "plano-preco" }, el("strong", { text: reaisInteiro(valor) }), el("span", { text: ciclo === "anual" ? "/ano" : "/mês" })) : null,
+    info.cobrancaAtiva ? el("p", { class: "suave plano-nota", text: ciclo === "anual"
       ? `Equivale a ${reais(Math.round(valor / 12))} por mês · ${12 - info.mesesDoAnual} meses grátis`
-      : `ou ${reaisInteiro(p.anualCentavos)} no plano anual` }),
+      : `ou ${reaisInteiro(p.anualCentavos)} no plano anual` }) : null,
     el("ul", { class: "plano-recursos" },
       p.id === "basico" ? null : el("li", { class: "forte", text: p.id === "pro" ? "Tudo do Standard, para equipes grandes" : "Tudo do Básico, para equipes maiores" }),
       ...(p.id === "basico" ? RECURSOS_BASE : []).map(t => el("li", { text: t })),
       ...extras.map(t => el("li", { class: "extra", text: t }))),
-    el("a", { class: "botao principal largo", href: `#/assinar/${p.id}`, "data-assinar": p.id, text: `Começar ${info.testeDias} dias grátis` }));
+    info.cobrancaAtiva
+      ? el("a", { class: "botao principal largo", href: `#/assinar/${p.id}`, "data-assinar": p.id, text: `Começar ${info.testeDias} dias grátis` })
+      : linkConhecer(info, `Quero conhecer o plano ${p.nome}`, "botao principal largo"));
+}
+// Cobrança desligada: quem quer o 4blade fala com a gente (WhatsApp do suporte, se configurado).
+function linkConhecer(info, texto, classe) {
+  const w = info.contato?.whatsapp;
+  if (!w) return null;
+  return el("a", { class: classe, href: `https://wa.me/55${w}?text=${encodeURIComponent(`Olá! ${texto.replace(/^Quero/, "Quero")} — 4blade para a minha barbearia.`)}`,
+    target: "_blank", rel: "noopener", "data-teste": "conhecer", text: texto });
 }
 
 async function telaPlanos() {
@@ -431,16 +440,16 @@ async function telaPlanos() {
   mostrar(el("section", { class: "publica" },
     el("div", { class: "publica-topo" },
       el("h2", { text: "Escolha o plano da sua barbearia" }),
-      el("p", { class: "suave", text: `Teste grátis por ${info.testeDias} dias, sem cartão. Cancele quando quiser.` }),
+      el("p", { class: "suave", text: info.cobrancaAtiva ? `Teste grátis por ${info.testeDias} dias, sem cartão. Cancele quando quiser.` : "Escolha pelo número de barbeiros. Gerentes e caixas sem limite em todos." }),
       alterna),
     area,
-    el("div", { class: "cartao perguntas" },
+    info.cobrancaAtiva ? el("div", { class: "cartao perguntas" },
       el("h3", { text: "Como funciona" }),
       el("ol", {},
         el("li", { text: "Escolha o plano e preencha os dados da barbearia e o seu usuário e senha." }),
         el("li", { text: `Pronto: você já entra no sistema. São ${info.testeDias} dias grátis.` }),
         el("li", { text: "A 1ª mensalidade vence no fim do teste. Você paga por Pix, boleto ou cartão, pelo Asaas." }),
-        el("li", { text: "Cadastre sua equipe, serviços e horários de funcionamento e comece a usar." }))),
+        el("li", { text: "Cadastre sua equipe, serviços e horários de funcionamento e comece a usar." }))) : null,
     el("p", { class: "centro" }, "Já usa o 4blade? ", el("a", { href: "#/entrar", text: "Entrar" }), " · ",
       el("a", { href: "#/duvidas", text: "Dúvidas frequentes" }), " · ",
       el("a", { href: "#/termos", text: "Termos de uso" }), " · ", el("a", { href: "#/privacidade", text: "Privacidade" }))));
@@ -477,6 +486,7 @@ const sugerirLogin = nome => `dono.${nome.normalize("NFD").replace(/[̀-ͯ]/g, "
 
 async function telaAssinar(planoInicial) {
   const info = await carregarPlanos();
+  if (!info.cobrancaAtiva) { location.hash = "#/planos"; return; }   // cadastro on-line fechado
   const planos = Object.fromEntries(info.planos.map(p => [p.id, p]));
   const plano = planos[planoInicial] ? planoInicial : "standard";
   const resumo = el("div", { class: "resumo-assinatura", "data-teste": "resumo-assinatura", "aria-live": "polite" });
@@ -583,8 +593,38 @@ function textoSituacao(a) {
   }
 }
 
+const TEXTO_SITE_PLANO = {
+  visual: "Site da barbearia para o cliente ver os horários livres (só consulta)",
+  completo: "Site completo, integrado à agenda: o cliente escolhe o horário, vê a lista de produtos e já inicia a compra pelo site"
+};
+// Cobrança desligada: só o plano e as vagas, sem valores nem pagamento.
+function telaMeuPlano(p) {
+  const cheio = p.barbeirosAtivos >= p.barbeirosLimite;
+  mostrar(
+    cabecalho("Meu plano", "O que o plano da sua barbearia inclui"),
+    el("div", { class: "duas-colunas" },
+      el("section", { class: "cartao", "data-teste": "meu-plano" },
+        el("div", { class: "item-topo" },
+          el("h3", { text: `Plano ${p.nome}` }),
+          el("span", { class: "etiqueta verde", text: "Ativo" })),
+        el("div", { class: "vagas" },
+          el("div", { class: `vaga ${cheio ? "cheia" : ""}`, "data-vaga": "barbeiro" },
+            el("strong", { text: `${p.barbeirosAtivos}/${p.barbeirosLimite}` }), el("span", { text: "Barbeiros ativos" })),
+          el("div", { class: "vaga" }, el("strong", { text: "∞" }), el("span", { text: "Gerentes e caixas · sem limite" }))),
+        el("ul", { class: "plano-recursos" },
+          ...RECURSOS_BASE.map(t => el("li", { text: t })),
+          p.site ? el("li", { class: "extra", text: `${TEXTO_SITE_PLANO[p.site]}${p.siteDisponivel ? "" : " — em breve"}` }) : null),
+        cheio ? el("p", { class: "info", text: "Todas as vagas de barbeiro estão ocupadas. Desative alguém em Equipe ou fale com o suporte para mudar de plano." }) : null),
+      el("section", { class: "cartao" },
+        el("h3", { text: "Quer mudar de plano?" }),
+        el("p", { text: "Fale com a gente pelo suporte. A troca é feita pelo 4blade e vale na hora." }),
+        el("a", { class: "botao principal", href: "#/suporte", text: "Falar com o suporte" }))));
+}
+
 async function telaAssinatura() {
-  const { assinatura: a, pagamentos, podeCancelar } = await api("/assinatura");
+  const resp = await api("/assinatura");
+  if (resp.cobrancaAtiva === false) return telaMeuPlano(resp.plano);
+  const { assinatura: a, pagamentos, podeCancelar } = resp;
   const [rotulo, cor] = NOME_SIT_ASSINATURA[a.situacao] || ["—", ""];
   const pagar = a.linkPagamento && !a.cancelada
     ? el("a", { class: "botao principal largo", href: a.linkPagamento, target: "_blank", rel: "noopener", "data-teste": "pagar",
@@ -634,11 +674,18 @@ function atualizarFaixa() {
 }
 
 // ---------- AJUDA: dúvidas frequentes, tutoriais e suporte ----------
-const AJUDA = () => window.AJUDA || { duvidas: [], tutoriais: [] };
+// Cobrança on-line ligada? (vem do servidor: no usuário logado ou na página de planos). Desligada = nada de preço/pagamento.
+const cobrancaOn = () => Boolean(usuario ? usuario.cobrancaAtiva : infoPlanos?.cobrancaAtiva);
+const visivelCobranca = x => (x.pagamento ? cobrancaOn() : x.semCobranca ? !cobrancaOn() : true);
+const AJUDA = () => {
+  const a = window.AJUDA || { duvidas: [], tutoriais: [] };
+  return { duvidas: a.duvidas.filter(visivelCobranca), tutoriais: a.tutoriais.filter(visivelCobranca) };
+};
 const tutoriaisDoPerfil = () => AJUDA().tutoriais.filter(t => !usuario || usuario.perfil === "plataforma" || t.perfis.includes(usuario.perfil));
 const semAcento = t => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 async function telaDuvidas() {
+  if (!usuario) await carregarPlanos().catch(() => null);
   const lista = el("div", { class: "duvidas" });
   const busca = el("input", { type: "search", class: "busca-ajuda", placeholder: "Buscar dúvida (ex.: senha, caixa, comissão)", "aria-label": "Buscar dúvida" });
   const desenhar = () => {
@@ -864,7 +911,7 @@ const LP_PERFIS = [
   ["Caixa / recepção", "Marca horários para todos, cobra, vende e fecha o caixa."]
 ];
 const LP_PRINTS = [["marcar-horario", "Novo horário mostra só o que está livre"], ["cobrar", "Caixa separado por forma de pagamento"], ["painel", "Painel com faturamento, comissões e lucro"]];
-const LP_DUVIDAS = ["Dá para usar no celular? Como instalo o app?", "Qual a diferença entre os planos?", "O que acontece se eu atrasar?", "Meus dados ficam salvos? Posso baixar tudo?"];
+const LP_DUVIDAS = ["Dá para usar no celular? Como instalo o app?", "Qual a diferença entre os planos?", "O que acontece se eu atrasar?", "Meus dados ficam salvos? Posso baixar tudo?", "Por onde eu começo?"];
 
 function blocoPlanos(info) {
   const area = el("div", { class: "planos" });
@@ -876,6 +923,7 @@ function blocoPlanos(info) {
     area.replaceChildren(...info.planos.map(p => cartaoPlano(p, info, cicloPlanos)));
   };
   desenhar();
+  alterna.hidden = !info.cobrancaAtiva;
   return { alterna, area };
 }
 
@@ -886,8 +934,10 @@ async function telaInicio() {
   const contato = info.contato || {};
   const whats = contato.whatsapp ? `https://wa.me/55${contato.whatsapp}?text=${encodeURIComponent("Olá! Quero conhecer o 4blade para a minha barbearia.")}` : null;
   const cta = (classe = "") => el("div", { class: `lp-acoes ${classe}` },
-    el("a", { class: "botao lp-botao-principal", href: "#/planos", "data-teste": "lp-comecar", text: `Começar ${info.testeDias} dias grátis` }),
-    el("a", { class: "botao lp-botao-secundario", href: "#/entrar", "data-teste": "lp-entrar", text: "Já sou cliente: entrar" }));
+    info.cobrancaAtiva
+      ? el("a", { class: "botao lp-botao-principal", href: "#/planos", "data-teste": "lp-comecar", text: `Começar ${info.testeDias} dias grátis` })
+      : whats ? el("a", { class: "botao lp-botao-principal", href: whats, target: "_blank", rel: "noopener", "data-teste": "lp-conhecer", text: "Quero conhecer o 4blade" }) : null,
+    el("a", { class: `botao ${info.cobrancaAtiva || whats ? "lp-botao-secundario" : "lp-botao-principal"}`, href: "#/entrar", "data-teste": "lp-entrar", text: "Já sou cliente: entrar" }));
 
   mostrar(el("div", { class: "lp" },
     el("header", { class: "lp-barra" },
@@ -900,7 +950,7 @@ async function telaInicio() {
         el("h1", {}, "Gestão ", el("span", { text: "afiada" }), " para sua barbearia."),
         el("p", { class: "lp-sub", text: "Agenda, caixa, estoque, comissões e WhatsApp num só lugar. Funciona no celular e no computador, sem instalar nada." }),
         cta(),
-        el("p", { class: "lp-miudo", text: "Sem cartão para testar · Cancele quando quiser · Seus dados são seus" })),
+        el("p", { class: "lp-miudo", text: info.cobrancaAtiva ? "Sem cartão para testar · Cancele quando quiser · Seus dados são seus" : "Funciona no celular e no computador · Seus dados são seus" })),
       el("div", { class: "lp-hero-print" },
         el("img", { src: "/tutoriais/agenda-dia.jpg", alt: "Agenda do 4blade no celular", width: "390", height: "760" }))),
     el("section", { class: "lp-secao", "data-teste": "lp-caderno" },
@@ -923,7 +973,7 @@ async function telaInicio() {
       el("h2", { text: "Cada um vê o que precisa" }),
       el("div", { class: "lp-perfis" }, LP_PERFIS.map(([t, d]) => el("div", { class: "lp-perfil" }, el("strong", { text: t }), el("p", { text: d })))),
       el("p", { class: "lp-intro", text: "Cada pessoa tem o próprio usuário e senha. Tudo o que é feito fica registrado: quem, quando e o que mudou." })),
-    el("section", { class: "lp-secao lp-passos-secao" },
+    !info.cobrancaAtiva ? null : el("section", { class: "lp-secao lp-passos-secao" },
       el("h2", { text: "Comece hoje, em 3 passos" }),
       el("ol", { class: "lp-passos" },
         el("li", {}, el("strong", { text: "Escolha o plano" }), el("span", { text: "e crie seu acesso em 2 minutos." })),
@@ -941,7 +991,7 @@ async function telaInicio() {
     el("section", { class: "lp-final" },
       el("h2", { text: "Corte certo nos números da sua barbearia." }),
       cta("centro"),
-      whats ? el("p", {}, el("a", { class: "lp-whats", href: whats, target: "_blank", rel: "noopener", "data-teste": "lp-whats", text: "Prefere conversar? Chame no WhatsApp" })) : null),
+      whats && info.cobrancaAtiva ? el("p", {}, el("a", { class: "lp-whats", href: whats, target: "_blank", rel: "noopener", "data-teste": "lp-whats", text: "Prefere conversar? Chame no WhatsApp" })) : null),
     el("footer", { class: "lp-rodape" },
       el("img", { src: "/icons/logo.png", alt: "4blade", width: "86", height: "35" }),
       el("nav", {},
@@ -3459,7 +3509,7 @@ function gruposDoPerfil(p) {
     { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
     { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["comissoes", "Comissões e vales", "comissao"], ["notas", "Notas em aberto", "contas"], ["contas", "Contas a pagar", "contas"], ["contador", "Contador e dados", "contador"]] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"], ["estoque", "Estoque", "estoque"]] },
-    { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"], ["assinatura", "Minha assinatura", "dinheiro"]] }
+    { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"], ["assinatura", "Meu plano", "dinheiro"]] }
   ];
 }
 

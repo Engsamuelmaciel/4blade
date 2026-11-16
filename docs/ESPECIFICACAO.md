@@ -206,3 +206,9 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - **forblade.com.br** e **www.forblade.com.br** → versão oficial; **teste.forblade.com.br** → versão de teste (decisão do responsável).
 - **Landing page** = primeira tela de quem abre o endereço sem estar logado (`#/` ou `#/inicio`): chamada principal com "Começar 14 dias grátis" e "Já sou cliente: entrar"; 6 recursos (agenda, caixa, comissão, estoque, WhatsApp, contador); "Veja por dentro" com 3 prints reais (dados fictícios); o que cada perfil vê; 3 passos para começar; os 3 planos (mensal/anual); 4 dúvidas comuns; contato por WhatsApp/e-mail do suporte (quando a plataforma configurar); rodapé com termos e privacidade. Sem depoimentos ou números inventados.
 - O login passou para `#/entrar`. O app instalado no celular abre direto no login (manifest `start_url` = `/#/entrar`); "Sair" volta para o login.
+
+## 14. Cobrança on-line DESLIGADA (16/11/2026, pedido do responsável)
+- Fase de testes com um barbeiro parceiro, cadastrado manualmente pela plataforma. Toda informação de pagamento fica **oculta para todos os usuários** (não apagada): interruptor `COBRANCA_ON_LINE` (variável do Worker; ausente = desligado; `"sim"` = ligado).
+- Desligado: landing page e página de planos sem preços, sem "dias grátis" e sem "Assinar" (o botão vira "Quero conhecer" pelo WhatsApp do suporte, quando configurado; `#/assinar` volta para os planos; `POST /api/assinar` recusado). Nenhuma barbearia é avisada ou bloqueada por mensalidade. Dúvidas e tutoriais de pagamento somem.
+- No app, o item **"Meu plano"** (Equipe e ajustes) mostra só o plano, as vagas de barbeiro (ativos/limite), gerentes e caixas sem limite, o que o plano inclui e o botão do suporte para mudar de plano.
+- Ligar de novo (quando o barbeiro entrar num plano pago): pôr `COBRANCA_ON_LINE = "sim"` no Worker e publicar; o Asaas (seção 11) volta a funcionar como estava.

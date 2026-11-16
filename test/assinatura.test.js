@@ -364,3 +364,49 @@ describe("plataforma e isolamento", () => {
     assert.equal((await amb.get("/api/assinatura", B.token)).dados.assinatura.cancelada, false);
   });
 });
+
+describe("cobrança DESLIGADA (padrão em produção: COBRANCA_ON_LINE ausente)", () => {
+  test("sem preços, sem cadastro on-line, sem pagamento e sem bloqueio; só Meu plano", async () => {
+    const amb = ambiente();
+    // cria uma barbearia que assinou pelo site (com a cobrança ligada) e deixa atrasada além da tolerância
+    const { r, token } = await assinar(amb);
+    await pagoAte(amb, r.barbearia.id, somaDias(hojeBrasil(), -20));
+    assert.equal((await amb.get("/api/servicos", token)).status, 402, "ligada: bloqueia");
+
+    delete amb.env.COBRANCA_ON_LINE;
+    const planos = (await amb.get("/api/planos")).dados;
+    assert.equal(planos.cobrancaAtiva, false);
+    assert.equal(planos.assinaturaDisponivel, false);
+    assert.deepEqual(planos.planos.map(p => [p.id, p.barbeiros]), [["basico", 2], ["standard", 4], ["pro", 10]]);
+    assert.ok(planos.planos.every(p => p.mensalCentavos === undefined && p.anualCentavos === undefined), "nenhum preço");
+    assert.equal(planos.testeDias, undefined);
+    const ass = await amb.chamar("/api/assinar", { metodo: "POST", corpo: dados({ documento: CPF_B, login: "outro.login" }), ip: "10.7.0.1" });
+    assert.equal(ass.status, 404);
+
+    // desligada: ninguém é bloqueado nem vê mensalidade
+    assert.equal((await amb.get("/api/servicos", token)).status, 200);
+    const me = (await amb.get("/api/auth/me", token)).dados.usuario;
+    assert.equal(me.cobrancaAtiva, false);
+    assert.equal(me.assinatura, null);
+
+    const mp = (await amb.get("/api/assinatura", token)).dados;
+    assert.deepEqual(mp, { cobrancaAtiva: false, plano: { id: "standard", nome: "Standard", site: "visual", siteDisponivel: false, barbeirosAtivos: 0, barbeirosLimite: 4 } });
+    assert.ok(!JSON.stringify(mp).includes("valor"), "sem valores");
+    assert.equal((await amb.post("/api/assinatura/cancelar", token, { motivo: "teste" })).status, 404);
+  });
+
+  test("Meu plano da barbearia cadastrada pela plataforma; barbeiro não acessa; isolamento", async () => {
+    const amb = ambiente();
+    delete amb.env.COBRANCA_ON_LINE;
+    const p = await amb.criarPlataforma();
+    const a = await amb.criarBarbearia(p, "mp1", "pro");
+    const b = await amb.criarBarbearia(p, "mp2", "basico");
+    const ger = await amb.criarUsuario(a.prop, "ger.mp1", "gerente");
+    const barb = await amb.criarUsuario(a.prop, "barb.mp1", "barbeiro");
+    assert.deepEqual((await amb.get("/api/assinatura", ger.token)).dados.plano,
+      { id: "pro", nome: "Pro", site: "completo", siteDisponivel: false, barbeirosAtivos: 1, barbeirosLimite: 10 });
+    assert.equal((await amb.get("/api/assinatura", barb.token)).status, 403);
+    assert.deepEqual((await amb.get("/api/assinatura", b.prop)).dados.plano,
+      { id: "basico", nome: "Básico", site: null, siteDisponivel: false, barbeirosAtivos: 0, barbeirosLimite: 2 }, "cada uma vê o seu");
+  });
+});

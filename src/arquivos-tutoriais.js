@@ -15,6 +15,7 @@ import img_finalizar_jpg from "../public/tutoriais/finalizar.jpg";
 import img_funcionamento_jpg from "../public/tutoriais/funcionamento.jpg";
 import img_marcar_horario_jpg from "../public/tutoriais/marcar-horario.jpg";
 import img_mensagens_jpg from "../public/tutoriais/mensagens.jpg";
+import img_meu_plano_jpg from "../public/tutoriais/meu-plano.jpg";
 import img_notas_jpg from "../public/tutoriais/notas.jpg";
 import img_painel_jpg from "../public/tutoriais/painel.jpg";
 import img_primeiro_acesso_jpg from "../public/tutoriais/primeiro-acesso.jpg";
@@ -40,6 +41,7 @@ export const IMAGENS_TUTORIAIS = {
   "/tutoriais/funcionamento.jpg": img_funcionamento_jpg,
   "/tutoriais/marcar-horario.jpg": img_marcar_horario_jpg,
   "/tutoriais/mensagens.jpg": img_mensagens_jpg,
+  "/tutoriais/meu-plano.jpg": img_meu_plano_jpg,
   "/tutoriais/notas.jpg": img_notas_jpg,
   "/tutoriais/painel.jpg": img_painel_jpg,
   "/tutoriais/primeiro-acesso.jpg": img_primeiro_acesso_jpg,

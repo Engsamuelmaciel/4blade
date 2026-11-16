@@ -47,6 +47,10 @@ http.createServer(async (req, res) => {
     await amb.env.DB.prepare("UPDATE assinaturas SET pago_ate = ? WHERE barbearia_id = ?").bind(url.searchParams.get("data"), u.barbearia_id).run();
     res.writeHead(200); return res.end("ok");
   }
+  if (url.pathname === "/__teste/cobranca") {   // liga/desliga a cobrança on-line (COBRANCA_ON_LINE)
+    if (url.searchParams.get("on") === "1") amb.env.COBRANCA_ON_LINE = "sim"; else delete amb.env.COBRANCA_ON_LINE;
+    res.writeHead(200); return res.end("ok");
+  }
   if (url.pathname === "/__teste/pagar") {
     const u = await amb.env.DB.prepare("SELECT a.asaas_assinatura_id AS sub FROM usuarios x JOIN assinaturas a ON a.barbearia_id = x.barbearia_id WHERE x.login = ?").bind(url.searchParams.get("login")).first();
     const ev = amb.asaas.pagar(u.sub);

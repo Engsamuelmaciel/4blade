@@ -8,13 +8,16 @@ import {
   hashPassword, auditoria, safeEqual, hojeBrasil, HttpError
 } from "./util.js";
 import {
-  PLANOS, SITE_DISPONIVEL, MESES_DO_ANUAL, valorDoPlano, planoDaColunaAntiga
+  PLANOS, SITE_DISPONIVEL, MESES_DO_ANUAL, valorDoPlano, planoDaColunaAntiga, limiteDoPerfil
 } from "./perfis.js";
 import { clienteAsaas, asaasConfigurado } from "./asaas.js";
 import { MODELOS_PADRAO } from "./cadastros.js";
 import { contatoSuporte } from "./suporte.js";
 
 export const TESTE_DIAS = 14;
+// Interruptor da cobrança on-line (variável do Worker COBRANCA_ON_LINE = "sim"). Desligado (padrão): nenhum usuário vê
+// preço, assinatura, pagamento ou atraso; barbearias são cadastradas pela plataforma e o app mostra só "Meu plano".
+export const cobrancaAtiva = env => env?.COBRANCA_ON_LINE === "sim";
 export const TOLERANCIA_DIAS = 5;
 export const TERMOS_VERSAO = "2026-11-16";
 
@@ -110,10 +113,19 @@ const descricaoAssinatura = (plano, ciclo) =>
 export async function rotasPublicasAssinatura({ db, request, env, ipHash, limitar }, path, method) {
   if (path === "/planos" && method === "GET") {
     const c = await contatoSuporte(db);
-    return json({ ...planosPublicos(), assinaturaDisponivel: asaasConfigurado(env), contato: { whatsapp: c.whatsapp, email: c.email } });
+    const contato = { whatsapp: c.whatsapp, email: c.email };
+    if (!cobrancaAtiva(env)) {
+      const p = planosPublicos();
+      return json({
+        planos: p.planos.map(({ mensalCentavos, anualCentavos, ...resto }) => resto),
+        siteDisponivel: p.siteDisponivel, cobrancaAtiva: false, assinaturaDisponivel: false, contato
+      });
+    }
+    return json({ ...planosPublicos(), cobrancaAtiva: true, assinaturaDisponivel: asaasConfigurado(env), contato });
   }
 
   if (path === "/assinar" && method === "POST") {
+    if (!cobrancaAtiva(env)) return fail("O cadastro on-line não está aberto. Fale com o 4blade.", 404);
     if (!(await limitar(`assinar:ip:${ipHash}`, 5, 3600))) return fail("Muitos cadastros deste aparelho. Aguarde 1 hora.", 429);
     const input = await readJson(request);
     const plano = input.plano;
@@ -311,6 +323,22 @@ export async function rotasAssinatura(ctx, path, method) {
   const { db, request, user, env } = ctx;
   if (!user.barbearia_id || (user.perfil !== "proprietario" && user.perfil !== "gerente")) throw new HttpError("Sem permissão", 403);
 
+  // Cobrança desligada: só "Meu plano" (plano, vagas de barbeiro e o que o plano inclui), sem valores nem pagamento.
+  if (!cobrancaAtiva(env)) {
+    if (path !== "/assinatura" || method !== "GET") return fail("Rota não encontrada", 404);
+    const a = await db.prepare("SELECT plano FROM assinaturas WHERE barbearia_id = ?").bind(ctx.barbeariaId).first();
+    const plano = a?.plano || planoDaColunaAntiga(user.barbearia_plano_coluna);
+    const n = await db.prepare("SELECT COUNT(*) AS n FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil = 'barbeiro'")
+      .bind(ctx.barbeariaId).first();
+    return json({
+      cobrancaAtiva: false,
+      plano: {
+        id: plano, nome: PLANOS[plano]?.nome, site: PLANOS[plano]?.site || null, siteDisponivel: SITE_DISPONIVEL,
+        barbeirosAtivos: Number(n.n), barbeirosLimite: limiteDoPerfil({ plano, barbeiros_adicionais: user.barbearia_adicionais }, "barbeiro")
+      }
+    });
+  }
+
   if (path === "/assinatura" && method === "GET") {
     let a = await db.prepare("SELECT * FROM assinaturas WHERE barbearia_id = ?").bind(ctx.barbeariaId).first();
     // Sem link guardado: pergunta ao Asaas qual cobrança está em aberto.
@@ -334,7 +362,8 @@ export async function rotasAssinatura(ctx, path, method) {
     return json({
       assinatura: assinaturaPublica(a) || { plano, nomePlano: PLANOS[plano]?.nome, origem: "manual", situacao: "manual", bloqueada: false },
       pagamentos: pagos.results.map(p => ({ vencimento: p.vencimento, valorCentavos: Number(p.valor_centavos || 0), recebidoEm: p.recebido_em })),
-      podeCancelar: user.perfil === "proprietario" && a?.origem === "asaas" && !Number(a.cancelada)
+      podeCancelar: user.perfil === "proprietario" && a?.origem === "asaas" && !Number(a.cancelada),
+      cobrancaAtiva: true
     });
   }
 

@@ -167,7 +167,15 @@ try {
 
   await entrar("dono.nova", "Senha-Nova-2026");
   await ir(page, "Caixa"); await foto("abrir-caixa");
-  await ir(page, "Minha assinatura"); await foto("assinatura");
+  await ir(page, "Meu plano"); await foto("assinatura");
+  // Meu plano (cobrança desligada, como está em produção)
+  await fetch(`${BASE}/__teste/cobranca?on=0`);
+  logado = null;
+  await entrar("dono.demo", DEMO);
+  await ir(page, "Meu plano"); await foto("meu-plano");
+  await fetch(`${BASE}/__teste/cobranca?on=1`);
+  logado = null;
+  await entrar("dono.nova", "Senha-Nova-2026");
   await ir(page, "Suporte");
   await page.locator("text=Meus chamados").scrollIntoViewIfNeeded();
   await page.evaluate(() => window.scrollBy(0, 300));

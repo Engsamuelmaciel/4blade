@@ -64,6 +64,23 @@ async function rodar(tela) {
   const imagemCarregou = sel => page.locator(sel).first().evaluate(i => i.complete && i.naturalWidth > 0);
 
   try {
+    // cobrança DESLIGADA (como está no ar): landing e planos sem preço, sem "assinar", app com "Meu plano"
+    await page.request.get(`${base}/__teste/cobranca?on=0`);
+    await page.goto(base);
+    await page.waitForSelector("[data-teste=lp-entrar]");
+    await pronto();
+    const landing = await page.locator(".lp").innerText();
+    assert.ok(!/R\$|dias grátis|mensalidade|Cancele quando quiser/.test(landing), "landing sem preço nem pagamento");
+    assert.equal(await page.locator("[data-teste=lp-comecar]").count(), 0);
+    assert.equal(await page.locator(".lp [data-plano]").count(), 3, "planos aparecem (sem preço)");
+    assert.ok(await page.locator('.lp [data-plano="pro"]').innerText().then(t => /Até 10 barbeiros[\s\S]*lista de produtos/.test(t)));
+    await print("landing-sem-precos");
+    await page.goto(`${base}/#/assinar/pro`);
+    await page.waitForFunction(() => location.hash === "#/planos");
+    await page.waitForSelector('[data-plano="pro"]');
+    assert.ok(!/R\$/.test(await page.locator("main").innerText()), "página de planos sem preço");
+    passo("cobrança desligada: sem preço, sem cadastro on-line (assinar volta para planos)");
+
     // sem login: dúvidas pela página de planos
     await page.goto(`${base}/#/planos`);
     await page.waitForSelector('[data-plano="pro"]');
@@ -76,15 +93,24 @@ async function rodar(tela) {
     await entrar("gerente.demo");
     await ir(page, "Dúvidas frequentes");
     const total = await page.locator(".duvida").count();
-    assert.ok(total >= 25, `poucas dúvidas: ${total}`);
+    assert.ok(total >= 24, `poucas dúvidas: ${total}`);
+    assert.ok(!/mensalidade|Asaas/.test(await page.locator(".duvidas").innerText()), "dúvidas sem pagamento");
     await page.fill(".busca-ajuda", "senha");
     await page.waitForFunction(t => document.querySelectorAll(".duvida").length < t, total);
     await page.click('.duvida:has-text("Esqueci a minha senha") summary');
     await print("duvidas-busca");
     passo("dúvidas: busca e resposta abrindo");
 
+    await ir(page, "Meu plano");
+    await page.waitForSelector("[data-teste=meu-plano]");
+    assert.match(await page.locator("[data-teste=meu-plano]").innerText(), /Plano Básico[\s\S]*2\/2[\s\S]*Barbeiros ativos/);
+    assert.ok(!/R\$/.test(await page.locator("main").innerText()), "Meu plano sem valores");
+    await print("meu-plano");
+    passo("Meu plano: plano, vagas e o que inclui, sem valores");
+
     await ir(page, "Tutoriais");
     await page.waitForSelector("[data-tutorial]");
+    assert.ok(await page.locator('[data-tutorial="meu-plano"]').count() === 1 && await page.locator('[data-tutorial="assinatura"]').count() === 0);
     assert.equal(await page.locator("[data-tutorial]").count(), 23, "gerente vê todos os tutoriais");
     await page.waitForFunction(() => [...document.querySelectorAll(".tutorial-cartao img")].slice(0, 4).every(i => i.complete && i.naturalWidth > 0));
     await print("tutoriais-lista");

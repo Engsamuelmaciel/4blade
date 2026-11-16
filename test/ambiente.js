@@ -13,6 +13,7 @@ export function ambiente() {
   const env = {
     DB: criarBanco(),
     ADMIN_SETUP_TOKEN: TOKEN_SETUP,
+    COBRANCA_ON_LINE: "sim",   // os testes de assinatura precisam da cobrança ligada (desligada = padrão em produção)
     ASAAS_API_KEY: "chave-falsa-de-teste",
     ASAAS_WEBHOOK_TOKEN: TOKEN_WEBHOOK,
     ASAAS_FETCH: asaas.buscar,

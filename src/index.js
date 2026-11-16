@@ -24,7 +24,7 @@ import { rotasEstoque, rotasVendas } from "./estoque.js";
 import { rotasGestao } from "./gestao.js";
 import { rotasContador } from "./contador.js";
 import { rotasSuporte, rotasSuportePlataforma } from "./suporte.js";
-import { rotasPublicasAssinatura, rotasAssinatura, situacaoAssinatura, SQL_PLANO } from "./assinatura.js";
+import { rotasPublicasAssinatura, rotasAssinatura, situacaoAssinatura, SQL_PLANO, cobrancaAtiva } from "./assinatura.js";
 
 export const VERSAO = "0.4.0";
 const SESSAO_HORAS = 12;
@@ -67,7 +67,8 @@ const CAMPOS_BARBEARIA = `
   a.ultimo_pagamento_em AS a_ultimo_pagamento_em, a.cancelada AS a_cancelada`;
 const JUNTA_BARBEARIA = "LEFT JOIN barbearias b ON b.id = u.barbearia_id LEFT JOIN assinaturas a ON a.barbearia_id = u.barbearia_id";
 
-const situacaoDoUsuario = u => (u.barbearia_id ? situacaoAssinatura({
+// Cobrança desligada: ninguém é bloqueado nem avisado por mensalidade.
+const situacaoDoUsuario = (u, env) => (u.barbearia_id && cobrancaAtiva(env) ? situacaoAssinatura({
   origem: u.a_origem, pago_ate: u.a_pago_ate, teste_ate: u.a_teste_ate,
   ultimo_pagamento_em: u.a_ultimo_pagamento_em, cancelada: u.a_cancelada
 }) : { situacao: "manual", bloqueada: false });
@@ -96,8 +97,8 @@ async function auth(request, db) {
   `).bind(await sha256(token)).first();
 }
 
-export function publicUser(user) {
-  const sit = situacaoDoUsuario(user);
+export function publicUser(user, env) {
+  const sit = situacaoDoUsuario(user, env);
   return {
     id: user.id,
     login: user.login,
@@ -105,6 +106,7 @@ export function publicUser(user) {
     perfil: user.perfil,
     trocaObrigatoria: Boolean(user.trocar_senha),
     telaInicial: TELA_INICIAL[user.perfil],
+    cobrancaAtiva: cobrancaAtiva(env),
     barbearia: user.barbearia_id
       ? { nome: user.barbearia_nome, plano: user.barbearia_plano }
       : null,
@@ -114,13 +116,13 @@ export function publicUser(user) {
   };
 }
 
-async function issueSession(db, user) {
+async function issueSession(db, user, env) {
   const token = b64url(random(32));
   const expires = new Date(Date.now() + SESSAO_HORAS * 60 * 60 * 1000).toISOString();
   await db.prepare(`
     INSERT INTO sessoes (id, usuario_id, token_hash, expira_em) VALUES (?, ?, ?, ?)
   `).bind(crypto.randomUUID(), user.id, await sha256(token), expires).run();
-  return { token, expiraEm: expires, usuario: publicUser(user) };
+  return { token, expiraEm: expires, usuario: publicUser(user, env) };
 }
 
 const FALLBACK_HASH = `pbkdf2$${ITERACOES}$00000000000000000000000000000000$` + "0".repeat(64);
@@ -220,14 +222,14 @@ export default {
           await auditoria({ db, barbeariaId: user.barbearia_id, usuarioId: user.id, ipHash }, "login_barbearia_bloqueada").run();
           return fail("Acesso bloqueado. Fale com o suporte do 4blade.", 403);
         }
-        if (user.perfil !== "proprietario" && situacaoDoUsuario(user).bloqueada) {
+        if (user.perfil !== "proprietario" && situacaoDoUsuario(user, env).bloqueada) {
           await auditoria({ db, barbeariaId: user.barbearia_id, usuarioId: user.id, ipHash }, "login_assinatura_atrasada").run();
           return fail(MSG_ATRASO_EQUIPE, 403);
         }
 
         await refundAttempt(db, limit.ipKey, limit.userKey);
         await auditoria({ db, barbeariaId: user.barbearia_id, usuarioId: user.id, ipHash }, "login").run();
-        return json(await issueSession(db, user));
+        return json(await issueSession(db, user, env));
       }
 
       // ---------- DAQUI PARA BAIXO: SÓ COM SESSÃO ----------
@@ -237,13 +239,13 @@ export default {
       const ctx = { db, request, env, user, ipHash, barbeariaId: user.barbearia_id, usuarioId: user.id };
 
       // Mensalidade atrasada além da tolerância: equipe fora; proprietário só na tela da assinatura.
-      if (user.barbearia_id && situacaoDoUsuario(user).bloqueada) {
+      if (user.barbearia_id && situacaoDoUsuario(user, env).bloqueada) {
         if (user.perfil !== "proprietario") return fail(MSG_ATRASO_EQUIPE, 401);
         if (!ROTAS_LIBERADAS_NO_ATRASO.has(path)) return fail("Acesso suspenso: mensalidade do 4blade em atraso. Pague em Minha assinatura.", 402);
       }
 
       if (path === "/auth/me" && method === "GET") {
-        return json({ usuario: publicUser(user) });
+        return json({ usuario: publicUser(user, env) });
       }
 
       if (path === "/auth/trocar-senha" && method === "POST") {

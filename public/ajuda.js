@@ -6,7 +6,7 @@
 "use strict";
 window.AJUDA = {
   duvidas: [
-    { cat: "Primeiros passos", p: "Por onde eu começo depois de assinar?", r: "Na ordem: 1) Equipe e ajustes → Funcionamento (dias e horários em que a barbearia abre); 2) Catálogo e estoque → Serviços (cortes, barba, preços e duração); 3) Equipe e ajustes → Equipe (barbeiros, gerente e caixa). A agenda só aceita horários depois que o funcionamento estiver salvo." },
+    { cat: "Primeiros passos", p: "Por onde eu começo?", r: "Na ordem: 1) Equipe e ajustes → Funcionamento (dias e horários em que a barbearia abre); 2) Catálogo e estoque → Serviços (cortes, barba, preços e duração); 3) Equipe e ajustes → Equipe (barbeiros, gerente e caixa). A agenda só aceita horários depois que o funcionamento estiver salvo." },
     { cat: "Primeiros passos", p: "Quem é quem no sistema?", r: "Proprietário: dono, vê e faz tudo. Gerente: cuida do dia a dia e também atende (tem agenda e comissão). Barbeiro: vê a própria agenda, finaliza seus atendimentos e acompanha o próprio desempenho. Caixa: recepção — marca horários para todos, cobra, vende e cuida do caixa." },
     { cat: "Primeiros passos", p: "Dá para usar no celular? Como instalo o app?", r: "Sim. Abra o endereço do 4blade no navegador do celular. No Android (Chrome): menu ⋮ → \"Instalar app\" ou \"Adicionar à tela inicial\". No iPhone (Safari): botão Compartilhar → \"Adicionar à Tela de Início\". O ícone do 4blade aparece junto dos outros apps." },
     { cat: "Acesso e senha", p: "Esqueci a minha senha. E agora?", r: "Barbeiro e caixa: peça ao gerente ou ao proprietário, em Equipe → Nova senha. Gerente: peça ao proprietário. Proprietário: abra um chamado ou chame o suporte do 4blade no WhatsApp. A senha provisória é trocada no 1º acesso." },
@@ -29,10 +29,12 @@ window.AJUDA = {
     { cat: "Comissões e dinheiro", p: "O que mostra o Painel?", r: "Quanto entrou (bruto), as comissões, o custo dos produtos vendidos e o lucro de hoje, da semana ou do mês, além do ranking dos profissionais e avisos (estoque baixo, contas vencendo, notas em aberto)." },
     { cat: "Contador e dados", p: "Como mando os números para o contador?", r: "Financeiro → Contador e dados → \"Gerar e enviar\": escolha o mês. O sistema gera o resumo em PDF e a planilha. No celular abre o Compartilhar (WhatsApp, e-mail); no computador baixa os arquivos. Não é nota fiscal." },
     { cat: "Contador e dados", p: "Meus dados ficam salvos? Posso baixar tudo?", r: "Sim. Os dados ficam guardados com cópia de segurança e nada é apagado no dia a dia. Em Contador e dados → Cópia dos dados você baixa tudo em planilhas (abrem no Excel) quando quiser." },
-    { cat: "Assinatura e planos", p: "Qual a diferença entre os planos?", r: "Básico (R$ 79/mês): até 2 barbeiros. Standard (R$ 109,90/mês): até 4 barbeiros e site para o cliente ver os horários livres (em breve). Pro (R$ 149,90/mês): até 10 barbeiros e site completo, integrado à agenda, com lista de produtos e compra iniciada pelo site (em breve). Gerentes e caixas não têm limite em nenhum plano. No anual, paga 10 meses." },
-    { cat: "Assinatura e planos", p: "Como pago a mensalidade?", r: "Equipe e ajustes → Minha assinatura → \"Pagar mensalidade\". Abre a página do Asaas com Pix, boleto ou cartão. Quando o pagamento é confirmado, o sistema atualiza sozinho." },
-    { cat: "Assinatura e planos", p: "O que acontece se eu atrasar?", r: "Desde o 1º dia de atraso aparece um aviso no alto da tela. Depois de 5 dias, a equipe não entra até o pagamento; o proprietário continua entrando para pagar. Nada é apagado: pagou, libera na hora." },
-    { cat: "Assinatura e planos", p: "Quero mudar de plano ou cancelar.", r: "Mudar de plano: abra um chamado em Ajuda → Suporte (categoria Assinatura e pagamento). Cancelar: o proprietário cancela em Minha assinatura; o sistema funciona até o fim do período pago." },
+    { pagamento: true, cat: "Assinatura e planos", p: "Qual a diferença entre os planos?", r: "Básico (R$ 79/mês): até 2 barbeiros. Standard (R$ 109,90/mês): até 4 barbeiros e site para o cliente ver os horários livres (em breve). Pro (R$ 149,90/mês): até 10 barbeiros e site completo, integrado à agenda, com lista de produtos e compra iniciada pelo site (em breve). Gerentes e caixas não têm limite em nenhum plano. No anual, paga 10 meses." },
+    { pagamento: true, cat: "Assinatura e planos", p: "Como pago a mensalidade?", r: "Equipe e ajustes → Minha assinatura → \"Pagar mensalidade\". Abre a página do Asaas com Pix, boleto ou cartão. Quando o pagamento é confirmado, o sistema atualiza sozinho." },
+    { pagamento: true, cat: "Assinatura e planos", p: "O que acontece se eu atrasar?", r: "Desde o 1º dia de atraso aparece um aviso no alto da tela. Depois de 5 dias, a equipe não entra até o pagamento; o proprietário continua entrando para pagar. Nada é apagado: pagou, libera na hora." },
+    { semCobranca: true, cat: "Planos", p: "Qual a diferença entre os planos?", r: "Básico: até 2 barbeiros. Standard: até 4 barbeiros e site para o cliente ver os horários livres (em breve). Pro: até 10 barbeiros e site completo, integrado à agenda, com lista de produtos e compra iniciada pelo site (em breve). Gerentes e caixas não têm limite em nenhum plano. Seu plano aparece em Equipe e ajustes → Meu plano." },
+    { semCobranca: true, cat: "Planos", p: "Quero mudar de plano.", r: "Fale com a gente em Ajuda → Suporte (proprietário e gerente). A troca é feita pelo 4blade e vale na hora." },
+    { pagamento: true, cat: "Assinatura e planos", p: "Quero mudar de plano ou cancelar.", r: "Mudar de plano: abra um chamado em Ajuda → Suporte (categoria Assinatura e pagamento). Cancelar: o proprietário cancela em Minha assinatura; o sistema funciona até o fim do período pago." },
     { cat: "Suporte", p: "Como falo com o suporte do 4blade?", r: "Proprietário e gerente: Ajuda → Suporte. Lá tem o WhatsApp do suporte e você pode abrir um chamado; a resposta aparece na própria tela. Barbeiros e caixas falam com o gerente ou o proprietário." }
   ],
 
@@ -137,7 +139,12 @@ window.AJUDA = {
       passos: ["Escolha o período.", "Veja quantos atendimentos fez, quanto faturou e a comissão.", "Toque em \"Baixar extrato\" para ter o PDF e a planilha do mês."],
       exemplo: "Semana: 32 atendimentos · R$ 1.400 faturado · comissão R$ 700.",
       dica: "O extrato é útil para quem é MEI declarar o que recebeu." },
-    { id: "assinatura", titulo: "Minha assinatura: pagar e acompanhar", perfis: ["proprietario", "gerente"], rotas: ["assinatura"],
+    { id: "meu-plano", semCobranca: true, titulo: "Meu plano: ver o plano e as vagas", perfis: ["proprietario", "gerente"], rotas: ["assinatura"],
+      onde: "Menu → Equipe e ajustes → Meu plano.",
+      passos: ["Veja qual é o plano da barbearia (Básico, Standard ou Pro).", "Confira quantos barbeiros estão ativos e quantos o plano permite.", "Gerentes e caixas não contam: são sem limite em todos os planos.", "Para mudar de plano, fale com o suporte em Ajuda → Suporte."],
+      exemplo: "Plano Pro — 3 de 10 barbeiros ativos.",
+      dica: "Desativar um barbeiro em Equipe libera a vaga na hora." },
+    { id: "assinatura", pagamento: true, titulo: "Minha assinatura: pagar e acompanhar", perfis: ["proprietario", "gerente"], rotas: ["assinatura"],
       onde: "Menu → Equipe e ajustes → Minha assinatura.",
       passos: ["Veja o plano, a situação (teste grátis, em dia, em atraso) e o próximo vencimento.", "Toque em \"Pagar mensalidade\": abre o Asaas com Pix, boleto ou cartão.", "Os pagamentos recebidos aparecem na lista ao lado.", "O proprietário pode cancelar a assinatura aqui (o sistema funciona até o fim do período pago)."],
       exemplo: "Plano Standard — R$ 109,90 por mês — próximo vencimento 30/11.",
