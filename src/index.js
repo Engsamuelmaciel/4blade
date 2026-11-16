@@ -23,6 +23,7 @@ import { rotasCaixa } from "./caixa.js";
 import { rotasEstoque, rotasVendas } from "./estoque.js";
 import { rotasGestao } from "./gestao.js";
 import { rotasContador } from "./contador.js";
+import { rotasPublicasAssinatura, rotasAssinatura, situacaoAssinatura, SQL_PLANO } from "./assinatura.js";
 
 export const VERSAO = "0.4.0";
 const SESSAO_HORAS = 12;
@@ -57,19 +58,34 @@ async function refundAttempt(db, ipKey, userKey) {
   ]);
 }
 
-// Sessão válida + usuário ativo + barbearia não bloqueada.
+// Campos da barbearia e da assinatura lidos junto com o usuário (sessão e login).
+const CAMPOS_BARBEARIA = `
+  b.nome AS barbearia_nome, ${SQL_PLANO} AS barbearia_plano, b.plano AS barbearia_plano_coluna,
+  b.barbeiros_adicionais AS barbearia_adicionais, b.bloqueada AS barbearia_bloqueada,
+  a.origem AS a_origem, a.pago_ate AS a_pago_ate, a.teste_ate AS a_teste_ate,
+  a.ultimo_pagamento_em AS a_ultimo_pagamento_em, a.cancelada AS a_cancelada`;
+const JUNTA_BARBEARIA = "LEFT JOIN barbearias b ON b.id = u.barbearia_id LEFT JOIN assinaturas a ON a.barbearia_id = u.barbearia_id";
+
+const situacaoDoUsuario = u => (u.barbearia_id ? situacaoAssinatura({
+  origem: u.a_origem, pago_ate: u.a_pago_ate, teste_ate: u.a_teste_ate,
+  ultimo_pagamento_em: u.a_ultimo_pagamento_em, cancelada: u.a_cancelada
+}) : { situacao: "manual", bloqueada: false });
+
+// Com a mensalidade atrasada além da tolerância, só o proprietário entra, e só para ver/pagar a assinatura.
+const ROTAS_LIBERADAS_NO_ATRASO = new Set(["/auth/me", "/auth/logout", "/auth/trocar-senha", "/assinatura", "/assinatura/cancelar"]);
+const MSG_ATRASO_EQUIPE = "O acesso da barbearia está suspenso por mensalidade do 4blade em atraso. Fale com o proprietário.";
+
+// Sessão válida + usuário ativo + barbearia não bloqueada (pela plataforma).
 async function auth(request, db) {
   const header = request.headers.get("authorization") || "";
   if (!header.startsWith("Bearer ")) return null;
   const token = header.slice(7);
   if (!/^[A-Za-z0-9_-]{40,100}$/.test(token)) return null;
   return await db.prepare(`
-    SELECT u.*, s.id AS sessao_id,
-           b.nome AS barbearia_nome, b.plano AS barbearia_plano,
-           b.barbeiros_adicionais AS barbearia_adicionais
+    SELECT u.*, s.id AS sessao_id, ${CAMPOS_BARBEARIA}
     FROM sessoes s
     JOIN usuarios u ON u.id = s.usuario_id
-    LEFT JOIN barbearias b ON b.id = u.barbearia_id
+    ${JUNTA_BARBEARIA}
     WHERE s.token_hash = ?
       AND s.revogado_em IS NULL
       AND datetime(s.expira_em) > CURRENT_TIMESTAMP
@@ -79,6 +95,7 @@ async function auth(request, db) {
 }
 
 export function publicUser(user) {
+  const sit = situacaoDoUsuario(user);
   return {
     id: user.id,
     login: user.login,
@@ -88,7 +105,10 @@ export function publicUser(user) {
     telaInicial: TELA_INICIAL[user.perfil],
     barbearia: user.barbearia_id
       ? { nome: user.barbearia_nome, plano: user.barbearia_plano }
-      : null
+      : null,
+    // Situação da mensalidade (só quem cuida da barbearia vê; a equipe não).
+    assinatura: user.barbearia_id && (user.perfil === "proprietario" || user.perfil === "gerente") && sit.situacao !== "manual"
+      ? sit : null
   };
 }
 
@@ -137,6 +157,12 @@ export default {
     const ipHash = (await sha256(request.headers.get("CF-Connecting-IP") || "unknown")).slice(0, 16);
 
     try {
+      // ---------- PLANOS, ASSINAR e AVISOS DO ASAAS (sem sessão) ----------
+      const publica = await rotasPublicasAssinatura({
+        db, request, env, ipHash, limitar: (chave, max, seg) => rateLimit(db, chave, max, seg)
+      }, path, method);
+      if (publica) return publica;
+
       // ---------- 1º USUÁRIO DA PLATAFORMA (só com o segredo e só se ainda não existir nenhum) ----------
       if (path === "/setup/plataforma" && method === "POST") {
         const supplied = request.headers.get("x-setup-token");
@@ -176,8 +202,8 @@ export default {
         if (!limit.allowed) return fail("Muitas tentativas. Aguarde 15 minutos.", 429);
 
         const user = await db.prepare(`
-          SELECT u.*, b.nome AS barbearia_nome, b.plano AS barbearia_plano, b.bloqueada AS barbearia_bloqueada
-          FROM usuarios u LEFT JOIN barbearias b ON b.id = u.barbearia_id
+          SELECT u.*, ${CAMPOS_BARBEARIA}
+          FROM usuarios u ${JUNTA_BARBEARIA}
           WHERE u.login = ? AND u.ativo = 1
         `).bind(login).first();
 
@@ -192,6 +218,10 @@ export default {
           await auditoria({ db, barbeariaId: user.barbearia_id, usuarioId: user.id, ipHash }, "login_barbearia_bloqueada").run();
           return fail("Acesso bloqueado. Fale com o suporte do 4blade.", 403);
         }
+        if (user.perfil !== "proprietario" && situacaoDoUsuario(user).bloqueada) {
+          await auditoria({ db, barbeariaId: user.barbearia_id, usuarioId: user.id, ipHash }, "login_assinatura_atrasada").run();
+          return fail(MSG_ATRASO_EQUIPE, 403);
+        }
 
         await refundAttempt(db, limit.ipKey, limit.userKey);
         await auditoria({ db, barbeariaId: user.barbearia_id, usuarioId: user.id, ipHash }, "login").run();
@@ -202,7 +232,13 @@ export default {
       const user = await auth(request, db);
       if (!user) return fail("Entre novamente (sessão expirada ou inválida).", 401);
 
-      const ctx = { db, request, user, ipHash, barbeariaId: user.barbearia_id, usuarioId: user.id };
+      const ctx = { db, request, env, user, ipHash, barbeariaId: user.barbearia_id, usuarioId: user.id };
+
+      // Mensalidade atrasada além da tolerância: equipe fora; proprietário só na tela da assinatura.
+      if (user.barbearia_id && situacaoDoUsuario(user).bloqueada) {
+        if (user.perfil !== "proprietario") return fail(MSG_ATRASO_EQUIPE, 401);
+        if (!ROTAS_LIBERADAS_NO_ATRASO.has(path)) return fail("Acesso suspenso: mensalidade do 4blade em atraso. Pague em Minha assinatura.", 402);
+      }
 
       if (path === "/auth/me" && method === "GET") {
         return json({ usuario: publicUser(user) });
@@ -252,7 +288,7 @@ export default {
       // ---------- DADOS DA BARBEARIA: exige usuário de barbearia ----------
       const r = (await rotasFuncionamento(ctx, path, method)) || (await rotasAgenda(ctx, path, method)) ||
         (await rotasCaixa(ctx, path, method)) || (await rotasEstoque(ctx, path, method)) || (await rotasVendas(ctx, path, method)) ||
-        (await rotasGestao(ctx, path, method)) || (await rotasContador(ctx, path, method)) || (await rotasMensagens(ctx, path, method)) || (await rotasPromissorias(ctx, path, method)) || (await rotasUsuarios(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
+        (await rotasGestao(ctx, path, method)) || (await rotasContador(ctx, path, method)) || (await rotasMensagens(ctx, path, method)) || (await rotasPromissorias(ctx, path, method)) || (await rotasAssinatura(ctx, path, method)) || (await rotasUsuarios(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
       if (r) {
         return r;
       }

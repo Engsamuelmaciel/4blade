@@ -664,3 +664,47 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
 .enviar-mensagem .alterna.largo { margin-bottom: 8px; }
 
 a.botao.largo { display: flex; justify-content: center; align-items: center; width: 100%; min-height: 46px; font-size: 15.5px; margin: 6px 0 2px; }
+
+/* ---------- Planos, Assinar e Minha assinatura ---------- */
+.publica { max-width: 1080px; margin: 10px auto; }
+.publica.estreita { max-width: 640px; }
+.publica-topo { text-align: center; margin: 8px 0 18px; }
+.publica-topo h2 { margin: 0 0 4px; font-size: 24px; }
+.publica-topo .alterna { margin-top: 10px; }
+.planos { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 18px; }
+@media (min-width: 860px) { .planos { grid-template-columns: repeat(3, 1fr); align-items: stretch; } }
+.plano { position: relative; display: flex; flex-direction: column; background: var(--cartao); border: 1px solid var(--borda); border-radius: var(--raio); padding: 18px; box-shadow: var(--sombra); }
+.plano.destaque { border: 2px solid var(--dourado); }
+.plano-selo { position: absolute; top: -11px; right: 14px; background: var(--dourado); color: var(--sobre-dourado); font-size: 12px; font-weight: 800; padding: 2px 10px; border-radius: 999px; }
+.plano h3 { margin: 0; font-size: 20px; }
+.plano-barbeiros { margin: 2px 0 8px; color: var(--destaque); font-weight: 700; }
+.plano-preco { margin: 0; display: flex; align-items: baseline; gap: 4px; }
+.plano-preco strong { font-size: 32px; line-height: 1.1; }
+.plano-preco span { color: var(--suave); font-weight: 600; }
+.plano-nota { margin: 2px 0 10px; font-size: 13px; }
+.plano-recursos { list-style: none; margin: 0 0 14px; padding: 0; flex: 1; }
+.plano-recursos li { position: relative; padding: 5px 0 5px 22px; font-size: 14px; border-top: 1px solid var(--borda); }
+.plano-recursos li::before { content: "✓"; position: absolute; left: 2px; color: var(--ok); font-weight: 800; }
+.plano-recursos li.forte { font-weight: 700; }
+.plano-recursos li.extra::before { content: "+"; color: var(--destaque); }
+.perguntas ol { margin: 6px 0 0; padding-left: 20px; }
+.perguntas li { margin: 4px 0; }
+.form-assinar h3 { margin: 16px 0 6px; font-size: 16px; color: var(--destaque); }
+.form-assinar h3:first-of-type { margin-top: 0; }
+.bloco-site { margin: 4px 0; }
+.resumo-assinatura { display: flex; flex-direction: column; gap: 2px; margin: 12px 0; padding: 10px 12px; border-radius: 9px; background: var(--neutro-2); border-left: 4px solid var(--dourado); font-size: 14px; }
+.resumo-assinatura span { color: var(--suave); }
+.marcar.aceite { margin-top: 12px; align-items: flex-start; }
+.botao-link, button.link { background: none; border: 0; padding: 0; color: var(--destaque); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.texto-legal { max-height: 60vh; overflow-y: auto; font-size: 14px; }
+.texto-legal h4 { margin: 14px 0 4px; }
+.texto-legal p { margin: 4px 0; }
+.texto-legal .item-legal { padding-left: 8px; }
+.chamada-planos { margin: 10px 0 0; font-size: 14px; }
+.chamada-planos a, .publica a:not(.botao) { color: var(--destaque); font-weight: 700; }
+.boas-vindas h2 { margin-top: 0; }
+.boas-vindas ol { padding-left: 20px; }
+.faixa-assinatura { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: center; padding: 8px 14px; font-size: 14px; font-weight: 600; text-align: center; }
+.faixa-assinatura.amarela { background: var(--amarelo-fundo); color: var(--amarelo); }
+.faixa-assinatura.vermelha { background: var(--erro-fundo); color: var(--erro); }
+.faixa-assinatura a { color: inherit; font-weight: 800; }

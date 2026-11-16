@@ -5,6 +5,7 @@ import worker from "./index.js";
 import indexHtml from "../public/index.html";
 import appJs from "../public/app.js";
 import temaJs from "../public/tema.js";
+import legalJs from "../public/legal.js";
 import styleCss from "../public/style.css";
 import swJs from "../public/sw.js";
 import manifest from "../public/manifest.json";
@@ -22,6 +23,7 @@ const ARQUIVOS = {
   "/index.html": [indexHtml, "text/html; charset=utf-8"],
   "/app.js": [appJs, "text/javascript; charset=utf-8"],
   "/tema.js": [temaJs, "text/javascript; charset=utf-8"],
+  "/legal.js": [legalJs, "text/javascript; charset=utf-8"],
   "/style.css": [styleCss, "text/css; charset=utf-8"],
   "/sw.js": [swJs, "text/javascript; charset=utf-8"],
   "/manifest.json": [manifest, "application/manifest+json"],

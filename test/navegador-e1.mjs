@@ -140,10 +140,12 @@ async function rodar(tela) {
     const senhaGer = await criarPessoa("gerente", "Gabriel Gerente", "gabriel.navalha", "40", "10");
     const senhaBarb = await criarPessoa("barbeiro", "Bruno Barbeiro", "bruno.navalha", "50", "10", true);
     const senhaCx = await criarPessoa("caixa", "Camila Caixa", "camila.navalha");
-    // limite do plano Básico: 2º caixa recusado pelo servidor
-    await page.selectOption("#c-perfil", "caixa");
-    await page.fill("#c-nome", "Outra Caixa");
-    await page.fill("#c-login", "outra.navalha");
+    // limite do plano Básico: 2 barbeiros; o 3º é recusado pelo servidor (gerentes e caixas sem limite)
+    await criarPessoa("barbeiro", "Diego Barbeiro", "diego.navalha", "50", "10");
+    await page.waitForSelector('[data-vaga="barbeiro"] >> text=2/2');
+    await page.selectOption("#c-perfil", "barbeiro");
+    await page.fill("#c-nome", "Outro Barbeiro");
+    await page.fill("#c-login", "outro.navalha");
     await page.click("button:has-text('Criar acesso')");
     await page.waitForSelector("form .erro:has-text('Limite do plano')");
     await print("proprietario-equipe-limite-do-plano");

@@ -80,7 +80,8 @@ const fone = d => {
   return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
 };
 const NOME_PERFIL = { plataforma: "Plataforma", proprietario: "Proprietário", gerente: "Gerente", barbeiro: "Barbeiro", caixa: "Caixa" };
-const NOME_PLANO = { basico: "Básico", profissional: "Profissional" };
+const NOME_PLANO = { basico: "Básico", standard: "Standard", pro: "Pro", profissional: "Pro" };
+const OPCOES_PLANO = [["basico", "Básico (até 2 barbeiros)"], ["standard", "Standard (até 4 barbeiros)"], ["pro", "Pro (até 10 barbeiros)"]];
 
 // Ponto digitado como vírgula decimal ("38.5" → "38,5"); "1.234" continua sendo milhar.
 const pontoDecimal = t => (!t.includes(",") && (t.match(/\./g) || []).length === 1 && /\.\d{0,2}$/.test(t) ? t.replace(".", ",") : t);
@@ -118,6 +119,11 @@ async function api(caminho, { metodo = "GET", corpo } = {}) {
     usuario = null;
     telaLogin("Sua sessão terminou. Entre novamente.");
     throw new Error("Sessão encerrada");
+  }
+  if (resp.status === 402 && usuario) {
+    // Mensalidade atrasada além da tolerância (mudou enquanto o app estava aberto): vai para a assinatura.
+    usuario.assinatura = { ...(usuario.assinatura || {}), situacao: "bloqueada", bloqueada: true };
+    setTimeout(() => { if (location.hash === "#/assinatura") rotear(); else location.hash = "#/assinatura"; }, 0);
   }
   if (!resp.ok) {
     const e = new Error(dados.erro || "Algo deu errado. Tente de novo.");
@@ -331,7 +337,8 @@ function telaLogin(mensagem = "") {
     campo("Usuário", { name: "login", autocomplete: "username", autocapitalize: "none", spellcheck: "false", required: true }),
     campo("Senha", { name: "senha", type: "password", autocomplete: "current-password", required: true }),
     el("button", { type: "submit", class: "botao principal", text: "Entrar" }),
-    el("p", { class: "suave centro", text: "Esqueceu a senha? Peça ao gerente ou ao proprietário da barbearia." }));
+    el("p", { class: "suave centro", text: "Esqueceu a senha? Peça ao gerente ou ao proprietário da barbearia." }),
+    el("p", { class: "centro chamada-planos" }, "Ainda não usa o 4blade? ", el("a", { href: "#/planos", "data-teste": "link-planos", text: "Conheça os planos" })));
   form.addEventListener("submit", ev => {
     ev.preventDefault();
     enviar(form, async () => {
@@ -377,6 +384,275 @@ function telaTrocarSenha(senhaAtual = "") {
   mostrar(el("section", { class: "estreito" }, form));
 }
 
+// ---------- PLANOS, ASSINAR e TEXTOS LEGAIS (sem login) ----------
+let infoPlanos = null;
+let cicloPlanos = "mensal";
+async function carregarPlanos() {
+  if (!infoPlanos) infoPlanos = await api("/planos");
+  return infoPlanos;
+}
+const RECURSOS_BASE = [
+  "Agenda com horários livres e lembrete por WhatsApp",
+  "Caixa: Pix, cartão, dinheiro, troco e notas (fiado)",
+  "Estoque e venda de produtos com desconto",
+  "Comissões, vales e contas a pagar",
+  "Relatório pronto para o contador",
+  "Gerentes e caixas sem limite"
+];
+const dataCurta = d => dataBR(d);
+const precoPlano = (p, ciclo) => (ciclo === "anual" ? p.anualCentavos : p.mensalCentavos);
+const reaisInteiro = c => reais(c).replace(/,00$/, "");
+
+function cartaoPlano(p, info, ciclo) {
+  const extras = {
+    basico: [],
+    standard: [`Opcional: site para o seu cliente ver os horários livres (+ ${reaisInteiro(info.siteStandardMensalCentavos)}/mês)${info.siteDisponivel ? "" : " — em breve"}`],
+    pro: [`Site completo da barbearia: horários, pedido de agendamento pelo WhatsApp, serviços, produtos e domínio próprio${info.siteDisponivel ? "" : " — em breve"}`]
+  }[p.id] || [];
+  const valor = precoPlano(p, ciclo);
+  return el("article", { class: `plano ${p.id === "pro" ? "destaque" : ""}`, "data-plano": p.id },
+    p.id === "pro" ? el("span", { class: "plano-selo", text: "Mais completo" }) : null,
+    el("h3", { text: p.nome }),
+    el("p", { class: "plano-barbeiros", text: `Até ${p.barbeiros} barbeiros` }),
+    el("p", { class: "plano-preco" }, el("strong", { text: reaisInteiro(valor) }), el("span", { text: ciclo === "anual" ? "/ano" : "/mês" })),
+    el("p", { class: "suave plano-nota", text: ciclo === "anual"
+      ? `Equivale a ${reais(Math.round(valor / 12))} por mês · ${12 - info.mesesDoAnual} meses grátis`
+      : `ou ${reaisInteiro(p.anualCentavos)} no plano anual` }),
+    el("ul", { class: "plano-recursos" },
+      p.id === "basico" ? null : el("li", { class: "forte", text: p.id === "pro" ? "Tudo do Standard, para equipes grandes" : "Tudo do Básico, para equipes maiores" }),
+      ...(p.id === "basico" ? RECURSOS_BASE : []).map(t => el("li", { text: t })),
+      ...extras.map(t => el("li", { class: "extra", text: t }))),
+    el("a", { class: "botao principal largo", href: `#/assinar/${p.id}`, "data-assinar": p.id, text: `Começar ${info.testeDias} dias grátis` }));
+}
+
+async function telaPlanos() {
+  const info = await carregarPlanos();
+  const area = el("div", { class: "planos" });
+  const alterna = el("div", { class: "alterna", role: "group", "aria-label": "Forma de pagamento" });
+  const desenhar = () => {
+    alterna.replaceChildren(...[["mensal", "Mensal"], ["anual", `Anual (paga ${info.mesesDoAnual} meses)`]].map(([c, t]) =>
+      el("button", { type: "button", class: `botao pequeno ${cicloPlanos === c ? "ativo" : ""}`, "data-ciclo": c, "aria-pressed": cicloPlanos === c ? "true" : "false", text: t,
+        onclick: () => { cicloPlanos = c; desenhar(); } })));
+    area.replaceChildren(...info.planos.map(p => cartaoPlano(p, info, cicloPlanos)));
+  };
+  desenhar();
+  mostrar(el("section", { class: "publica" },
+    el("div", { class: "publica-topo" },
+      el("h2", { text: "Escolha o plano da sua barbearia" }),
+      el("p", { class: "suave", text: `Teste grátis por ${info.testeDias} dias, sem cartão. Cancele quando quiser.` }),
+      alterna),
+    area,
+    el("div", { class: "cartao perguntas" },
+      el("h3", { text: "Como funciona" }),
+      el("ol", {},
+        el("li", { text: "Escolha o plano e preencha os dados da barbearia e o seu usuário e senha." }),
+        el("li", { text: `Pronto: você já entra no sistema. São ${info.testeDias} dias grátis.` }),
+        el("li", { text: "A 1ª mensalidade vence no fim do teste. Você paga por Pix, boleto ou cartão, pelo Asaas." }),
+        el("li", { text: "Cadastre sua equipe, serviços e horários de funcionamento e comece a usar." }))),
+    el("p", { class: "centro" }, "Já usa o 4blade? ", el("a", { href: "#/entrar", text: "Entrar" }), " · ",
+      el("a", { href: "#/termos", text: "Termos de uso" }), " · ", el("a", { href: "#/privacidade", text: "Privacidade" }))));
+}
+
+function mascaraDocumento(input) {
+  input.addEventListener("input", () => {
+    const d = input.value.replace(/\D/g, "").slice(0, 14);
+    input.value = d.length <= 11
+      ? d.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2")
+      : d.replace(/^(\d{2})(\d)/, "$1.$2").replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3").replace(/\.(\d{3})(\d)/, ".$1/$2").replace(/(\d{4})(\d)/, "$1-$2");
+  });
+}
+
+function janelaLegal(tipo) {
+  return abrirJanela(tipo === "termos" ? "Termos de uso" : "Política de privacidade", textoLegal(tipo), { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
+}
+function textoLegal(tipo) {
+  const t = window.TEXTOS_LEGAIS;
+  if (!t) return el("p", { text: "Texto indisponível. Atualize a página." });
+  return el("div", { class: "texto-legal" },
+    el("p", { class: "suave", text: `Versão de ${t.versao}` }),
+    ...t[tipo].map(([k, x]) => el(k === "h" ? "h4" : k === "l" ? "p" : "p", { class: k === "l" ? "item-legal" : null, text: k === "l" ? `• ${x}` : x })));
+}
+async function telaLegal(tipo) {
+  mostrar(el("section", { class: "publica estreita" },
+    el("a", { class: "voltar", href: usuario ? `#/${usuario.telaInicial}` : "#/planos", text: "‹ Voltar" }),
+    el("h2", { text: tipo === "termos" ? "Termos de uso" : "Política de privacidade" }),
+    el("div", { class: "cartao" }, textoLegal(tipo))));
+}
+
+// Sugere um usuário a partir do nome da barbearia: "Barbearia do Zé" → "dono.barbeariadoze"
+const sugerirLogin = nome => `dono.${nome.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24)}`;
+
+async function telaAssinar(planoInicial) {
+  const info = await carregarPlanos();
+  const planos = Object.fromEntries(info.planos.map(p => [p.id, p]));
+  const plano = planos[planoInicial] ? planoInicial : "standard";
+  const resumo = el("div", { class: "resumo-assinatura", "data-teste": "resumo-assinatura", "aria-live": "polite" });
+  const blocoSite = el("div", { class: "bloco-site" });
+  const form = el("form", { class: "cartao form-assinar", autocomplete: "on" },
+    el("h3", { text: "1. Plano" }),
+    campo("Plano", { tag: "select", name: "plano", valor: plano, opcoes: info.planos.map(p => [p.id, `${p.nome} — até ${p.barbeiros} barbeiros`]) }),
+    campo("Pagamento", { tag: "select", name: "ciclo", valor: cicloPlanos, opcoes: [["mensal", "Mensal"], ["anual", `Anual (paga ${info.mesesDoAnual} meses)`]] }),
+    blocoSite,
+    el("h3", { text: "2. Sua barbearia e seus dados" }),
+    campo("Nome da barbearia", { name: "barbearia", required: true, maxlength: "80", autocomplete: "organization" }),
+    campo("Seu nome completo", { name: "nome", required: true, maxlength: "100", autocomplete: "name" }),
+    el("div", { class: "lado-a-lado" },
+      campo("CPF ou CNPJ", { name: "documento", required: true, inputmode: "numeric", "data-mascara": "documento", maxlength: "18", autocomplete: "off" }, "Usado só para a cobrança da mensalidade."),
+      campo("WhatsApp", { name: "telefone", required: true, inputmode: "tel", autocomplete: "tel" })),
+    campo("E-mail", { name: "email", type: "email", required: true, maxlength: "120", autocomplete: "email" }, "Para receber as cobranças e avisos."),
+    el("h3", { text: "3. Seu acesso ao sistema" }),
+    campo("Usuário", { name: "login", required: true, autocapitalize: "none", spellcheck: "false", maxlength: "30", autocomplete: "username" }, "Minúsculas, sem espaço. Ex.: joao.barbeariadojoao"),
+    el("div", { class: "lado-a-lado" },
+      campo("Senha", { name: "senha", type: "password", required: true, minlength: "8", autocomplete: "new-password" }, "Mínimo de 8 caracteres."),
+      campo("Repita a senha", { name: "senha2", type: "password", required: true, minlength: "8", autocomplete: "new-password" })),
+    el("div", { class: "marcar aceite" },
+      el("input", { type: "checkbox", name: "aceite", id: "c-aceite", required: true }),
+      el("label", { for: "c-aceite" }, "Li e aceito os ",
+        el("button", { type: "button", class: "link", "data-legal": "termos", text: "termos de uso", onclick: () => janelaLegal("termos") }),
+        " e a ",
+        el("button", { type: "button", class: "link", "data-legal": "privacidade", text: "política de privacidade", onclick: () => janelaLegal("privacidade") }), ".")),
+    resumo,
+    info.assinaturaDisponivel ? null : el("p", { class: "info", "data-teste": "assinatura-indisponivel", text: "A assinatura on-line ainda não está ligada. Fale com o suporte do 4blade para assinar." }),
+    el("button", { type: "submit", class: "botao principal largo", disabled: info.assinaturaDisponivel ? null : true, text: `Começar ${info.testeDias} dias grátis` }));
+
+  const atualizar = () => {
+    const p = planos[form.plano.value];
+    const ciclo = form.ciclo.value;
+    const comSite = p.id === "standard" && form.site?.checked;
+    const valor = precoPlano(p, ciclo) + (comSite ? info.siteStandardMensalCentavos * (ciclo === "anual" ? info.mesesDoAnual : 1) : 0);
+    const hoje = hojeLocal();
+    resumo.replaceChildren(
+      el("strong", { text: `Plano ${p.nome} ${ciclo === "anual" ? "anual" : "mensal"}${comSite ? " + site de horários" : ""}: ${reais(valor)} ${ciclo === "anual" ? "por ano" : "por mês"}` }),
+      el("span", { text: `Grátis até ${dataCurta(somaDias(hoje, info.testeDias - 1))}. 1ª cobrança em ${dataCurta(somaDias(hoje, info.testeDias))}. Cancele quando quiser.` }));
+  };
+  const desenharSite = () => {
+    const ehStandard = form.plano.value === "standard";
+    blocoSite.replaceChildren(ehStandard
+      ? caixaMarcar(`Quero o site para o cliente ver os horários livres (+ ${reaisInteiro(info.siteStandardMensalCentavos)}/mês)${info.siteDisponivel ? "" : " — em breve"}`,
+        { name: "site", disabled: info.siteDisponivel ? null : true, onchange: atualizar })
+      : null);
+    blocoSite.hidden = !ehStandard;
+  };
+  form.plano.addEventListener("change", () => { desenharSite(); atualizar(); });
+  form.ciclo.addEventListener("change", () => { cicloPlanos = form.ciclo.value; atualizar(); });
+  form.barbearia.addEventListener("change", () => { if (!form.login.value && form.barbearia.value.trim()) form.login.value = sugerirLogin(form.barbearia.value); });
+  mascaraDocumento(form.documento);
+  desenharSite();
+  atualizar();
+
+  form.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(form, async () => {
+      if (form.senha.value !== form.senha2.value) throw new Error("As duas senhas não são iguais.");
+      const login = form.login.value.trim().toLowerCase();
+      const r = await api("/assinar", {
+        metodo: "POST",
+        corpo: {
+          plano: form.plano.value, ciclo: form.ciclo.value, siteHorarios: Boolean(form.site?.checked),
+          barbearia: form.barbearia.value, nome: form.nome.value, documento: form.documento.value,
+          telefone: form.telefone.value, email: form.email.value, login, senha: form.senha.value, aceiteTermos: form.aceite.checked
+        }
+      });
+      const l = await api("/auth/login", { metodo: "POST", corpo: { login, senha: form.senha.value } });
+      localStorage.setItem(CHAVE_TOKEN, l.token);
+      usuario = l.usuario;
+      telaBoasVindas(r);
+    });
+  });
+
+  mostrar(el("section", { class: "publica estreita" },
+    el("a", { class: "voltar", href: "#/planos", text: "‹ Ver os planos" }),
+    el("h2", { text: "Assinar o 4blade" }),
+    el("p", { class: "suave", text: `Leva 2 minutos. ${info.testeDias} dias grátis, sem cartão.` }),
+    form));
+}
+
+function telaBoasVindas(r) {
+  history.replaceState(null, "", "#/bem-vindo");
+  atualizarTopo();
+  mostrar(el("section", { class: "estreito" },
+    el("div", { class: "cartao boas-vindas", "data-teste": "boas-vindas" },
+      el("h2", { text: `Tudo pronto, ${usuario.nome.split(" ")[0]}!` }),
+      el("p", { text: `A ${r.barbearia.nome} já está no 4blade. Seu teste grátis vai até ${dataCurta(r.testeAte)}.` }),
+      el("p", { class: "suave", text: `A 1ª mensalidade (${reais(r.valorCentavos)}) vence em ${dataCurta(r.primeiroVencimento)}. Você acompanha e paga em Equipe e ajustes → Minha assinatura.` }),
+      el("h4", { text: "Primeiros passos" }),
+      el("ol", {},
+        el("li", { text: "Funcionamento: dias e horários em que a barbearia abre." }),
+        el("li", { text: "Serviços: cortes, barba e preços." }),
+        el("li", { text: "Equipe: cadastre os barbeiros, o gerente e o caixa." })),
+      el("div", { class: "item-acoes" },
+        el("a", { class: "botao principal", href: "#/funcionamento", text: "Começar pelo funcionamento" }),
+        r.linkPagamento ? el("a", { class: "botao", href: r.linkPagamento, target: "_blank", rel: "noopener", text: "Já deixar o pagamento pronto" }) : null))));
+}
+
+// ---------- MINHA ASSINATURA (proprietário e gerente) ----------
+const NOME_SIT_ASSINATURA = {
+  teste: ["Teste grátis", "amarela"], em_dia: ["Em dia", "verde"], atrasada: ["Mensalidade em atraso", "vermelha"],
+  bloqueada: ["Acesso suspenso", "vermelha"], cancelada_ate_fim: ["Cancelada", "amarela"], cancelada: ["Cancelada", "vermelha"],
+  manual: ["Combinada com o suporte", ""]
+};
+function textoSituacao(a) {
+  switch (a.situacao) {
+    case "teste": return `Faltam ${a.diasRestantes} dia(s) de teste grátis (até ${dataCurta(a.pagoAte)}).`;
+    case "em_dia": return `Paga até ${dataCurta(a.pagoAte)}.`;
+    case "atrasada": return `A mensalidade venceu há ${a.diasAtraso} dia(s). Se não for paga, o acesso da equipe é suspenso em ${a.diasParaBloqueio} dia(s).`;
+    case "bloqueada": return "O acesso da equipe está suspenso. Pague a mensalidade para liberar na hora.";
+    case "cancelada_ate_fim": return `Assinatura cancelada. O sistema funciona até ${dataCurta(a.pagoAte)}.`;
+    case "cancelada": return "Assinatura cancelada. Para voltar, fale com o suporte do 4blade.";
+    default: return "A cobrança desta barbearia é combinada direto com o suporte do 4blade.";
+  }
+}
+
+async function telaAssinatura() {
+  const { assinatura: a, pagamentos, podeCancelar } = await api("/assinatura");
+  const [rotulo, cor] = NOME_SIT_ASSINATURA[a.situacao] || ["—", ""];
+  const pagar = a.linkPagamento && !a.cancelada
+    ? el("a", { class: "botao principal largo", href: a.linkPagamento, target: "_blank", rel: "noopener", "data-teste": "pagar",
+      text: a.situacao === "teste" ? "Deixar a 1ª mensalidade paga" : "Pagar mensalidade (Pix, boleto ou cartão)" })
+    : null;
+  mostrar(
+    cabecalho("Minha assinatura", "Plano e mensalidade do 4blade"),
+    el("div", { class: "duas-colunas" },
+      el("section", { class: "cartao", "data-teste": "assinatura" },
+        el("div", { class: "item-topo" },
+          el("h3", { text: `Plano ${a.nomePlano || NOME_PLANO[a.plano] || a.plano}` }),
+          el("span", { class: `etiqueta ${cor}`, "data-situacao": a.situacao, text: rotulo })),
+        el("p", { text: textoSituacao(a) }),
+        a.origem === "asaas" ? el("p", { class: "suave", text: `${reais(a.valorCentavos)} ${a.ciclo === "anual" ? "por ano" : "por mês"}${a.siteHorarios ? " (com site de horários)" : ""}${a.proximoVencimento && !a.cancelada ? ` · próximo vencimento ${dataCurta(a.proximoVencimento)}` : ""}` }) : null,
+        pagar,
+        a.origem === "asaas" && !a.linkPagamento && !a.cancelada ? el("p", { class: "suave", text: "O link de pagamento aparece aqui quando a cobrança for gerada (alguns dias antes do vencimento)." }) : null,
+        el("p", { class: "suave", text: "Para mudar de plano, fale com o suporte do 4blade." }),
+        podeCancelar ? botao("Cancelar assinatura", () => pedirMotivo("Cancelar assinatura",
+          `O sistema continua funcionando até ${dataCurta(a.pagoAte)}. Depois disso, ninguém da equipe entra. Nada é apagado. Antes, se quiser, exporte seus dados em Contador e dados.`,
+          async motivo => {
+            const r = await api("/assinatura/cancelar", { metodo: "POST", corpo: { motivo } });
+            avisar(r.mensagem);
+            usuario = (await api("/auth/me")).usuario;
+            atualizarTopo();
+            telaAssinatura();
+          }, "Cancelar assinatura"), "perigo pequeno") : null),
+      el("section", {},
+        el("h3", { text: "Pagamentos recebidos" }),
+        pagamentos.length
+          ? el("ul", { class: "lista" }, pagamentos.map(p => el("li", { class: "item" },
+            el("div", { class: "item-topo" }, el("strong", { text: reais(p.valorCentavos) }), el("span", { class: "etiqueta verde", text: "Pago" })),
+            el("p", { class: "suave", text: `Vencimento ${dataCurta(p.vencimento)} · recebido em ${dataBR(p.recebidoEm)}` }))))
+          : el("p", { class: "vazio", text: "Nenhum pagamento ainda." }))));
+}
+
+// Faixa no alto da tela (só proprietário e gerente) quando o teste está acabando, há atraso ou a assinatura foi cancelada.
+function atualizarFaixa() {
+  const f = document.getElementById("faixa-assinatura");
+  const a = usuario && !usuario.trocaObrigatoria ? usuario.assinatura : null;
+  const mostrarFaixa = a && (a.situacao === "atrasada" || a.situacao === "bloqueada" || a.situacao === "cancelada_ate_fim"
+    || (a.situacao === "teste" && a.diasRestantes <= 5));
+  f.hidden = !mostrarFaixa;
+  if (!mostrarFaixa) return f.replaceChildren();
+  f.className = `faixa-assinatura ${a.situacao === "teste" || a.situacao === "cancelada_ate_fim" ? "amarela" : "vermelha"}`;
+  f.replaceChildren(...[el("span", { text: textoSituacao(a) }),
+    rotaAtual() === "assinatura" ? null : el("a", { href: "#/assinatura", text: a.situacao === "teste" || a.situacao.startsWith("cancelada") ? "Ver assinatura" : "Pagar agora" })].filter(Boolean));
+}
+
 function atualizarTopo() {
   const sub = document.getElementById("topo-sub");
   const acoes = document.getElementById("topo-acoes");
@@ -390,6 +666,7 @@ function atualizarTopo() {
     fecharMenu();
   }
   acoes.hidden = !logado;
+  atualizarFaixa();
   document.getElementById("btn-menu").hidden = !logado;
   document.body.classList.toggle("com-menu", logado);
 }
@@ -406,7 +683,7 @@ async function telaPlataforma() {
   const form = el("form", { class: "cartao" },
     el("h3", { text: "Nova barbearia" }),
     campo("Nome da barbearia", { name: "nome", required: true, maxlength: "80" }),
-    campo("Plano", { tag: "select", name: "plano", opcoes: [["basico", "Básico"], ["profissional", "Profissional"]] }),
+    campo("Plano", { tag: "select", name: "plano", opcoes: OPCOES_PLANO }),
     campo("Telefone da barbearia (opcional)", { name: "telefone", inputmode: "tel", autocomplete: "off" }),
     el("h4", { text: "1º acesso do proprietário" }),
     campo("Nome do proprietário", { name: "propNome", required: true }),
@@ -433,7 +710,9 @@ async function telaPlataforma() {
       el("div", { class: "item-topo" },
         el("strong", { text: b.nome }),
         el("span", { class: `etiqueta ${b.bloqueada ? "vermelha" : "verde"}`, text: b.bloqueada ? "Bloqueada" : "Ativa" }),
-        el("span", { class: "etiqueta", text: `Plano ${NOME_PLANO[b.plano]}${b.barbeirosAdicionais ? ` +${b.barbeirosAdicionais}` : ""}` })),
+        el("span", { class: "etiqueta", text: `Plano ${NOME_PLANO[b.plano]}${b.barbeirosAdicionais ? ` +${b.barbeirosAdicionais}` : ""}` }),
+        b.assinatura ? el("span", { class: `etiqueta ${(NOME_SIT_ASSINATURA[b.assinatura.situacao] || [])[1] || ""}`, "data-situacao": b.assinatura.situacao, text: NOME_SIT_ASSINATURA[b.assinatura.situacao]?.[0] || b.assinatura.situacao }) : null),
+      b.assinatura ? el("p", { class: "suave", text: `Assinou pelo site · ${reais(b.assinatura.valorCentavos)}/${b.assinatura.ciclo === "anual" ? "ano" : "mês"} · ${textoSituacao(b.assinatura)}${b.email ? ` · ${b.email}` : ""}` }) : null,
       el("p", { class: "suave", text: `Proprietário: ${b.proprietario?.nome || "—"} · usuário ${b.proprietario?.login || "—"}${b.proprietario?.trocaPendente ? " · ainda não entrou" : ""}` }),
       b.telefone ? el("p", { class: "suave", text: `Telefone: ${fone(b.telefone)}` }) : null,
       el("p", { class: "suave", text: `Equipe ativa: ${b.usuariosAtivos.gerente} gerente(s), ${b.usuariosAtivos.barbeiro} barbeiro(s), ${b.usuariosAtivos.caixa} caixa(s)` }),
@@ -467,8 +746,9 @@ async function telaPlataforma() {
 
 function janelaPlano(b) {
   return abrirJanela(`Plano de ${b.nome}`, [
-    campo("Plano", { tag: "select", name: "plano", valor: b.plano, opcoes: [["basico", "Básico (1 gerente, 3 barbeiros, 1 caixa)"], ["profissional", "Profissional (2 gerentes, 10 barbeiros, 2 caixas)"]] }),
-    campo("Barbeiros adicionais (só Profissional)", { name: "adicionais", type: "number", min: "0", max: "100", value: String(b.barbeirosAdicionais), inputmode: "numeric" }),
+    campo("Plano", { tag: "select", name: "plano", valor: b.plano, opcoes: OPCOES_PLANO }),
+    b.assinatura ? el("p", { class: "suave", text: "Assinatura pelo Asaas: o valor das próximas cobranças muda junto." }) : null,
+    campo("Barbeiros adicionais (só Pro)", { name: "adicionais", type: "number", min: "0", max: "100", value: String(b.barbeirosAdicionais), inputmode: "numeric" }),
     campo("Motivo", { name: "motivo", required: true, minlength: "3" })
   ], {
     ok: "Salvar",
@@ -2248,8 +2528,9 @@ async function telaEquipe() {
   const perfisQuePossoCriar = usuario.perfil === "proprietario" ? ["gerente", "barbeiro", "caixa"] : ["barbeiro", "caixa"];
 
   const vagasEl = el("div", { class: "vagas" }, Object.entries(vagas).map(([p, v]) =>
-    el("div", { class: `vaga ${v.ativos >= v.limite ? "cheia" : ""}` },
-      el("strong", { text: `${v.ativos}/${v.limite}` }), el("span", { text: `${NOME_PERFIL[p]}${v.limite > 1 ? "s" : ""}` }))));
+    el("div", { class: `vaga ${v.limite !== null && v.ativos >= v.limite ? "cheia" : ""}`, "data-vaga": p },
+      el("strong", { text: v.limite === null ? String(v.ativos) : `${v.ativos}/${v.limite}` }),
+      el("span", { text: `${NOME_PERFIL[p]}${v.limite === null || v.limite > 1 ? "s" : ""}${v.limite === null ? " · sem limite" : ""}` }))));
 
   const lista = el("ul", { class: "lista" }, usuarios.map(u => el("li", { class: `item ${u.ativo ? "" : "inativo"}`, "data-usuario": u.login },
     el("div", { class: "item-topo" },
@@ -2448,7 +2729,7 @@ async function telaProdutos() {
         : el("p", { class: "vazio", text: "Nenhum produto cadastrado ainda." }));
     return;
   }
-  const profissional = usuario.barbearia.plano === "profissional";
+  const profissional = usuario.barbearia.plano === "pro";   // site completo (fase 2)
   const def = {
     titulo: "Novo produto",
     rota: "produtos",
@@ -2465,7 +2746,7 @@ async function telaProdutos() {
       p ? null : el("p", { class: "suave", text: "Opcional: quanto você tem hoje e quanto pagou por unidade. Depois, novas compras entram em Estoque." }),
       campo("Código (opcional)", { name: "codigo", value: p?.codigo || "", inputmode: "numeric", autocomplete: "off" }, "Pode ser o código de barras."),
       campo("Validade (opcional)", { name: "validade", type: "date", value: p?.validade || "" }),
-      caixaMarcar(profissional ? "Mostrar no site" : "Mostrar no site (Plano Profissional)", { name: "site", checked: p?.mostrarSite || null })
+      caixaMarcar(profissional ? "Mostrar no site" : "Mostrar no site (Plano Pro)", { name: "site", checked: p?.mostrarSite || null })
     ],
     montarCorpo: f => {
       const preco = paraCentavos(f.preco.value);
@@ -2856,6 +3137,7 @@ function icone(nome) {
 function gruposDoMenu() {
   const p = usuario.perfil;
   if (p === "plataforma") return [{ id: "plataforma", titulo: "Plataforma", icone: "loja", itens: [["plataforma", "Barbearias", "loja"]] }];
+  if (usuario.assinatura?.bloqueada) return [{ id: "config", titulo: "Assinatura", icone: "dinheiro", itens: [["assinatura", "Minha assinatura", "dinheiro"]] }];
   if (p === "caixa") return [
     { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["notas", "Notas em aberto", "contas"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
     { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
@@ -2869,7 +3151,7 @@ function gruposDoMenu() {
     { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
     { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["comissoes", "Comissões e vales", "comissao"], ["notas", "Notas em aberto", "contas"], ["contas", "Contas a pagar", "contas"], ["contador", "Contador e dados", "contador"]] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"], ["estoque", "Estoque", "estoque"]] },
-    { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"]] }
+    { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"], ["assinatura", "Minha assinatura", "dinheiro"]] }
   ];
 }
 
@@ -2940,13 +3222,43 @@ const ROTAS = {
   clientes: { perfis: ["proprietario", "gerente", "caixa"], tela: () => telaClientes() },
   mensagens: { perfis: ["proprietario", "gerente", "caixa"], tela: telaMensagens },
   agenda: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgenda },
-  notas: { perfis: ["proprietario", "gerente", "caixa"], tela: telaNotas }
+  notas: { perfis: ["proprietario", "gerente", "caixa"], tela: telaNotas },
+  assinatura: { perfis: ["proprietario", "gerente"], tela: telaAssinatura },
+  termos: { perfis: ["plataforma", "proprietario", "gerente", "barbeiro", "caixa"], tela: () => telaLegal("termos") },
+  privacidade: { perfis: ["plataforma", "proprietario", "gerente", "barbeiro", "caixa"], tela: () => telaLegal("privacidade") }
 };
+// Telas sem login (página de planos, assinar e textos legais).
+const ROTAS_PUBLICAS = {
+  planos: telaPlanos,
+  assinar: plano => telaAssinar(plano),
+  termos: () => telaLegal("termos"),
+  privacidade: () => telaLegal("privacidade")
+};
+
+async function montarTela(fn, parametro) {
+  const vez = ++vezRota;
+  document.body.dataset.carregando = "1";   // a tela está sendo montada (usado também pelos testes)
+  inicioCarga();
+  try {
+    await fn(parametro);
+  } catch (e) {
+    if (e.message !== "Sessão encerrada") mostrar(el("div", { class: "cartao" }, el("p", { class: "erro", text: e.message }), botao("Tentar de novo", rotear)));
+  } finally {
+    fimCarga();
+    if (vez === vezRota) delete document.body.dataset.carregando;
+  }
+}
 
 async function rotear() {
   if (janela.open) janela.close();
-  if (!usuario) return telaLogin();
+  if (!usuario) {
+    const [nomeP, parP] = location.hash.replace(/^#\/?/, "").split("/");
+    if (ROTAS_PUBLICAS[nomeP]) { atualizarTopo(); return montarTela(ROTAS_PUBLICAS[nomeP], parP); }
+    return telaLogin();
+  }
   if (usuario.trocaObrigatoria) return telaTrocarSenha();
+  // Mensalidade atrasada além da tolerância: o proprietário só vê a assinatura.
+  if (usuario.assinatura?.bloqueada && !location.hash.startsWith("#/assinatura")) { location.hash = "#/assinatura"; return; }
   atualizarTopo();
   const [nome, parametro] = (location.hash.replace(/^#\/?/, "") || usuario.telaInicial).split("/");
   const rota = ROTAS[nome];
@@ -2954,17 +3266,7 @@ async function rotear() {
     if (nome !== usuario.telaInicial) return irParaInicial();
     return mostrar(el("p", { class: "erro", text: "Tela não disponível para o seu perfil." }));
   }
-  const vez = ++vezRota;
-  document.body.dataset.carregando = "1";   // a tela está sendo montada (usado também pelos testes)
-  inicioCarga();
-  try {
-    await rota.tela(parametro);
-  } catch (e) {
-    if (e.message !== "Sessão encerrada") mostrar(el("div", { class: "cartao" }, el("p", { class: "erro", text: e.message }), botao("Tentar de novo", rotear)));
-  } finally {
-    fimCarga();
-    if (vez === vezRota) delete document.body.dataset.carregando;
-  }
+  return montarTela(rota.tela, parametro);
 }
 let vezRota = 0;
 

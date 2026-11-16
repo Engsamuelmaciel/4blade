@@ -182,3 +182,15 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - **Ícone do app:** navalha formando o 4 sobre fundo grafite com leve brilho; versões para Android com recorte redondo (maskable, com margem de segurança), ícone comum, iPhone (apple-touch-icon) e favicon. Arquivos com nome novo (-v2) para o celular buscar de novo.
 - **Mensagens prontas no envio:** a lista "Escolher uma mensagem pronta" aparece nos dois modos. Para clientes do dia: modelos da agenda (confirmação, lembrete, proposta) e mensagens prontas; para clientes cadastrados: só as mensagens prontas (Sentimos sua falta, Promoção, Aviso, Agradecimento — usam só {cliente} e {barbearia}). O texto pode ser mudado antes de enviar.
 
+
+
+## 11. Planos e assinatura on-line (16/11/2026, pedido do responsável)
+- **Planos:** Básico (até 2 barbeiros, R$ 79/mês), Standard (até 4, R$ 119/mês), Pro (até 10 + adicionais, R$ 179/mês). Anual = 10 mensalidades. Gerentes e caixas **sem limite** em todos. Standard: site "só ver horários" **adicional pago à parte** (valor provisório R$ 20/mês, a confirmar). Pro: site completo (seção 4.12). O site é da fase 2: até lá aparece "em breve" e o adicional não pode ser contratado.
+- **Página de planos** (`#/planos`, sem login; link na tela de entrada) → **Assinar** (`#/assinar/<plano>`): plano, mensal/anual, nome da barbearia, nome, CPF ou CNPJ, WhatsApp, e-mail, usuário e senha escolhidos pela pessoa, aceite dos termos de uso e da política de privacidade (versão e data guardadas).
+- **14 dias grátis**, sem cartão: a barbearia é criada na hora e o dono já entra. No mesmo momento o 4blade cria o cliente e a assinatura no **Asaas** (Pix, boleto ou cartão; 1ª cobrança no dia seguinte ao fim do teste).
+- **Avisos do Asaas (webhook):** pagamento confirmado → acesso liberado até o fim do período pago (o 4blade confere o pagamento no próprio Asaas antes de liberar; aviso repetido não conta 2 vezes). Cobrança nova → vira o link "Pagar" em Minha assinatura. Assinatura apagada no Asaas → cancelada.
+- **Atraso:** faixa de aviso para proprietário e gerente desde o 1º dia; depois de **5 dias** a equipe não entra e o proprietário só vê "Minha assinatura" (para pagar). Pagou → libera na hora. Nada é apagado.
+- **Cancelar:** só o proprietário, com motivo, em Minha assinatura; o sistema funciona até o fim do período pago (sem tolerância depois).
+- **Um cadastro por CPF/CNPJ** (evita teste grátis repetido); outra filial: pelo suporte. Mudança de plano: pelo suporte (plataforma); se a cobrança é pelo Asaas, o valor lá muda junto.
+- Barbearias criadas pela plataforma continuam com cobrança "combinada com o suporte" (nunca bloqueiam sozinhas).
+- Regras que decidi (confirmar): valor do adicional do Standard (R$ 20); limite de 5 cadastros por hora por aparelho; textos de termos/privacidade são RASCUNHO (`public/legal.js`, campos [ ] a preencher; revisar com advogado).

@@ -77,6 +77,14 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - Depois (11): Mensagens com quadro único de modelos (`#modelo-escolha`, `#texto-<tipo>`) e "Escolher uma mensagem pronta" (`#env-modelo`: modelos da agenda só no modo do dia + `MENSAGENS_PRONTAS` nos dois); ícones `icons/icon-v2-*.png`, `icon-v2-maskable-*.png`, `apple-touch-icon-v2.png`, `favicon-v2.png` (cache do sw `4blade-v10`).
   - Testes: `npm test` (99) + `npm run teste-navegador` (E1–E4 + `test/navegador-melhorias.mjs`; prints em `docs/prints/melhorias/`).
 
+- 16/11/2026: **Planos novos e assinatura on-line (Asaas)** na ramificação `planos-assinatura` (a partir da `melhorias-layout`), ESPECIFICACAO.md seção 11. NÃO publicada ainda.
+  - Planos: `PLANOS` em `src/perfis.js` (basico 2 / standard 4 / pro 10 barbeiros; gerente e caixa sem limite = `SEM_LIMITE`, `vagas.limite` null); preços em centavos; `SITE_DISPONIVEL=false` (site da fase 2 "em breve").
+  - Banco: `migrations/0011_planos_assinaturas.sql` (assinaturas: plano em vigor + cobrança; assinatura_eventos: avisos do Asaas, id único). Plano em vigor = `SQL_PLANO` (tabela nova; sem linha, coluna antiga: profissional→pro).
+  - API: `src/asaas.js` (cliente da API v3; `ASAAS_FETCH` nos testes), `src/assinatura.js`: `GET /api/planos`, `POST /api/assinar` (sem login), `POST /api/asaas/webhook` (header `asaas-access-token`), `GET /api/assinatura`, `POST /api/assinatura/cancelar`. Situação: `situacaoAssinatura` (teste/em_dia/atrasada/bloqueada/cancelada_ate_fim/cancelada/manual), tolerância 5 dias; bloqueio em `src/index.js` (equipe 401/403; proprietário só /assinatura, resto 402).
+  - Segredos necessários no Worker (ainda NÃO criados): `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`; variável `ASAAS_URL` (padrão sandbox `https://api-sandbox.asaas.com/v3`; produção `https://api.asaas.com/v3`). Sem a chave, a página de planos aparece mas o botão Assinar fica desligado.
+  - Tela: `#/planos`, `#/assinar/<plano>`, `#/termos`, `#/privacidade` (sem login, `ROTAS_PUBLICAS`/`montarTela`), boas-vindas, `#/assinatura` (Minha assinatura, menu Equipe e ajustes), faixa `#faixa-assinatura`; textos legais RASCUNHO em `public/legal.js` (cache do sw `4blade-v11`).
+  - Testes: `npm test` (117) + `npm run teste-navegador` (inclui `test/navegador-assinatura.mjs`; prints em `docs/prints/assinatura/`). Asaas de mentira: `test/asaas-falso.mjs`; servidor local tem `/__teste/pago-ate` e `/__teste/pagar` (só local).
+
 ## Versão de teste publicada (Cloudflare)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.

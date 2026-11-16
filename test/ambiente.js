@@ -2,13 +2,20 @@
 import assert from "node:assert/strict";
 import worker from "../src/index.js";
 import { criarBanco, LIMITE_CONSULTAS } from "./d1-local.js";
+import { asaasFalso } from "./asaas-falso.mjs";
 
 export const TOKEN_SETUP = "token-de-teste-apenas-local";
 
+export const TOKEN_WEBHOOK = "webhook-de-teste-apenas-local";
+
 export function ambiente() {
+  const asaas = asaasFalso();
   const env = {
     DB: criarBanco(),
     ADMIN_SETUP_TOKEN: TOKEN_SETUP,
+    ASAAS_API_KEY: "chave-falsa-de-teste",
+    ASAAS_WEBHOOK_TOKEN: TOKEN_WEBHOOK,
+    ASAAS_FETCH: asaas.buscar,
     ASSETS: { fetch: async () => new Response("TELA", { status: 200 }) }
   };
 
@@ -75,5 +82,9 @@ export function ambiente() {
     return { id: r.dados.usuario.id, token };
   }
 
-  return { env, chamar, post, get, login, ativar, criarPlataforma, criarBarbearia, criarUsuario };
+  // Aviso do Asaas (webhook) com a senha certa (ou outra, para testar recusa).
+  const webhook = (evento, token = TOKEN_WEBHOOK) =>
+    chamar("/api/asaas/webhook", { metodo: "POST", corpo: evento, headers: token ? { "asaas-access-token": token } : {} });
+
+  return { env, asaas, webhook, chamar, post, get, login, ativar, criarPlataforma, criarBarbearia, criarUsuario };
 }

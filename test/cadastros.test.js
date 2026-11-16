@@ -175,9 +175,12 @@ describe("painel da plataforma", () => {
     assert.deepEqual(lista[0].proprietario, { nome: "Dono alfa", login: "dono.alfa", trocaPendente: false });
     assert.deepEqual(lista[0].usuariosAtivos, { gerente: 1, barbeiro: 0, caixa: 0 });
 
-    const sobe = await post("/api/plataforma/barbearias/alterar", p, { id: a.id, plano: "profissional", motivo: "Contratou o Profissional" });
-    assert.equal(sobe.dados.barbearia.plano, "profissional");
-    assert.equal((await post("/api/plataforma/barbearias/alterar", p, { id: a.id, plano: "profissional", motivo: "de novo" })).status, 400);
+    assert.equal((await post("/api/plataforma/barbearias/alterar", p, { id: a.id, plano: "profissional", motivo: "plano antigo" })).status, 400);
+    const sobe = await post("/api/plataforma/barbearias/alterar", p, { id: a.id, plano: "pro", motivo: "Contratou o Pro" });
+    assert.equal(sobe.dados.barbearia.plano, "pro");
+    assert.equal(sobe.dados.barbearia.assinatura.valorCentavos, 17900);
+    assert.equal(sobe.dados.barbearia.assinatura.situacao, "manual");
+    assert.equal((await post("/api/plataforma/barbearias/alterar", p, { id: a.id, plano: "pro", motivo: "de novo" })).status, 400);
 
     const rs = await post("/api/plataforma/barbearias/redefinir-senha", p, { id: a.id, motivo: "Proprietário esqueceu a senha" });
     assert.equal(rs.status, 200);

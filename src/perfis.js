@@ -3,18 +3,36 @@
 export const PERFIS = ["plataforma", "proprietario", "gerente", "barbeiro", "caixa"];
 export const PERFIS_EQUIPE = ["gerente", "barbeiro", "caixa"];   // criados dentro da barbearia
 
-// Usuários ATIVOS por perfil. Desativar libera a vaga. Proprietário é sempre 1 (criado pela plataforma).
-export const LIMITES = {
-  basico: { gerente: 1, barbeiro: 3, caixa: 1 },
-  profissional: { gerente: 2, barbeiro: 10, caixa: 2 }
+// Planos (especificação, seção 11). Limite só de BARBEIROS ativos; gerentes e caixas sem limite.
+// Proprietário é sempre 1. Desativar libera a vaga. Preços em centavos; anual = 10 mensalidades.
+export const SEM_LIMITE = 1_000_000;
+export const PLANOS = {
+  basico: { nome: "Básico", barbeiros: 2, mensalCentavos: 7900, site: null },
+  standard: { nome: "Standard", barbeiros: 4, mensalCentavos: 11900, site: "horarios_opcional" },
+  pro: { nome: "Pro", barbeiros: 10, mensalCentavos: 17900, site: "completo" }
 };
+// Adicional do Standard: site só para o cliente ver os horários livres (valor a confirmar com o responsável).
+export const SITE_STANDARD_MENSAL_CENTAVOS = 2000;
+// O site (fase 2) ainda não está no ar: enquanto for false, o adicional não pode ser contratado.
+export const SITE_DISPONIVEL = false;
+export const MESES_DO_ANUAL = 10;
 
+// Plano antigo (coluna barbearias.plano) → novo.
+export const planoDaColunaAntiga = p => (p === "profissional" ? "pro" : "basico");
+
+export function valorDoPlano(plano, ciclo = "mensal", siteHorarios = false) {
+  const p = PLANOS[plano];
+  if (!p) return null;
+  const mensal = p.mensalCentavos + (plano === "standard" && siteHorarios ? SITE_STANDARD_MENSAL_CENTAVOS : 0);
+  return ciclo === "anual" ? mensal * MESES_DO_ANUAL : mensal;
+}
+
+// barbearia = { plano, barbeiros_adicionais } (plano já no formato novo).
 export function limiteDoPerfil(barbearia, perfil) {
-  const base = LIMITES[barbearia.plano]?.[perfil] ?? 0;
-  if (perfil === "barbeiro" && barbearia.plano === "profissional") {
-    return base + Number(barbearia.barbeiros_adicionais || 0);
-  }
-  return base;
+  const p = PLANOS[barbearia.plano];
+  if (!p) return 0;
+  if (perfil !== "barbeiro") return PERFIS_EQUIPE.includes(perfil) ? SEM_LIMITE : 0;
+  return p.barbeiros + (barbearia.plano === "pro" ? Number(barbearia.barbeiros_adicionais || 0) : 0);
 }
 
 // Gestão = proprietário ou gerente (tudo na barbearia: cadastros, preços, comissões...).

@@ -45,7 +45,19 @@ Barbearia com 4 barbeiros faturando R$ 25 mil/mês:
 - Produto sumindo do estoque sem controle.
 → O sistema se paga com folga mesmo a R$ 129.
 
-## 5. Proposta de preço (recomendada)
+## 5. Proposta de preço
+> **Atualizado em 16/11/2026 (decisão do responsável): 3 planos.** Gerentes e caixas sem limite em todos.
+>
+> | Plano | Barbeiros | Mensal | Anual (paga 10 meses) |
+> |---|---|---|---|
+> | **Básico** | até 2 | **R$ 79** | R$ 790 |
+> | **Standard** | até 4 | **R$ 119** | R$ 1.190 |
+> | **Pro** | até 10 (+ adicionais) | **R$ 179** | R$ 1.790 |
+>
+> Standard: site só para o cliente ver os horários livres, **opcional e pago à parte** (valor provisório no sistema: + R$ 20/mês, a confirmar). Pro: site completo integrado (fase 2). Enquanto o site não estiver pronto, aparece como "em breve" e não pode ser contratado.
+>
+> A tabela abaixo é a proposta ANTIGA (2 planos), guardada só como histórico.
+
 | Plano | Para quem | Mensal | Anual (paga 10 meses) |
 |---|---|---|---|
 | **Básico** | 1 gerente + 3 barbeiros + 1 caixa · tudo da fase 1 (agenda, caixa, estoque, comissões, contas, painel) | **R$ 79** | R$ 790 |

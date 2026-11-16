@@ -5,7 +5,7 @@ import {
   json, fail, HttpError, readJson, validId, validLogin, normalizarLogin, textoLimpo, normalizarTelefone, validBp,
   exigirMotivo, hashPassword, gerarSenhaProvisoria, auditoria, diferenca
 } from "./util.js";
-import { isGestao, podeGerenciarPerfil, limiteDoPerfil, atende, PERFIS_EQUIPE } from "./perfis.js";
+import { isGestao, podeGerenciarPerfil, limiteDoPerfil, atende, PERFIS_EQUIPE, SEM_LIMITE } from "./perfis.js";
 
 export function exigirBarbearia(ctx) {
   if (!ctx.user.barbearia_id) throw new HttpError("Sem permissão", 403);
@@ -53,7 +53,11 @@ async function vagas(ctx) {
   `).bind(ctx.barbeariaId).all();
   const ativos = Object.fromEntries(r.results.map(x => [x.perfil, Number(x.n)]));
   const b = barbeariaDaSessao(ctx);
-  return Object.fromEntries(PERFIS_EQUIPE.map(p => [p, { ativos: ativos[p] || 0, limite: limiteDoPerfil(b, p) }]));
+  // limite null = sem limite no plano (gerente e caixa)
+  return Object.fromEntries(PERFIS_EQUIPE.map(p => {
+    const lim = limiteDoPerfil(b, p);
+    return [p, { ativos: ativos[p] || 0, limite: lim >= SEM_LIMITE ? null : lim }];
+  }));
 }
 
 export async function rotasUsuarios(ctx, path, method) {

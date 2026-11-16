@@ -154,37 +154,38 @@ describe("quem cria quem", () => {
 });
 
 describe("limite de usuários por plano (conferido no servidor)", () => {
-  test("Básico: 1 gerente, 3 barbeiros, 1 caixa; desativar libera a vaga", async () => {
+  test("Básico: 2 barbeiros; gerentes e caixas sem limite; desativar libera a vaga", async () => {
     const { post, get, prop, ger, barb } = await cenario();   // já tem 1 gerente, 1 barbeiro, 1 caixa
-    assert.equal((await post("/api/usuarios", prop, { nome: "Gerente Dois", login: "ger2.alfa", perfil: "gerente" })).status, 409);
-    assert.equal((await post("/api/usuarios", ger.token, { nome: "Caixa Dois", login: "cx2.alfa", perfil: "caixa" })).status, 409);
+    assert.equal((await post("/api/usuarios", prop, { nome: "Gerente Dois", login: "ger2.alfa", perfil: "gerente" })).status, 201);
+    assert.equal((await post("/api/usuarios", ger.token, { nome: "Caixa Dois", login: "cx2.alfa", perfil: "caixa" })).status, 201);
+    assert.equal((await post("/api/usuarios", ger.token, { nome: "Caixa Tres", login: "cx3.alfa", perfil: "caixa" })).status, 201);
     assert.equal((await post("/api/usuarios", ger.token, { nome: "Barbeiro Dois", login: "b2.alfa", perfil: "barbeiro" })).status, 201);
-    assert.equal((await post("/api/usuarios", ger.token, { nome: "Barbeiro Tres", login: "b3.alfa", perfil: "barbeiro" })).status, 201);
-    const quarto = await post("/api/usuarios", ger.token, { nome: "Barbeiro Quatro", login: "b4.alfa", perfil: "barbeiro" });
-    assert.equal(quarto.status, 409);
-    assert.match(quarto.dados.erro, /Limite do plano/);
+    const terceiro = await post("/api/usuarios", ger.token, { nome: "Barbeiro Tres", login: "b3.alfa", perfil: "barbeiro" });
+    assert.equal(terceiro.status, 409);
+    assert.match(terceiro.dados.erro, /Limite do plano/);
 
     const v = (await get("/api/usuarios", ger.token)).dados.vagas;
-    assert.deepEqual(v, { gerente: { ativos: 1, limite: 1 }, barbeiro: { ativos: 3, limite: 3 }, caixa: { ativos: 1, limite: 1 } });
+    assert.deepEqual(v, { gerente: { ativos: 2, limite: null }, barbeiro: { ativos: 2, limite: 2 }, caixa: { ativos: 3, limite: null } });
 
-    // desativa um → vaga liberada → cria o 4º
+    // desativa um → vaga liberada → cria o 3º
     await post("/api/usuarios/alterar", ger.token, { id: barb.id, ativo: false, motivo: "Saiu" });
-    assert.equal((await post("/api/usuarios", ger.token, { nome: "Barbeiro Quatro", login: "b4.alfa", perfil: "barbeiro" })).status, 201);
+    assert.equal((await post("/api/usuarios", ger.token, { nome: "Barbeiro Tres", login: "b3.alfa", perfil: "barbeiro" })).status, 201);
     // reativar o antigo esbarra no limite
     const re = await post("/api/usuarios/alterar", ger.token, { id: barb.id, ativo: true, motivo: "Voltou" });
     assert.equal(re.status, 409);
   });
 
-  test("Profissional: 2 gerentes, 10 barbeiros (+ adicionais), 2 caixas", async () => {
+  test("Standard: 4 barbeiros; Pro: 10 barbeiros (+ adicionais)", async () => {
     const { post, get, criarPlataforma, criarBarbearia } = ambiente();
     const p = await criarPlataforma();
-    const b = await criarBarbearia(p, "pro", "profissional");
-    const criar = (login, perfil) => post("/api/usuarios", b.prop, { nome: `Pessoa ${login}`, login, perfil });
+    const s = await criarBarbearia(p, "std", "standard");
+    for (let i = 1; i <= 4; i++) assert.equal((await post("/api/usuarios", s.prop, { nome: `Pessoa s${i}`, login: `b${i}.std`, perfil: "barbeiro" })).status, 201);
+    assert.equal((await post("/api/usuarios", s.prop, { nome: "Pessoa s5", login: "b5.std", perfil: "barbeiro" })).status, 409);
 
-    for (let i = 1; i <= 2; i++) assert.equal((await criar(`g${i}.pro`, "gerente")).status, 201);
-    assert.equal((await criar("g3.pro", "gerente")).status, 409);
-    for (let i = 1; i <= 2; i++) assert.equal((await criar(`c${i}.pro`, "caixa")).status, 201);
-    assert.equal((await criar("c3.pro", "caixa")).status, 409);
+    const b = await criarBarbearia(p, "pro", "pro");
+    const criar = (login, perfil) => post("/api/usuarios", b.prop, { nome: `Pessoa ${login}`, login, perfil });
+    for (let i = 1; i <= 3; i++) assert.equal((await criar(`g${i}.pro`, "gerente")).status, 201);
+    for (let i = 1; i <= 3; i++) assert.equal((await criar(`c${i}.pro`, "caixa")).status, 201);
     for (let i = 1; i <= 10; i++) assert.equal((await criar(`b${i}.pro`, "barbeiro")).status, 201);
     assert.equal((await criar("b11.pro", "barbeiro")).status, 409);
 

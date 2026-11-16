@@ -3,14 +3,21 @@ import {
   json, fail, readJson, validId, validLogin, normalizarLogin, textoLimpo, normalizarTelefone, exigirMotivo,
   hashPassword, gerarSenhaProvisoria, auditoria, diferenca
 } from "./util.js";
-import { LIMITES, limiteDoPerfil, PERFIS_EQUIPE } from "./perfis.js";
+import { PLANOS, limiteDoPerfil, PERFIS_EQUIPE, valorDoPlano } from "./perfis.js";
 import { MODELOS_PADRAO } from "./cadastros.js";
+import { SQL_PLANO, assinaturaPublica, alterarPlanoAssinatura } from "./assinatura.js";
 
 function barbeariaPublica(b) {
   return {
     id: b.id,
     nome: b.nome,
-    plano: b.plano,
+    plano: b.plano_atual,
+    assinatura: b.a_origem ? assinaturaPublica({
+      plano: b.plano_atual, ciclo: b.a_ciclo, site_horarios: b.a_site, valor_centavos: b.a_valor, origem: b.a_origem,
+      teste_ate: b.a_teste_ate, pago_ate: b.a_pago_ate, proximo_vencimento: b.a_proximo, link_pagamento: null,
+      cancelada: b.a_cancelada, cancelada_em: b.a_cancelada_em, ultimo_pagamento_em: b.a_ultimo_pag
+    }) : null,
+    email: b.a_email || null,
     barbeirosAdicionais: Number(b.barbeiros_adicionais || 0),
     telefone: b.telefone || null,
     bloqueada: Boolean(b.bloqueada),
@@ -26,13 +33,17 @@ function barbeariaPublica(b) {
 }
 
 const SELECT_BARBEARIAS = `
-  SELECT b.*,
+  SELECT b.*, ${SQL_PLANO} AS plano_atual,
+    a.origem AS a_origem, a.ciclo AS a_ciclo, a.site_horarios AS a_site, a.valor_centavos AS a_valor, a.teste_ate AS a_teste_ate,
+    a.pago_ate AS a_pago_ate, a.proximo_vencimento AS a_proximo, a.cancelada AS a_cancelada, a.cancelada_em AS a_cancelada_em,
+    a.ultimo_pagamento_em AS a_ultimo_pag, a.email AS a_email,
     p.nome AS prop_nome, p.login AS prop_login, p.trocar_senha AS prop_troca,
     (SELECT COUNT(*) FROM usuarios x WHERE x.barbearia_id = b.id AND x.ativo = 1 AND x.perfil = 'gerente') AS n_gerente,
     (SELECT COUNT(*) FROM usuarios x WHERE x.barbearia_id = b.id AND x.ativo = 1 AND x.perfil = 'barbeiro') AS n_barbeiro,
     (SELECT COUNT(*) FROM usuarios x WHERE x.barbearia_id = b.id AND x.ativo = 1 AND x.perfil = 'caixa') AS n_caixa
   FROM barbearias b
   LEFT JOIN usuarios p ON p.barbearia_id = b.id AND p.perfil = 'proprietario'
+  LEFT JOIN assinaturas a ON a.barbearia_id = b.id
 `;
 
 export async function rotasPlataforma(ctx, path, method) {
@@ -48,7 +59,7 @@ export async function rotasPlataforma(ctx, path, method) {
     const nome = textoLimpo(input.nome, 2, 80);
     if (!nome) return fail("Informe o nome da barbearia (2 a 80 letras).");
     const plano = input.plano ?? "basico";
-    if (!LIMITES[plano]) return fail("Plano inválido (basico ou profissional).");
+    if (!PLANOS[plano]) return fail("Plano inválido (basico, standard ou pro).");
     let telefone = null;
     if (input.telefone) {
       telefone = normalizarTelefone(input.telefone);
@@ -74,7 +85,9 @@ export async function rotasPlataforma(ctx, path, method) {
     const actx = { ...ctx, barbeariaId };
     await db.batch([
       db.prepare(`INSERT INTO barbearias (id, nome, plano, telefone) VALUES (?, ?, ?, ?)`)
-        .bind(barbeariaId, nome, plano, telefone),
+        .bind(barbeariaId, nome, plano === "pro" ? "profissional" : "basico", telefone),
+      db.prepare(`INSERT INTO assinaturas (barbearia_id, plano, valor_centavos, origem) VALUES (?, ?, ?, 'manual')`)
+        .bind(barbeariaId, plano, valorDoPlano(plano)),
       db.prepare(`
         INSERT INTO usuarios (id, barbearia_id, login, nome, telefone, perfil, senha_hash, trocar_senha)
         VALUES (?, ?, ?, ?, ?, 'proprietario', ?, 1)
@@ -101,7 +114,7 @@ export async function rotasPlataforma(ctx, path, method) {
 
     const novo = {
       nome: atual.nome,
-      plano: atual.plano,
+      plano: atual.plano_atual,
       barbeiros_adicionais: Number(atual.barbeiros_adicionais),
       bloqueada: Number(atual.bloqueada)
     };
@@ -110,7 +123,7 @@ export async function rotasPlataforma(ctx, path, method) {
       if (!novo.nome) return fail("Nome inválido.");
     }
     if (input.plano !== undefined) {
-      if (!LIMITES[input.plano]) return fail("Plano inválido.");
+      if (!PLANOS[input.plano]) return fail("Plano inválido.");
       novo.plano = input.plano;
     }
     if (input.barbeirosAdicionais !== undefined) {
@@ -119,14 +132,14 @@ export async function rotasPlataforma(ctx, path, method) {
       }
       novo.barbeiros_adicionais = input.barbeirosAdicionais;
     }
-    if (novo.plano === "basico") novo.barbeiros_adicionais = 0;   // adicionais só no Profissional
+    if (novo.plano !== "pro") novo.barbeiros_adicionais = 0;   // adicionais só no Pro
     if (input.bloqueada !== undefined) {
       if (typeof input.bloqueada !== "boolean") return fail("Situação inválida.");
       novo.bloqueada = input.bloqueada ? 1 : 0;
     }
 
     const antes = {
-      nome: atual.nome, plano: atual.plano,
+      nome: atual.nome, plano: atual.plano_atual,
       barbeiros_adicionais: Number(atual.barbeiros_adicionais), bloqueada: Number(atual.bloqueada)
     };
     const dif = diferenca(antes, novo);
@@ -147,12 +160,14 @@ export async function rotasPlataforma(ctx, path, method) {
         UPDATE barbearias SET nome = ?, plano = ?, barbeiros_adicionais = ?, bloqueada = ?,
           motivo_bloqueio = ?, atualizado_em = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).bind(novo.nome, novo.plano, novo.barbeiros_adicionais, novo.bloqueada,
+      `).bind(novo.nome, novo.plano === "pro" ? "profissional" : "basico", novo.barbeiros_adicionais, novo.bloqueada,
         novo.bloqueada ? (dif.depois.bloqueada === 1 ? motivo : atual.motivo_bloqueio) : null, atual.id),
       auditoria(actx, novo.bloqueada && !atual.bloqueada ? "barbearia_bloqueada"
         : !novo.bloqueada && atual.bloqueada ? "barbearia_desbloqueada" : "barbearia_alterada",
       atual.id, { motivo, antes: dif.antes, depois: dif.depois })
     ];
+    // Plano mudou: tabela nova (e valor no Asaas, se a cobrança é por lá — feito antes de gravar aqui).
+    if (novo.plano !== antes.plano) comandos.push(await alterarPlanoAssinatura(ctx, atual.id, atual, novo.plano));
     if (novo.bloqueada && !atual.bloqueada) {
       // Bloqueou: derruba na hora todas as sessões da barbearia.
       comandos.push(db.prepare(`

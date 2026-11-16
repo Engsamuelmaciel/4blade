@@ -41,6 +41,19 @@ if (process.argv.includes("--demo")) {
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${porta}`);
+  // Só neste servidor local: simula o tempo passando e o cliente pagando no Asaas (de mentira).
+  if (url.pathname === "/__teste/pago-ate") {
+    const u = await amb.env.DB.prepare("SELECT barbearia_id FROM usuarios WHERE login = ?").bind(url.searchParams.get("login")).first();
+    await amb.env.DB.prepare("UPDATE assinaturas SET pago_ate = ? WHERE barbearia_id = ?").bind(url.searchParams.get("data"), u.barbearia_id).run();
+    res.writeHead(200); return res.end("ok");
+  }
+  if (url.pathname === "/__teste/pagar") {
+    const u = await amb.env.DB.prepare("SELECT a.asaas_assinatura_id AS sub FROM usuarios x JOIN assinaturas a ON a.barbearia_id = x.barbearia_id WHERE x.login = ?").bind(url.searchParams.get("login")).first();
+    const ev = amb.asaas.pagar(u.sub);
+    await amb.webhook(ev.pago);
+    await amb.webhook(ev.criada);
+    res.writeHead(200); return res.end("ok");
+  }
   const corpo = ["GET", "HEAD"].includes(req.method) ? undefined : await new Promise(ok => { const p = []; req.on("data", c => p.push(c)); req.on("end", () => ok(Buffer.concat(p))); });
   const r = await worker.fetch(new Request(url, { method: req.method, headers: { ...req.headers, "cf-connecting-ip": "10.0.0.9" }, body: corpo }), amb.env);
   const h = Object.fromEntries(r.headers);
