@@ -200,6 +200,8 @@ async function rodar(tela) {
     await print("gerente-clientes");
 
     await ir(page, "Mensagens");
+    await page.waitForSelector("#modelo-escolha");
+    await page.selectOption("#modelo-escolha", "lembrete");   // um quadro só: escolhe o modelo na lista
     await page.waitForSelector("#texto-lembrete");
     await print("gerente-modelos-de-mensagem");
     await sair();

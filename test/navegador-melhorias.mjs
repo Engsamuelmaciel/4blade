@@ -337,7 +337,7 @@ async function rodar(tela) {
     await page.waitForSelector("[data-teste=resumo-dia] [data-livre]");
     await print("agenda-dia-horarios-livres");
     await ir(page, "Mensagens");
-    await page.waitForSelector("h3:has-text('Modelos de mensagem')");
+    await page.waitForSelector("h3:has-text('Modelos da agenda')");
     await ir(page, "Serviços");
     await page.waitForSelector("h2:has-text('Serviços')");
     await print("caixa-catalogo-servicos");

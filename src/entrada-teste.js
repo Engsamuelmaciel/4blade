@@ -10,8 +10,12 @@ import swJs from "../public/sw.js";
 import manifest from "../public/manifest.json";
 import marca from "../public/icons/marca.png";
 import logo from "../public/icons/logo.png";
-import icone192 from "../public/icons/icon-192.png";
-import icone512 from "../public/icons/icon-512.png";
+import icone192 from "../public/icons/icon-v2-192.png";
+import icone512 from "../public/icons/icon-v2-512.png";
+import iconeM192 from "../public/icons/icon-v2-maskable-192.png";
+import iconeM512 from "../public/icons/icon-v2-maskable-512.png";
+import iconeApple from "../public/icons/apple-touch-icon-v2.png";
+import favicon from "../public/icons/favicon-v2.png";
 import cabecalhosTexto from "../public/_headers";
 
 const ARQUIVOS = {
@@ -23,6 +27,13 @@ const ARQUIVOS = {
   "/manifest.json": [manifest, "application/manifest+json"],
   "/icons/marca.png": [marca, "image/png"],
   "/icons/logo.png": [logo, "image/png"],
+  "/icons/icon-v2-192.png": [icone192, "image/png"],
+  "/icons/icon-v2-512.png": [icone512, "image/png"],
+  "/icons/icon-v2-maskable-192.png": [iconeM192, "image/png"],
+  "/icons/icon-v2-maskable-512.png": [iconeM512, "image/png"],
+  "/icons/apple-touch-icon-v2.png": [iconeApple, "image/png"],
+  "/icons/favicon-v2.png": [favicon, "image/png"],
+  // nomes antigos continuam respondendo (celulares com o app já instalado)
   "/icons/icon-192.png": [icone192, "image/png"],
   "/icons/icon-512.png": [icone512, "image/png"]
 };

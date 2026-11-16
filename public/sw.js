@@ -3,7 +3,7 @@
  * Guarda SOMENTE os arquivos da tela (para abrir sem internet).
  * NUNCA guarda nada de /api/ (dados e login sempre vão direto ao servidor).
  */
-const CACHE = "4blade-v9";
+const CACHE = "4blade-v10";
 
 const ARQUIVOS = [
   "/",
@@ -14,8 +14,12 @@ const ARQUIVOS = [
   "/manifest.json",
   "/icons/marca.png",
   "/icons/logo.png",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png"
+  "/icons/icon-v2-192.png",
+  "/icons/icon-v2-512.png",
+  "/icons/icon-v2-maskable-192.png",
+  "/icons/icon-v2-maskable-512.png",
+  "/icons/apple-touch-icon-v2.png",
+  "/icons/favicon-v2.png"
 ];
 
 self.addEventListener("install", event => {

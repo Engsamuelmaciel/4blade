@@ -2541,46 +2541,60 @@ async function telaClientes(busca = "") {
 async function telaMensagens() {
   const { modelos, campos } = await api("/modelos-mensagem");   // o envio usa os modelos como ponto de partida
   const NOMES = { confirmacao: "Confirmação de horário", lembrete: "Lembrete", proposta: "Proposta de horário" };
-  const blocos = modelos.map(m => {
-    const form = el("form", { class: "cartao", "data-modelo": m.tipo },
-      el("h3", { text: NOMES[m.tipo] }),
-      campo("Texto da mensagem", { tag: "textarea", name: "texto", rows: "5", maxlength: "1000", id: `texto-${m.tipo}` }),
-      el("div", { class: "chips" }, campos.map(c => el("button", {
-        type: "button", class: "chip", text: `{${c}}`,
-        onclick: () => {
-          const t = form.texto;
-          const pos = t.selectionStart ?? t.value.length;
-          t.value = `${t.value.slice(0, pos)}{${c}}${t.value.slice(t.selectionEnd ?? pos)}`;
-          t.focus();
-        }
-      }))),
-      el("div", { class: "lado-a-lado" },
-        el("button", { type: "submit", class: "botao principal", text: "Salvar" }),
-        el("button", {
-          type: "button", class: "botao", text: "Voltar ao padrão",
-          onclick: () => enviar(form, async () => {
-            await api("/modelos-mensagem/alterar", { metodo: "POST", corpo: { tipo: m.tipo, restaurarPadrao: true } });
-            avisar("Texto padrão restaurado.");
-            telaMensagens();
-          })
-        })));
-    form.texto.value = m.texto;
-    form.addEventListener("submit", ev => {
-      ev.preventDefault();
-      enviar(form, async () => {
-        await api("/modelos-mensagem/alterar", { metodo: "POST", corpo: { tipo: m.tipo, texto: form.texto.value } });
-        avisar("Modelo salvo.");
-      });
+  const USO = { confirmacao: "Botão \"Confirmar horário\" e aviso logo depois de marcar.", lembrete: "Botão \"Enviar lembrete\" do horário na agenda.", proposta: "Botão \"Propor horário\" (cliente faltou, cancelou ou dia fechado)." };
+  // Um quadro só: escolhe o modelo na lista e o texto troca na hora.
+  let atual = estadoMensagens.modelo && modelos.some(m => m.tipo === estadoMensagens.modelo) ? estadoMensagens.modelo : modelos[0].tipo;
+  const escolha = el("select", { id: "modelo-escolha", "aria-label": "Modelo de mensagem" }, modelos.map(m => el("option", { value: m.tipo, text: NOMES[m.tipo] || m.tipo, selected: m.tipo === atual || null })));
+  const uso = el("p", { class: "suave", "data-teste": "uso-modelo" });
+  const texto = el("textarea", { name: "texto", id: "texto-modelo", rows: "4", maxlength: "1000" });
+  const form = el("form", { class: "cartao modelo-unico", "data-modelo": atual },
+    el("div", { class: "campo" }, el("label", { for: "modelo-escolha", text: "Modelo" }), escolha),
+    uso,
+    el("div", { class: "campo" }, el("label", { for: "texto-modelo", text: "Texto da mensagem" }), texto),
+    el("div", { class: "chips" }, campos.map(c => el("button", {
+      type: "button", class: "chip", text: `{${c}}`,
+      onclick: () => {
+        const pos = texto.selectionStart ?? texto.value.length;
+        texto.value = `${texto.value.slice(0, pos)}{${c}}${texto.value.slice(texto.selectionEnd ?? pos)}`;
+        texto.focus();
+      }
+    }))),
+    el("div", { class: "lado-a-lado" },
+      el("button", { type: "submit", class: "botao principal", text: "Salvar" }),
+      el("button", {
+        type: "button", class: "botao", text: "Voltar ao padrão",
+        onclick: () => enviar(form, async () => {
+          await api("/modelos-mensagem/alterar", { metodo: "POST", corpo: { tipo: atual, restaurarPadrao: true } });
+          avisar("Texto padrão restaurado.");
+          telaMensagens();
+        })
+      })));
+  const mostrarModelo = () => {
+    const m = modelos.find(x => x.tipo === atual);
+    texto.value = m.texto;
+    texto.id = `texto-${atual}`;   // id por modelo (os testes e o rótulo usam)
+    form.querySelector("label[for^=texto]").setAttribute("for", texto.id);
+    form.dataset.modelo = atual;
+    uso.textContent = `Usado em: ${USO[atual] || ""}`;
+    estadoMensagens.modelo = atual;
+  };
+  escolha.addEventListener("change", () => { atual = escolha.value; mostrarModelo(); });
+  form.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(form, async () => {
+      await api("/modelos-mensagem/alterar", { metodo: "POST", corpo: { tipo: atual, texto: texto.value } });
+      modelos.find(x => x.tipo === atual).texto = texto.value.trim();
+      avisar("Modelo salvo.");
     });
-    return form;
   });
+  mostrarModelo();
   const envio = await blocoEnviarMensagem(modelos, campos);
-  mostrar(cabecalho("Mensagens", "Envie uma mensagem pelo WhatsApp para os clientes do dia, já com o nome de cada um. Abaixo, os modelos dos botões da agenda."),
-    envio,
-    el("h3", { class: "titulo-secao", text: "Modelos de mensagem" }),
-    el("p", { class: "suave", text: "Usados nos botões \"Confirmar horário\", \"Enviar lembrete\" e \"Propor horário\" da agenda. Toque num campo para inseri-lo no texto." }),
-    el("div", { class: "duas-colunas" }, blocos));
+  mostrar(cabecalho("Mensagens", "Envie mensagens pelo WhatsApp, já com o nome de cada cliente, e ajuste os textos dos botões da agenda."),
+    el("div", { class: "duas-colunas" },
+      el("section", {}, envio),
+      el("section", {}, el("h3", { class: "titulo-secao", text: "Modelos da agenda" }), form)));
 }
+const estadoMensagens = { modelo: null };
 
 // ENVIAR MENSAGEM: escolhe clientes do dia (com telefone), escreve o texto e abre o WhatsApp de cada um, já personalizado.
 let dataEnvioMensagem = null;
@@ -2628,6 +2642,10 @@ async function blocoEnviarMensagem(modelos, campos) {
   caixas.forEach(c => c.addEventListener("change", atualizarContador));
   atualizarContador();
   const usar = tipo => { const m = modelos.find(x => x.tipo === tipo); if (m) { textoEl.value = m.texto; textoEl.focus(); } };
+  const escolhaModelo = el("select", { id: "env-modelo" },
+    el("option", { value: "", text: "Escrever do zero" }),
+    [["confirmacao", "Confirmação de horário"], ["lembrete", "Lembrete"], ["proposta", "Proposta de horário"]].map(([v, t]) => el("option", { value: v, text: t })));
+  escolhaModelo.addEventListener("change", () => { if (escolhaModelo.value) usar(escolhaModelo.value); });
   const camposUsaveis = doDia ? campos : campos.filter(c => c === "cliente" || c === "barbearia");
   const fila = el("div", { class: "fila-envio", "data-teste": "fila-envio" });
   const form = el("form", { class: "cartao enviar-mensagem", "data-teste": "enviar-mensagem" },
@@ -2638,16 +2656,13 @@ async function blocoEnviarMensagem(modelos, campos) {
         : el("div", { class: "campo" }, el("label", { for: "env-filtro", text: "Buscar" }), filtro),
       el("div", { class: "campo alinhar-fim" }, selecionaveis.length ? todos : null)),
     lista, contador,
+    doDia ? el("div", { class: "campo" }, el("label", { for: "env-modelo", text: "Começar com um modelo (opcional)" }), escolhaModelo) : null,
     el("div", { class: "campo" }, el("label", { for: "env-texto", text: "Mensagem" }), textoEl),
     el("div", { class: "chips" }, camposUsaveis.map(c => el("button", {
       type: "button", class: "chip", text: `{${c}}`,
       onclick: () => { const pos = textoEl.selectionStart ?? textoEl.value.length; textoEl.value = `${textoEl.value.slice(0, pos)}{${c}}${textoEl.value.slice(textoEl.selectionEnd ?? pos)}`; textoEl.focus(); }
     }))),
-    doDia ? el("div", { class: "botoes-modelo" },
-      botao("Usar confirmação", () => usar("confirmacao"), "pequeno"),
-      botao("Usar lembrete", () => usar("lembrete"), "pequeno"),
-      botao("Usar proposta", () => usar("proposta"), "pequeno"))
-      : el("p", { class: "suave", text: "Para clientes sem horário, use só {cliente} e {barbearia}." }),
+    doDia ? null : el("p", { class: "suave", text: "Para clientes sem horário, use só {cliente} e {barbearia}." }),
     el("button", { type: "submit", class: "botao principal", text: "Enviar mensagem" }),
     fila);
   form.addEventListener("submit", ev => {
@@ -2949,6 +2964,7 @@ async function sairDoSistema() {
   clearTimeout(timerCaixa);
   dataEnvioMensagem = null;
   origemEnvio = "dia";
+  estadoMensagens.modelo = null;
   estadoNotas.aba = "abertas";
   history.replaceState(null, "", "/");
   telaLogin("Você saiu do sistema.");
