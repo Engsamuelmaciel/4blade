@@ -162,7 +162,13 @@ async function rodar(tela) {
     await page.check("#c-cliLgpd");
     await print("barbeiro-novo-horario");
     await ok();
+    // cliente com telefone: o sistema oferece enviar a confirmação do horário pelo WhatsApp
+    await page.waitForSelector("dialog[open] >> text=Horário marcado");
+    assert.match(await page.getAttribute('dialog[open] [data-whats="confirmacao"]', "href"), /^https:\/\/wa\.me\/5511900001234\?text=.*confirmado/);
+    await print("barbeiro-confirmacao-whatsapp");
+    await page.click("dialog[open] button:has-text('Agora não')");
     await page.waitForSelector('[data-agendamento="Diego Cliente Fictício"]');
+    assert.ok(await page.locator('[data-agendamento="Diego Cliente Fictício"] [data-whats="confirmacao"]').count(), "botão Confirmar horário no horário");
     // horário sobreposto é recusado
     await page.click("text=+ Novo horário");
     await page.fill("dialog[open] [name=hora]", "10:30");

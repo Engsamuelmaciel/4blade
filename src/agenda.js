@@ -94,8 +94,12 @@ async function listarAgenda(ctx) {
                 WHERE ${condA} AND f.estornada = 0 AND l.tipo = 'atendimento'`).bind(...pa).all(),
     db.prepare(`SELECT m.* FROM comissoes m JOIN finalizacoes f ON f.id = m.finalizacao_id JOIN agendamentos a ON a.id = f.agendamento_id
                 WHERE ${condA} AND m.estornada = 0`).bind(...pa).all(),
-    db.prepare(`SELECT m.agendamento_id, m.tipo, m.criado_em, u.nome FROM mensagens_enviadas m JOIN agendamentos a ON a.id = m.agendamento_id
-                JOIN usuarios u ON u.id = m.usuario_id WHERE ${condA} ORDER BY m.criado_em`).bind(...pa).all(),
+    db.prepare(`SELECT * FROM (
+                  SELECT m.agendamento_id, m.tipo, m.criado_em, u.nome FROM mensagens_enviadas m JOIN agendamentos a ON a.id = m.agendamento_id
+                  JOIN usuarios u ON u.id = m.usuario_id WHERE ${condA}
+                  UNION ALL
+                  SELECT m.agendamento_id, m.tipo, m.criado_em, u.nome FROM mensagens_enviadas_adicionais m JOIN agendamentos a ON a.id = m.agendamento_id
+                  JOIN usuarios u ON u.id = m.usuario_id WHERE ${condA}) ORDER BY criado_em`).bind(...pa, ...pa).all(),
     db.prepare(`SELECT f.agendamento_id, COUNT(*) AS n FROM finalizacoes f JOIN agendamentos a ON a.id = f.agendamento_id
                 WHERE ${condA} AND f.estornada = 1 GROUP BY f.agendamento_id`).bind(...pa).all(),
     db.prepare(`SELECT b.*, u.nome AS barbeiro_nome FROM bloqueios b JOIN usuarios u ON u.id = b.barbeiro_id
@@ -302,10 +306,17 @@ async function marcar(ctx) {
       erro(b ? "Esse horário está bloqueado na agenda do profissional." : "Já existe outro atendimento nesse horário para esse profissional.", 409);
     }
   }
+  // Link pronto para confirmar o horário com o cliente pelo WhatsApp (se ele tiver telefone).
+  let confirmacao = null;
+  if (primeiro && criadosSet.has(primeiro[1])) {
+    const novo = await agendamentoPermitido(ctx, primeiro[1]);
+    confirmacao = linksWhatsapp(novo, { confirmacao: (await carregarModelos(db, ctx.barbeariaId)).confirmacao }, user.barbearia_nome)?.confirmacao || null;
+  }
   return json({
     agendamento: primeiro && criadosSet.has(primeiro[1])
       ? { id: primeiro[1], inicio: momento(data, ini), fim: momento(data, fim), barbeiroId: prof.id, cliente }
       : null,
+    whatsappConfirmacao: confirmacao,
     ...(rep ? {
       serie: {
         id: serieId, intervaloSemanas: rep.intervaloSemanas, diaSemana: NOME_DIA_SEMANA[diaSemana(data)], hora: input.hora,
@@ -533,12 +544,12 @@ async function registrarMensagem(ctx) {
   const { db, user, request } = ctx;
   const input = await readJson(request);
   const a = await agendamentoPermitido(ctx, input.id);
-  if (!["lembrete", "proposta"].includes(input.tipo)) erro("Tipo de mensagem inválido.");
+  if (!["lembrete", "proposta", "confirmacao"].includes(input.tipo)) erro("Tipo de mensagem inválido.");
   const modelos = await carregarModelos(db, ctx.barbeariaId);
   const url = linksWhatsapp(a, { [input.tipo]: modelos[input.tipo] }, user.barbearia_nome)[input.tipo];
   const id = crypto.randomUUID();
   await db.batch([
-    db.prepare("INSERT INTO mensagens_enviadas (id, barbearia_id, agendamento_id, tipo, usuario_id) VALUES (?, ?, ?, ?, ?)")
+    db.prepare(`INSERT INTO ${input.tipo === "confirmacao" ? "mensagens_enviadas_adicionais" : "mensagens_enviadas"} (id, barbearia_id, agendamento_id, tipo, usuario_id) VALUES (?, ?, ?, ?, ?)`)
       .bind(id, ctx.barbeariaId, a.id, input.tipo, user.id),
     auditoria(ctx, "mensagem_whatsapp", a.id, { tipo: input.tipo })
   ]);

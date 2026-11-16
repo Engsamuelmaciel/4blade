@@ -45,12 +45,22 @@ export async function rotasMensagens(ctx, path, method) {
     });
   }
 
+  // Clientes cadastrados com telefone (para mandar mensagem a quem não tem horário no dia).
+  if (path === "/mensagens/contatos" && method === "GET") {
+    const r = await db.prepare(`SELECT id, nome, telefone FROM clientes WHERE barbearia_id = ? AND ativo = 1 AND telefone NOT LIKE 'sem:%'
+                                AND id NOT IN (SELECT cliente_id FROM clientes_excluidos WHERE barbearia_id = ?) ORDER BY nome LIMIT 1000`)
+      .bind(ctx.barbeariaId, ctx.barbeariaId).all();
+    return json({ contatos: r.results.map(c => ({ clienteId: c.id, nome: c.nome, telefone: telefoneReal(c.telefone) })).filter(c => c.telefone) });
+  }
+
   // Prepara o envio: guarda a mensagem e devolve um link wa.me por cliente, com o texto já personalizado.
+  // Por horário do dia (agendamentoIds) ou para clientes cadastrados (clienteIds: só {cliente} e {barbearia}).
   if (path === "/mensagens/envios" && method === "POST") {
     const input = await readJson(request);
     const texto = typeof input.texto === "string" ? input.texto.trim() : "";
     if (texto.length < 2 || texto.length > 1000) erro("Escreva a mensagem (até 1000 letras).");
     for (const m of texto.matchAll(/\{([^{}]*)\}/g)) if (!CAMPOS.includes(m[1])) erro(`Campo {${m[1]}} não existe. Use: ${CAMPOS.map(c => `{${c}}`).join(" ")}.`);
+    if (input.clienteIds !== undefined) return enviarParaContatos(ctx, texto, input.clienteIds);
     const data = exigirData(input.data || hojeBrasil());
     const ids = input.agendamentoIds;
     if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100 || !ids.every(validId) || new Set(ids).size !== ids.length) erro("Escolha de 1 a 100 clientes.");
@@ -81,10 +91,44 @@ export async function rotasMensagens(ctx, path, method) {
   if (path === "/mensagens/envios/aberto" && method === "POST") {
     const input = await readJson(request);
     if (!validId(input.destinoId)) erro("Destino inválido.");
-    const r = await db.prepare("UPDATE mensagens_livres_destinos SET aberto_em = COALESCE(aberto_em, ?), aberto_por = COALESCE(aberto_por, ?) WHERE id = ? AND barbearia_id = ?")
-      .bind(new Date().toISOString(), user.id, input.destinoId, ctx.barbeariaId).run();
+    const agora = new Date().toISOString();
+    let r = await db.prepare("UPDATE mensagens_livres_destinos SET aberto_em = COALESCE(aberto_em, ?), aberto_por = COALESCE(aberto_por, ?) WHERE id = ? AND barbearia_id = ?")
+      .bind(agora, user.id, input.destinoId, ctx.barbeariaId).run();
+    if (!r.meta?.changes) {
+      r = await db.prepare("UPDATE mensagens_livres_contatos SET aberto_em = COALESCE(aberto_em, ?), aberto_por = COALESCE(aberto_por, ?) WHERE id = ? AND barbearia_id = ?")
+        .bind(agora, user.id, input.destinoId, ctx.barbeariaId).run();
+    }
     if (!r.meta?.changes) erro("Destino não encontrado.", 404);
     return json({ ok: true });
   }
   return null;
 }
+
+async function enviarParaContatos(ctx, texto, ids) {
+  const { db, user } = ctx;
+  if (!Array.isArray(ids) || ids.length < 1 || ids.length > 300 || !ids.every(validId) || new Set(ids).size !== ids.length) erro("Escolha de 1 a 300 clientes.");
+  const usados = [...texto.matchAll(/\{([^{}]*)\}/g)].map(m => m[1]).filter(c => !["cliente", "barbearia"].includes(c));
+  if (usados.length) erro(`Para clientes sem horário use só {cliente} e {barbearia} (tire ${usados.map(c => `{${c}}`).join(", ")}).`);
+  const r = await db.prepare(`SELECT id, nome, telefone FROM clientes WHERE barbearia_id = ? AND ativo = 1 AND id IN (${ids.map(() => "?").join(",")})
+                              AND id NOT IN (SELECT cliente_id FROM clientes_excluidos WHERE barbearia_id = ?)`).bind(ctx.barbeariaId, ...ids, ctx.barbeariaId).all();
+  if (r.results.length !== ids.length) erro("Algum cliente escolhido não foi encontrado. Atualize a lista.", 404);
+  const semFone = r.results.filter(c => !telefoneReal(c.telefone));
+  if (semFone.length) erro(`Sem telefone: ${semFone.map(c => c.nome).join(", ")}.`);
+  const id = crypto.randomUUID();
+  const destinos = r.results.sort((a, b) => a.nome.localeCompare(b.nome)).map(c => ({ id: crypto.randomUUID(), c }));
+  await db.batch([
+    db.prepare("INSERT INTO mensagens_livres (id, barbearia_id, texto, data_ref, criado_por) VALUES (?, ?, ?, ?, ?)").bind(id, ctx.barbeariaId, texto, hojeBrasil(), user.id),
+    ...destinos.map(d => db.prepare("INSERT INTO mensagens_livres_contatos (id, barbearia_id, mensagem_id, cliente_id) VALUES (?, ?, ?, ?)").bind(d.id, ctx.barbeariaId, id, d.c.id)),
+    auditoria(ctx, "mensagem_livre_preparada", id, { contatos: destinos.length, texto })
+  ]);
+  return json({
+    envio: {
+      id, total: destinos.length,
+      destinos: destinos.map(d => ({
+        id: d.id, cliente: d.c.nome, hora: "",
+        link: linkWhatsapp(telefoneReal(d.c.telefone), preencherModelo(texto, { cliente: d.c.nome.split(" ")[0], barbearia: user.barbearia_nome }))
+      }))
+    }
+  }, 201);
+}
+

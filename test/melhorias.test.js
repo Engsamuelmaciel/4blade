@@ -625,3 +625,45 @@ describe("excluir cliente (pedido de 16/11/2026)", () => {
     assert.equal((await post("/api/clientes/excluir", outra.ger.token, { id: deve.id, motivo: "Invasão" })).status, 404);
   });
 });
+
+describe("confirmação de horário e mensagem para clientes cadastrados (pedido de 16/11/2026)", () => {
+  test("modelo de confirmação (padrão e editado), link ao marcar, botão registrado na agenda; envio para vários cadastrados; isolamento", async () => {
+    const amb = await cenario();
+    const { post, get, ger, barb, cx, corte } = amb;
+    // modelo padrão aparece; marcar devolve o link de confirmação já preenchido
+    const mods = (await get("/api/modelos-mensagem", cx.token)).dados.modelos;
+    assert.ok(mods.some(m => m.tipo === "confirmacao" && /confirmado/.test(m.texto)));
+    const m = await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "09:00", servicoIds: [corte.id], cliente: { telefone: "11 97100-0001", nome: "Confirmado Fictício", aceiteLgpd: true } });
+    assert.match(m.dados.whatsappConfirmacao, /^https:\/\/wa\.me\/5511971000001\?text=/);
+    assert.match(decodeURIComponent(m.dados.whatsappConfirmacao), /Confirmado! Seu horário|Olá, Confirmado! Seu horário na .* está confirmado: \d\d\/\d\d às 09:00/);
+    // sem telefone: sem link
+    const s = await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "10:00", servicoIds: [corte.id], cliente: { nome: "Sem Fone Conf" } });
+    assert.equal(s.dados.whatsappConfirmacao, null);
+    // editar o modelo e restaurar
+    assert.equal((await post("/api/modelos-mensagem/alterar", ger.token, { tipo: "confirmacao", texto: "Confirmado, {cliente}: {data} {hora}." })).status, 200);
+    const ag = (await get(`/api/agenda?data=${AMANHA}`, cx.token)).dados.agendamentos.find(a => a.id === m.dados.agendamento.id);
+    assert.match(decodeURIComponent(ag.whatsapp.confirmacao), /Confirmado, Confirmado: \d\d\/\d\d 09:00\./);
+    assert.equal((await post("/api/agenda/mensagem", cx.token, { id: ag.id, tipo: "confirmacao" })).status, 201);
+    const ag2 = (await get(`/api/agenda?data=${AMANHA}`, cx.token)).dados.agendamentos.find(a => a.id === ag.id);
+    assert.equal(ag2.mensagens.at(-1).tipo, "confirmacao");
+    assert.equal((await post("/api/modelos-mensagem/alterar", ger.token, { tipo: "confirmacao", restaurarPadrao: true })).status, 200);
+    // clientes cadastrados: lista só com telefone; envio para vários; campos de horário recusados
+    const c2 = (await post("/api/clientes", ger.token, { nome: "Contato Dois", telefone: "11 97100-0002", aceiteLgpd: true })).dados.cliente;
+    const contatos = (await get("/api/mensagens/contatos", cx.token)).dados.contatos;
+    assert.ok(contatos.some(c => c.nome === "Contato Dois") && !contatos.some(c => c.nome === "Sem Fone Conf"));
+    const idsC = contatos.filter(c => ["Contato Dois", "Confirmado Fictício"].includes(c.nome)).map(c => c.clienteId);
+    assert.equal((await post("/api/mensagens/envios", cx.token, { texto: "Oi {cliente}, às {hora}", clienteIds: idsC })).status, 400);
+    const env = await post("/api/mensagens/envios", cx.token, { texto: "Oi {cliente}! Promoção na {barbearia}.", clienteIds: idsC });
+    assert.equal(env.status, 201, JSON.stringify(env.dados));
+    assert.equal(env.dados.envio.total, 2);
+    assert.match(decodeURIComponent(env.dados.envio.destinos.find(d => d.cliente === "Contato Dois").link), /Oi Contato! Promoção na /);
+    assert.equal((await post("/api/mensagens/envios/aberto", cx.token, { destinoId: env.dados.envio.destinos[0].id })).status, 200);
+    // barbeiro não; isolamento
+    assert.equal((await get("/api/mensagens/contatos", barb.token)).status, 403);
+    const outra = await cenario("beta", amb, amb.p);
+    assert.equal((await get("/api/mensagens/contatos", outra.cx.token)).dados.contatos.length, 0);
+    assert.equal((await post("/api/mensagens/envios", outra.cx.token, { texto: "Oi {cliente}", clienteIds: [c2.id] })).status, 404);
+    assert.equal((await post("/api/mensagens/envios/aberto", outra.cx.token, { destinoId: env.dados.envio.destinos[1].id })).status, 404);
+    assert.ok(!(await get("/api/modelos-mensagem", outra.cx.token)).dados.modelos.some(x => /Confirmado, /.test(x.texto)));
+  });
+});

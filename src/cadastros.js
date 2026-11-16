@@ -12,7 +12,7 @@ function exigirEdicao(ctx, nome) {
   exigirBarbearia(ctx);
   if (!isGestao(ctx.user) && !cuidaDeClientes(ctx.user, nome)) throw new HttpError("Sem permissão", 403);
 }
-import { telefoneReal } from "./agenda-util.js";
+import { telefoneReal, MODELOS_ADICIONAIS_PADRAO } from "./agenda-util.js";
 import { comandosEntrada, lerEstoqueInicial } from "./estoque.js";
 import { exigirBarbearia, exigirGestao } from "./usuarios.js";
 
@@ -280,17 +280,35 @@ async function rotasModelos(ctx, path, method) {
   exigirBarbearia(ctx);
   if (!isGestao(ctx.user) && ctx.user.perfil !== "caixa") throw new HttpError("Sem permissão", 403);
   if (path === "/modelos-mensagem" && method === "GET") {
-    const r = await db.prepare("SELECT tipo, texto, atualizado_em FROM modelos_mensagem WHERE barbearia_id = ? ORDER BY tipo")
-      .bind(ctx.barbeariaId).all();
+    const [r, extra] = await Promise.all([
+      db.prepare("SELECT tipo, texto, atualizado_em FROM modelos_mensagem WHERE barbearia_id = ? ORDER BY tipo").bind(ctx.barbeariaId).all(),
+      db.prepare("SELECT tipo, texto, atualizado_em FROM modelos_mensagem_adicionais WHERE barbearia_id = ?").bind(ctx.barbeariaId).all()
+    ]);
+    const adicionais = Object.entries(MODELOS_ADICIONAIS_PADRAO).map(([tipo, padrao]) => {
+      const m = extra.results.find(x => x.tipo === tipo);
+      return { tipo, texto: m ? m.texto : padrao, atualizadoEm: m ? m.atualizado_em : null };
+    });
     return json({
-      modelos: r.results.map(m => ({ tipo: m.tipo, texto: m.texto, atualizadoEm: m.atualizado_em })),
+      modelos: [...adicionais, ...r.results.map(m => ({ tipo: m.tipo, texto: m.texto, atualizadoEm: m.atualizado_em }))],
       campos: CAMPOS_MENSAGEM
     });
   }
   if (path === "/modelos-mensagem/alterar" && method === "POST") {
     const input = await readJson(request);
-    if (!Object.hasOwn(MODELOS_PADRAO, input.tipo)) return fail("Tipo de modelo inválido (lembrete ou proposta).");
-    const texto = input.restaurarPadrao === true ? MODELOS_PADRAO[input.tipo] : validarModelo(input.texto);
+    const adicional = Object.hasOwn(MODELOS_ADICIONAIS_PADRAO, input.tipo);
+    if (!Object.hasOwn(MODELOS_PADRAO, input.tipo) && !adicional) return fail("Tipo de modelo inválido (confirmação, lembrete ou proposta).");
+    const texto = input.restaurarPadrao === true ? (adicional ? MODELOS_ADICIONAIS_PADRAO : MODELOS_PADRAO)[input.tipo] : validarModelo(input.texto);
+    if (adicional) {
+      const atualAd = await db.prepare("SELECT id, texto FROM modelos_mensagem_adicionais WHERE barbearia_id = ? AND tipo = ?").bind(ctx.barbeariaId, input.tipo).first();
+      if ((atualAd ? atualAd.texto : MODELOS_ADICIONAIS_PADRAO[input.tipo]) === texto) return fail("Nada foi alterado.");
+      await db.batch([
+        db.prepare(`INSERT INTO modelos_mensagem_adicionais (id, barbearia_id, tipo, texto) VALUES (?, ?, ?, ?)
+                    ON CONFLICT(barbearia_id, tipo) DO UPDATE SET texto = excluded.texto, atualizado_em = CURRENT_TIMESTAMP`)
+          .bind(crypto.randomUUID(), ctx.barbeariaId, input.tipo, texto),
+        auditoria(ctx, "modelo_mensagem_alterado", input.tipo, { antes: { texto: atualAd?.texto ?? MODELOS_ADICIONAIS_PADRAO[input.tipo] }, depois: { texto } })
+      ]);
+      return json({ modelo: { tipo: input.tipo, texto } });
+    }
     const atual = await db.prepare("SELECT id, texto FROM modelos_mensagem WHERE barbearia_id = ? AND tipo = ?")
       .bind(ctx.barbeariaId, input.tipo).first();
     if (atual && atual.texto === texto) return fail("Nada foi alterado.");

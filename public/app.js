@@ -730,11 +730,12 @@ function cartaoAgendamento(a, mostrarNome) {
       f.comissaoCentavos !== undefined
         ? el("p", { class: "suave", "data-teste": "comissao", text: `${a.barbeiroId === usuario.id ? "Sua comissão" : "Comissão"}: ${reais(f.comissaoCentavos)} (${pct(f.comissaoBp)})` }) : null) : null,
     gestao() && a.reaberturas ? el("p", { class: "suave", text: `Reaberto ${a.reaberturas}x` }) : null,
-    ultimaMsg ? el("p", { class: "suave", text: `${ultimaMsg.tipo === "lembrete" ? "Lembrete" : "Proposta"} aberto no WhatsApp por ${ultimaMsg.por.split(" ")[0]} às ${horaLocal(ultimaMsg.em)}` }) : null,
+    ultimaMsg ? el("p", { class: "suave", text: `${{ lembrete: "Lembrete aberto", proposta: "Proposta aberta", confirmacao: "Confirmação aberta" }[ultimaMsg.tipo] || "Mensagem aberta"} no WhatsApp por ${ultimaMsg.por.split(" ")[0]} às ${horaLocal(ultimaMsg.em)}` }) : null,
     el("div", { class: "item-acoes" },
       a.situacao === "agendado" ? [
         ehCaixa() ? null : botao("Finalizar", () => janelaFinalizar(a), "pequeno principal"),
         botao("Remarcar", () => janelaRemarcar(a, ultimaAgenda), "pequeno"),
+        botaoWhatsapp(a, "confirmacao", "Confirmar horário"),
         botaoWhatsapp(a, "lembrete", "Enviar lembrete"),
         botaoWhatsapp(a, "proposta", "Propor horário"),
         botao("Faltou", () => abrirJanela(`${a.cliente.nome} faltou?`, el("p", { text: "O horário fica registrado como falta." }), {
@@ -924,6 +925,9 @@ function janelaMarcar(ag, pre = {}) {
       });
       estadoAgenda.data = f.data.value;
       telaAgenda();
+      // Confirmação pelo WhatsApp (cliente com telefone): o link já vem com a mensagem do modelo "Confirmação".
+      const confirmar = r.whatsappConfirmacao && r.agendamento ? botaoWhatsapp({ id: r.agendamento.id, whatsapp: { confirmacao: r.whatsappConfirmacao } }, "confirmacao", "Enviar confirmação no WhatsApp") : null;
+      confirmar?.classList.add("largo");
       if (r.serie) {
         const sr = r.serie;
         const cada = sr.intervaloSemanas === 1 ? `toda ${sr.diaSemana}` : `a cada ${sr.intervaloSemanas} semanas (${sr.diaSemana})`;
@@ -931,8 +935,15 @@ function janelaMarcar(ag, pre = {}) {
           el("p", { text: `${sr.criados} horário(s) marcado(s), ${cada} às ${sr.hora}.` }),
           sr.pulados.length ? el("div", { class: "info" },
             el("strong", { text: "Datas que ficaram de fora:" }),
-            el("ul", { class: "lista-pulados" }, sr.pulados.map(x => el("li", { text: `${dataBR(x.data)} — ${x.motivo}` })))) : null
+            el("ul", { class: "lista-pulados" }, sr.pulados.map(x => el("li", { text: `${dataBR(x.data)} — ${x.motivo}` })))) : null,
+          confirmar
         ], { ok: "Pronto", semCancelar: true, aoConfirmar: () => true });
+      }
+      if (confirmar) {
+        return abrirJanela("Horário marcado", [
+          el("p", { text: `${dataBR(f.data.value)} às ${f.hora.value}. Quer avisar o cliente que o horário está confirmado?` }),
+          confirmar
+        ], { ok: "Agora não", semCancelar: true, aoConfirmar: () => true });
       }
       avisar("Horário marcado.");
     }
@@ -2529,7 +2540,7 @@ async function telaClientes(busca = "") {
 // MODELOS DE MENSAGEM
 async function telaMensagens() {
   const { modelos, campos } = await api("/modelos-mensagem");   // o envio usa os modelos como ponto de partida
-  const NOMES = { lembrete: "Lembrete", proposta: "Proposta de horário" };
+  const NOMES = { confirmacao: "Confirmação de horário", lembrete: "Lembrete", proposta: "Proposta de horário" };
   const blocos = modelos.map(m => {
     const form = el("form", { class: "cartao", "data-modelo": m.tipo },
       el("h3", { text: NOMES[m.tipo] }),
@@ -2567,92 +2578,126 @@ async function telaMensagens() {
   mostrar(cabecalho("Mensagens", "Envie uma mensagem pelo WhatsApp para os clientes do dia, já com o nome de cada um. Abaixo, os modelos dos botões da agenda."),
     envio,
     el("h3", { class: "titulo-secao", text: "Modelos de mensagem" }),
-    el("p", { class: "suave", text: "Usados nos botões \"Enviar lembrete\" e \"Propor horário\" da agenda. Toque num campo para inseri-lo no texto." }),
+    el("p", { class: "suave", text: "Usados nos botões \"Confirmar horário\", \"Enviar lembrete\" e \"Propor horário\" da agenda. Toque num campo para inseri-lo no texto." }),
     el("div", { class: "duas-colunas" }, blocos));
 }
 
 // ENVIAR MENSAGEM: escolhe clientes do dia (com telefone), escreve o texto e abre o WhatsApp de cada um, já personalizado.
 let dataEnvioMensagem = null;
+let origemEnvio = "dia";   // "dia" = clientes com horário no dia; "cadastrados" = qualquer cliente com telefone
 async function blocoEnviarMensagem(modelos, campos) {
   dataEnvioMensagem ||= hojeLocal();
-  const { clientes } = await api(`/mensagens/clientes-do-dia?data=${dataEnvioMensagem}`);
+  const doDia = origemEnvio === "dia";
+  const dados = doDia ? await api(`/mensagens/clientes-do-dia?data=${dataEnvioMensagem}`) : await api("/mensagens/contatos");
+  // Itens da lista: { id, titulo, detalhe, pode }
+  const itens = doDia
+    ? dados.clientes.map(c => ({ id: c.agendamentoId, nome: c.cliente, titulo: `${c.hora} · ${c.cliente}`, pode: c.podeReceber,
+      detalhe: c.podeReceber ? `${fone(c.telefone)} · ${c.barbeiro}${c.servicos ? ` · ${c.servicos}` : ""}` : "Sem telefone cadastrado" }))
+    : dados.contatos.map(c => ({ id: c.clienteId, nome: c.nome, titulo: c.nome, pode: true, detalhe: fone(c.telefone) }));
+  const origem = el("div", { class: "alterna largo", role: "tablist", "aria-label": "Para quem" },
+    [["dia", "Clientes do dia"], ["cadastrados", "Clientes cadastrados"]].map(([k, t]) =>
+      botao(t, () => { origemEnvio = k; comCarga(telaMensagens).catch(e => avisar(e.message, "erro")); }, `pequeno ${origemEnvio === k ? "ativo" : ""}`)));
   const dataInput = el("input", { type: "date", id: "env-data", value: dataEnvioMensagem, "aria-label": "Dia dos clientes" });
   dataInput.addEventListener("change", () => { if (dataInput.value) { dataEnvioMensagem = dataInput.value; telaMensagens(); } });
+  const filtro = el("input", { type: "search", id: "env-filtro", autocomplete: "off", placeholder: "Filtrar por nome", "aria-label": "Filtrar clientes" });
   const contador = el("span", { class: "suave", "data-teste": "selecionados" });
-  const textoEl = el("textarea", { id: "env-texto", name: "envTexto", rows: "4", maxlength: "1000", placeholder: "Ex.: Olá {cliente}! Hoje às {hora} te esperamos na {barbearia}." });
-  const selecionaveis = clientes.filter(c => c.podeReceber);
+  const textoEl = el("textarea", { id: "env-texto", name: "envTexto", rows: "4", maxlength: "1000",
+    placeholder: doDia ? "Ex.: Olá {cliente}! Hoje às {hora} te esperamos na {barbearia}." : "Ex.: Olá {cliente}! Novidade na {barbearia}: ..." });
+  const selecionaveis = itens.filter(c => c.pode);
   const caixas = [];
-  const lista = clientes.length
-    ? el("ul", { class: "lista-destinos" }, clientes.map(c => {
-      const chk = el("input", { type: "checkbox", id: `dest-${c.agendamentoId}`, value: c.agendamentoId, disabled: c.podeReceber ? null : true });
-      if (c.podeReceber) caixas.push(chk);
-      return el("li", { class: `destino ${c.podeReceber ? "" : "sem-fone"}`, "data-destino": c.cliente },
-        chk,
-        el("label", { for: `dest-${c.agendamentoId}` },
-          el("strong", { text: `${c.hora} · ${c.cliente}` }),
-          el("span", { class: "suave", text: c.podeReceber ? `${fone(c.telefone)} · ${c.barbeiro}${c.servicos ? ` · ${c.servicos}` : ""}` : "Sem telefone cadastrado" })));
-    }))
-    : el("p", { class: "vazio", text: "Nenhum cliente com horário neste dia." });
+  const linhas = itens.map(c => {
+    const chk = el("input", { type: "checkbox", id: `dest-${c.id}`, value: c.id, disabled: c.pode ? null : true });
+    if (c.pode) caixas.push(chk);
+    return el("li", { class: `destino ${c.pode ? "" : "sem-fone"}`, "data-destino": c.nome },
+      chk, el("label", { for: `dest-${c.id}` }, el("strong", { text: c.titulo }), el("span", { class: "suave", text: c.detalhe })));
+  });
+  const lista = itens.length ? el("ul", { class: "lista-destinos rolavel" }, linhas)
+    : el("p", { class: "vazio", text: doDia ? "Nenhum cliente com horário neste dia." : "Nenhum cliente cadastrado com telefone." });
+  filtro.addEventListener("input", () => {
+    const t = filtro.value.trim().toLowerCase();
+    linhas.forEach(li => { li.hidden = Boolean(t) && !li.dataset.destino.toLowerCase().includes(t); });
+  });
   const atualizarContador = () => { const n = caixas.filter(c => c.checked).length; contador.textContent = `${n} de ${selecionaveis.length} selecionado(s)`; };
   const todos = el("button", { type: "button", class: "botao pequeno", text: "Marcar todos", onclick: () => {
-    const marcar = caixas.some(c => !c.checked);
-    caixas.forEach(c => { c.checked = marcar; });
+    const visiveis = caixas.filter(c => !c.closest("li").hidden);
+    const marcar = visiveis.some(c => !c.checked);
+    visiveis.forEach(c => { c.checked = marcar; });
     todos.textContent = marcar ? "Desmarcar todos" : "Marcar todos";
     atualizarContador();
   } });
   caixas.forEach(c => c.addEventListener("change", atualizarContador));
   atualizarContador();
   const usar = tipo => { const m = modelos.find(x => x.tipo === tipo); if (m) { textoEl.value = m.texto; textoEl.focus(); } };
+  const camposUsaveis = doDia ? campos : campos.filter(c => c === "cliente" || c === "barbearia");
   const fila = el("div", { class: "fila-envio", "data-teste": "fila-envio" });
   const form = el("form", { class: "cartao enviar-mensagem", "data-teste": "enviar-mensagem" },
     el("h3", { text: "Enviar mensagem" }),
+    origem,
     el("div", { class: "lado-a-lado" },
-      el("div", { class: "campo" }, el("label", { for: "env-data", text: "Clientes do dia" }), dataInput),
+      doDia ? el("div", { class: "campo" }, el("label", { for: "env-data", text: "Dia" }), dataInput)
+        : el("div", { class: "campo" }, el("label", { for: "env-filtro", text: "Buscar" }), filtro),
       el("div", { class: "campo alinhar-fim" }, selecionaveis.length ? todos : null)),
     lista, contador,
     el("div", { class: "campo" }, el("label", { for: "env-texto", text: "Mensagem" }), textoEl),
-    el("div", { class: "chips" }, campos.map(c => el("button", {
+    el("div", { class: "chips" }, camposUsaveis.map(c => el("button", {
       type: "button", class: "chip", text: `{${c}}`,
       onclick: () => { const pos = textoEl.selectionStart ?? textoEl.value.length; textoEl.value = `${textoEl.value.slice(0, pos)}{${c}}${textoEl.value.slice(textoEl.selectionEnd ?? pos)}`; textoEl.focus(); }
     }))),
-    el("div", { class: "lado-a-lado" },
-      botao("Usar texto do lembrete", () => usar("lembrete"), "pequeno"),
-      botao("Usar texto da proposta", () => usar("proposta"), "pequeno")),
+    doDia ? el("div", { class: "botoes-modelo" },
+      botao("Usar confirmação", () => usar("confirmacao"), "pequeno"),
+      botao("Usar lembrete", () => usar("lembrete"), "pequeno"),
+      botao("Usar proposta", () => usar("proposta"), "pequeno"))
+      : el("p", { class: "suave", text: "Para clientes sem horário, use só {cliente} e {barbearia}." }),
     el("button", { type: "submit", class: "botao principal", text: "Enviar mensagem" }),
     fila);
   form.addEventListener("submit", ev => {
     ev.preventDefault();
     enviar(form, async () => {
-      const agendamentoIds = caixas.filter(c => c.checked).map(c => c.value);
-      if (!agendamentoIds.length) throw new Error("Escolha pelo menos um cliente.");
+      const ids = caixas.filter(c => c.checked).map(c => c.value);
+      if (!ids.length) throw new Error("Escolha pelo menos um cliente.");
       if (textoEl.value.trim().length < 2) throw new Error("Escreva a mensagem.");
-      const { envio } = await api("/mensagens/envios", { metodo: "POST", corpo: { data: dataEnvioMensagem, texto: textoEl.value, agendamentoIds } });
+      const corpo = doDia ? { data: dataEnvioMensagem, texto: textoEl.value, agendamentoIds: ids } : { texto: textoEl.value, clienteIds: ids };
+      const { envio } = await api("/mensagens/envios", { metodo: "POST", corpo });
       mostrarFilaEnvio(fila, envio);
     });
   });
   return form;
 }
-
-// O WhatsApp abre uma conversa por vez: um botão por cliente, com a mensagem já escrita para ele.
+// O WhatsApp abre uma conversa por vez: um botão por cliente e o "Abrir o próximo", que vai seguindo a lista.
 function mostrarFilaEnvio(fila, envio) {
   let abertos = 0;
   const progresso = el("p", { class: "progresso-envio", "data-teste": "progresso-envio" });
-  const atualizar = () => { progresso.textContent = abertos === envio.total ? `Pronto: WhatsApp aberto para os ${envio.total} cliente(s).` : `${abertos} de ${envio.total} aberto(s) no WhatsApp. Toque em cada um e depois em "Enviar" no WhatsApp.`; };
+  const marcadores = [];
+  const proximo = el("a", { class: "botao whats largo proximo-envio", target: "_blank", rel: "noopener", "data-teste": "abrir-proximo" });
+  const atualizar = () => {
+    progresso.textContent = abertos === envio.total ? `Pronto: WhatsApp aberto para os ${envio.total} cliente(s).` : `${abertos} de ${envio.total} aberto(s) no WhatsApp. Em cada conversa, toque em "Enviar" e volte aqui.`;
+    const p = marcadores.find(m => !m.feito);
+    proximo.hidden = !p;
+    if (p) { proximo.href = p.d.link; proximo.textContent = `Abrir o próximo: ${p.d.cliente.split(" ")[0]} (${abertos + 1} de ${envio.total})`; proximo.dataset.destino = p.d.id; }
+  };
+  const marcar = m => {
+    if (m.feito) return;
+    m.feito = true; m.estado.textContent = "Aberto ✓"; m.estado.className = "etiqueta verde";
+    abertos++;
+    api("/mensagens/envios/aberto", { metodo: "POST", corpo: { destinoId: m.d.id } }).catch(() => {});
+  };
+  proximo.addEventListener("click", () => {
+    const m = marcadores.find(x => x.d.id === proximo.dataset.destino);
+    if (m) marcar(m);
+    setTimeout(atualizar);   // depois que o link abriu, aponta para o seguinte
+  });
   fila.replaceChildren(
     el("h4", { text: "Agora envie para cada cliente" }),
-    progresso,
+    progresso, proximo,
     el("ul", { class: "lista-destinos" }, envio.destinos.map(d => {
       const estado = el("span", { class: "etiqueta", text: "A enviar" });
+      const m = { d, estado, feito: false };
+      marcadores.push(m);
       const link = el("a", {
         class: "botao pequeno whats", href: d.link, target: "_blank", rel: "noopener", "data-enviar": d.cliente, text: `Enviar para ${d.cliente.split(" ")[0]}`,
-        onclick: () => {
-          if (estado.dataset.ok) return;
-          estado.dataset.ok = "1"; estado.textContent = "Aberto ✓"; estado.className = "etiqueta verde";
-          abertos++; atualizar();
-          api("/mensagens/envios/aberto", { metodo: "POST", corpo: { destinoId: d.id } }).catch(() => {});
-        }
+        onclick: () => { marcar(m); setTimeout(atualizar); }
       });
-      return el("li", { class: "destino" }, el("div", {}, el("strong", { text: `${d.hora} · ${d.cliente}` })), estado, link);
+      return el("li", { class: "destino" }, el("div", {}, el("strong", { text: [d.hora, d.cliente].filter(Boolean).join(" · ") })), estado, link);
     })));
   atualizar();
   fila.scrollIntoView({ block: "nearest" });
@@ -2903,6 +2948,7 @@ async function sairDoSistema() {
   Object.assign(estadoAgenda, { data: null, visao: "dia", barbeiroId: "" });
   clearTimeout(timerCaixa);
   dataEnvioMensagem = null;
+  origemEnvio = "dia";
   estadoNotas.aba = "abertas";
   history.replaceState(null, "", "/");
   telaLogin("Você saiu do sistema.");

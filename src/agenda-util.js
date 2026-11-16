@@ -146,9 +146,16 @@ export function linksWhatsapp(ag, modelos, barbeariaNome) {
   return r;
 }
 
+// Modelos adicionais (não cabem na tabela antiga): texto padrão quando a barbearia ainda não editou.
+export const MODELOS_ADICIONAIS_PADRAO = {
+  confirmacao: "Olá, {cliente}! Seu horário na {barbearia} está confirmado: {data} às {hora} com {barbeiro} ({servico}). Te esperamos!"
+};
 export async function carregarModelos(db, barbeariaId) {
-  const r = await db.prepare("SELECT tipo, texto FROM modelos_mensagem WHERE barbearia_id = ?").bind(barbeariaId).all();
-  return Object.fromEntries(r.results.map(m => [m.tipo, m.texto]));
+  const [r, extra] = await Promise.all([
+    db.prepare("SELECT tipo, texto FROM modelos_mensagem WHERE barbearia_id = ?").bind(barbeariaId).all(),
+    db.prepare("SELECT tipo, texto FROM modelos_mensagem_adicionais WHERE barbearia_id = ?").bind(barbeariaId).all()
+  ]);
+  return { ...MODELOS_ADICIONAIS_PADRAO, ...Object.fromEntries(extra.results.map(m => [m.tipo, m.texto])), ...Object.fromEntries(r.results.map(m => [m.tipo, m.texto])) };
 }
 
 // ---------- pagamentos (atendimento e venda): até 2 formas, soma igual ao total ----------

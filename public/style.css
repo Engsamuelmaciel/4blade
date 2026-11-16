@@ -658,4 +658,9 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
 .concluir-opcao .dados small { color: var(--suave); }
 .ticket-at.atrasado { border-left-color: var(--erro); }
 .link-acao { border: 0; background: none; color: var(--destaque); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 0; }
+.lista-destinos.rolavel { max-height: 360px; overflow-y: auto; }
+.botoes-modelo { display: flex; flex-wrap: wrap; gap: 6px; }
+.proximo-envio { margin: 8px 0; min-height: 48px; font-size: 16px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.enviar-mensagem .alterna.largo { margin-bottom: 8px; }
 
+a.botao.largo { display: flex; justify-content: center; align-items: center; width: 100%; min-height: 46px; font-size: 15.5px; margin: 6px 0 2px; }

@@ -126,10 +126,10 @@ describe("clientes", () => {
 });
 
 describe("modelos de mensagem", () => {
-  test("barbearia nasce com os dois modelos; só aceita os campos conhecidos", async () => {
+  test("barbearia nasce com os modelos (confirmação, lembrete, proposta); só aceita os campos conhecidos", async () => {
     const { post, get, ger } = await cenario();
     const m = (await get("/api/modelos-mensagem", ger)).dados;
-    assert.deepEqual(m.modelos.map(x => x.tipo), ["lembrete", "proposta"]);
+    assert.deepEqual(m.modelos.map(x => x.tipo), ["confirmacao", "lembrete", "proposta"]);
     assert.deepEqual(m.campos, ["cliente", "data", "hora", "barbeiro", "servico", "barbearia"]);
     assert.match((await post("/api/modelos-mensagem/alterar", ger, { tipo: "lembrete", texto: "Oi {nome}, tudo bem?" })).dados.erro, /\{nome\} não existe/);
     assert.equal((await post("/api/modelos-mensagem/alterar", ger, { tipo: "lembrete", texto: "curto" })).status, 400);

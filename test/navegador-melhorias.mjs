@@ -361,6 +361,22 @@ async function rodar(tela) {
     await page.waitForSelector("[data-teste=fila-envio] >> text=Aberto ✓");
     await page.waitForSelector("[data-teste=progresso-envio] >> text=Pronto");
     await print("mensagem-fila-enviada");
+
+    passo("caixa envia para vários clientes cadastrados (sem horário) com o \"Abrir o próximo\"");
+    await page.click("[data-teste=enviar-mensagem] [role=tablist] button:has-text('Clientes cadastrados')");
+    await page.waitForSelector('[data-destino="Gil Fila Fictício"]');
+    await page.check('[data-destino="Gil Fila Fictício"] input');
+    await page.check('[data-destino="Fábio Fixo Fictício"] input');
+    await page.fill("#env-texto", "Olá {cliente}! Novidade na {barbearia}.");
+    await page.click("[data-teste=enviar-mensagem] button[type=submit]");
+    await page.waitForSelector("[data-teste=abrir-proximo]");
+    for (let i = 0; i < 2; i++) {
+      const [abaN] = await Promise.all([page.context().waitForEvent("page"), page.click("[data-teste=abrir-proximo]")]);
+      assert.match(decodeURIComponent(abaN.url()), /Novidade na/);
+      await abaN.close();
+    }
+    await page.waitForSelector("[data-teste=progresso-envio] >> text=Pronto: WhatsApp aberto para os 2");
+    await print("mensagem-clientes-cadastrados");
     await sair();
 
     // ---------- PAINEL ----------
