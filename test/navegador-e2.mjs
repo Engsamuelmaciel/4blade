@@ -305,6 +305,34 @@ async function rodar(tela) {
     await page.click('[data-evento="Elias Cliente Fictício"]');
     await page.waitForSelector('dialog[open] [data-agendamento="Elias Cliente Fictício"]');
     await page.click("dialog[open] button[type=submit]");
+    // ARRASTAR: segura o cartão das 09:00 e solta 1 hora abaixo → confirma → vai para 10:00
+    passo("gerente arrasta o cartão de 09:00 para 10:00 na grade");
+    const cartaoElias = page.locator('[data-evento="Elias Cliente Fictício"]');
+    assert.equal(await cartaoElias.getAttribute("data-arrastavel"), "1");
+    await cartaoElias.scrollIntoViewIfNeeded();
+    const caixa = await cartaoElias.boundingBox();
+    const linhaPx = await page.$eval(".grade-agenda", g => parseFloat(getComputedStyle(g).getPropertyValue("--altura")));
+    await page.mouse.move(caixa.x + caixa.width / 2, caixa.y + 8);
+    await page.mouse.down();
+    await page.mouse.move(caixa.x + caixa.width / 2, caixa.y + 8 + linhaPx * 6, { steps: 4 });
+    await page.mouse.move(caixa.x + caixa.width / 2, caixa.y + 8 + linhaPx * 12, { steps: 6 });
+    assert.match(await cartaoElias.locator(".ev-hora").textContent(), /10:00/, "mostra a hora nova enquanto arrasta");
+    await page.mouse.up();
+    await page.waitForSelector("dialog[open] >> text=Mudar o horário?");
+    assert.match(await page.textContent("dialog[open]"), /09:00 → .* 10:00/);
+    await ok();
+    await page.waitForFunction(() => /10:00/.test(document.querySelector('[data-evento="Elias Cliente Fictício"]')?.getAttribute("title") || ""));
+    assert.match(await page.getAttribute('[data-evento="Elias Cliente Fictício"]', "title"), /^10:00–10:30/);
+    await print("gerente-agenda-grade-arrastado");
+    // SEMANA EM GRADE: um dia por coluna, horas à esquerda
+    await page.click(".barra-agenda button:has-text('Semana')");
+    await page.waitForSelector('.grade-semana [data-evento="Elias Cliente Fictício"]');   // o modo Grade escolhido no Dia vale para a Semana
+    assert.equal(await page.locator(".grade-semana .grade-cab-dia").count(), 7);
+    assert.match(await page.getAttribute('.grade-semana [data-evento="Elias Cliente Fictício"]', "title"), /^10:00–10:30/);
+    await print("gerente-agenda-semana-grade");
+    // tocar no cabeçalho do dia abre o Dia
+    await page.click(`.grade-cab-dia[data-dia-grade="${AMANHA}"]`);
+    await page.waitForSelector('.grade-agenda:not(.grade-semana) [data-evento="Elias Cliente Fictício"]');
     await page.click(".modo-dia button:has-text('Lista')");
     await page.waitForSelector('.coluna-prof [data-agendamento="Elias Cliente Fictício"]');
 

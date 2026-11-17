@@ -234,7 +234,9 @@ async function rodar(tela) {
     const celAmanha = page.locator(`.dia-cal[data-dia="${AMANHA}"]`);
     assert.match(await celAmanha.getAttribute("aria-label"), /2 marcado/);
     assert.ok(["livre", "poucos"].includes(await celAmanha.getAttribute("data-status")));
-    assert.equal(await page.locator(".legenda >> text=Agenda cheia").count(), 1);
+    assert.match(await celAmanha.getAttribute("aria-label"), /livre/, "o dia mostra os livres");
+    assert.ok(await page.locator(`.dia-cal[data-dia="${AMANHA}"] .mes-ev`).count() >= 1, "o mês mostra os atendimentos do dia");
+    assert.equal(await page.locator(".mes-resumo > div").count(), 3);
     await print("agenda-mes");
     await visao("Ano");
     await page.waitForSelector(".ano-grade .mes-mini");

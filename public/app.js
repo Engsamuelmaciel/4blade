@@ -1371,7 +1371,7 @@ async function telaAgenda() {
   estadoAgenda.data ||= hojeLocal();
   const v = estadoAgenda.visao;
   const d0 = estadoAgenda.data;
-  const q = new URLSearchParams({ data: d0, dias: v === "semana" ? "7" : "1" });
+  const q = new URLSearchParams({ data: v === "mes" ? `${d0.slice(0, 7)}-01` : d0, dias: v === "semana" ? "7" : v === "mes" ? ultimoDiaMes(d0.slice(0, 7)).slice(8) : "1" });
   if (veTodas() && estadoAgenda.barbeiroId) q.set("barbeiroId", estadoAgenda.barbeiroId);
   // Mês e Ano usam o cálculo de ocupação (livre / poucos / cheio / fechado) por dia.
   const periodo = v === "mes" ? [`${d0.slice(0, 7)}-01`, ultimoDiaMes(d0.slice(0, 7))] : v === "ano" ? [`${d0.slice(0, 4)}-01-01`, `${d0.slice(0, 4)}-12-31`]
@@ -1379,7 +1379,8 @@ async function telaAgenda() {
   const qo = periodo ? new URLSearchParams({ inicio: periodo[0], fim: periodo[1], ...(veTodas() && estadoAgenda.barbeiroId ? { barbeiroId: estadoAgenda.barbeiroId } : {}) }) : null;
   const qd = new URLSearchParams({ data: d0, ...(veTodas() && estadoAgenda.barbeiroId ? { barbeiroId: estadoAgenda.barbeiroId } : {}) });
   // Semana: os dias abertos mostram a grade do dia (precisa do expediente e dos livres de cada profissional).
-  const diasGrade = v === "semana" ? [...estadoAgenda.diasAbertos].filter(x => x >= d0 && x <= somaDias(d0, 6)) : [];
+  const diasGrade = v !== "semana" ? [] : estadoAgenda.modoDia === "grade" ? [0, 1, 2, 3, 4, 5, 6].map(i => somaDias(d0, i))
+    : [...estadoAgenda.diasAbertos].filter(x => x >= d0 && x <= somaDias(d0, 6));
   const qDia = x => new URLSearchParams({ data: x, ...(veTodas() && estadoAgenda.barbeiroId ? { barbeiroId: estadoAgenda.barbeiroId } : {}) });
   const [ag, oc, , disp, ...dispsSemana] = await Promise.all([api(`/agenda?${q}`), qo ? api(`/agenda/ocupacao?${qo}`) : null, carregarServicos(),
     v === "dia" ? api(`/agenda/disponibilidade?${qd}`) : null, ...diasGrade.map(x => api(`/agenda/disponibilidade?${qDia(x)}`))]);
@@ -1436,11 +1437,7 @@ async function telaAgenda() {
     corpo = el("p", { class: "vazio", "data-teste": "sem-profissionais", text: "Nenhum profissional com agenda. Cadastre gerente ou barbeiro em Equipe e ajustes → Equipe." });
   } else if (v === "dia") {
     // Dia: grade (horas × profissionais) ou lista (cartões por profissional). A escolha fica guardada no aparelho.
-    const modo = el("div", { class: "alterna modo-dia", role: "group", "aria-label": "Jeito de ver o dia" },
-      [["grade", "Grade"], ["lista", "Lista"]].map(([k, t]) => botao(t, () => {
-        estadoAgenda.modoDia = k; try { localStorage.setItem("4blade.agendaModo", k); } catch { /* sem espaço */ }
-        telaAgenda();
-      }, `pequeno ${estadoAgenda.modoDia === k ? "ativo" : ""}`)));
+    const modo = alternaModoAgenda();
     corpo = estadoAgenda.modoDia === "grade"
       ? el("div", {}, modo, gradeAgenda(ag, d0, profs, disp))
       : el("div", {}, modo, el("div", { class: `agenda-colunas ${profs.length > 1 ? "varias" : ""}` }, profs.map(p => {
@@ -1450,13 +1447,15 @@ async function telaAgenda() {
           resumoDia(p),
           itens.length ? itens : el("p", { class: "vazio", text: "Nenhum horário." }));
       })));
+  } else if (v === "semana" && estadoAgenda.modoDia === "grade") {
+    corpo = el("div", {}, alternaModoAgenda(), gradeSemana(ag, d0, profs, dispDoDia, oc));
   } else if (v === "semana") {
     // Semana (pedido de 16/11/2026): cada dia é só uma barra com "marcados" e "livres" (horários ocultos).
     // Tocar na barra abre a lista do dia (hora · cliente · serviço); tocar num horário abre a ficha com todas as opções.
     const varios = profs.length > 1;
     const idsProfs = new Set(profs.map(p => p.id));
     const ocDe = d => oc?.dias.find(x => x.data === d);
-    corpo = el("div", { class: "agenda-semana" }, [0, 1, 2, 3, 4, 5, 6].map(i => {
+    corpo = el("div", { class: "agenda-semana" }, alternaModoAgenda(), [0, 1, 2, 3, 4, 5, 6].map(i => {
       const d = somaDias(d0, i);
       const doDia = ag.agendamentos.filter(a => a.data === d && idsProfs.has(a.barbeiroId)).sort((x, y) => x.inicio.localeCompare(y.inicio));
       const marcados = doDia.filter(a => a.situacao === "agendado" || a.situacao === "finalizado").length;
@@ -1484,7 +1483,7 @@ async function telaAgenda() {
     const legenda = el("p", { class: "legenda" },
       el("span", { class: "l-livre", text: "Horários livres" }), el("span", { class: "l-poucos", text: "Poucos horários" }),
       el("span", { class: "l-cheio", text: "Agenda cheia" }), el("span", { class: "l-fechado", text: "Fechado / folga" }));
-    corpo = el("div", {}, legenda, v === "mes" ? calendarioMes(oc, d0.slice(0, 7), irPara) : calendarioAno(oc, d0.slice(0, 4), irPara));
+    corpo = v === "mes" ? calendarioMesNovo(oc, ag, d0.slice(0, 7), irPara, profs) : el("div", {}, legenda, calendarioAno(oc, d0.slice(0, 4), irPara));
   }
 
   const subtitulo = v === "dia" ? `${DIAS[diaDaSemana(d0)]}, ${dataBR(d0)}` : v === "semana" ? `Semana de ${dataBR(ag.data)} a ${dataBR(ag.ate)}`
@@ -1502,29 +1501,6 @@ async function telaAgenda() {
 }
 
 // Calendário do mês: cada dia com a cor da ocupação e quantos horários livres.
-function calendarioMes(oc, ym, irPara) {
-  const porData = Object.fromEntries(oc.dias.map(d => [d.data, d]));
-  const primeiro = `${ym}-01`;
-  const vazios = diaDaSemana(primeiro);
-  const ultimo = Number(ultimoDiaMes(ym).slice(8));
-  const hoje = hojeLocal();
-  const celulas = [];
-  for (let i = 0; i < vazios; i++) celulas.push(el("span", { class: "dia-cal vazio-cal", "aria-hidden": "true" }));
-  for (let n = 1; n <= ultimo; n++) {
-    const data = `${ym}-${String(n).padStart(2, "0")}`;
-    const d = porData[data] || { status: "fechado", horariosLivres: 0, agendados: 0 };
-    const texto = { livre: "Livre", poucos: "Poucos", cheio: "Cheio", fechado: "Fechado" }[d.status];
-    const detalhe = d.status === "livre" || d.status === "poucos" ? `${d.horariosLivres} vaga${d.horariosLivres === 1 ? "" : "s"}` : d.agendados ? `${d.agendados} marc.` : null;
-    celulas.push(el("button", {
-      type: "button", class: `dia-cal ${d.status} ${d.passado ? "passado" : ""} ${data === hoje ? "hoje" : ""}`,
-      "data-dia": data, "data-status": d.status, "aria-label": `${dataBR(data)}: ${NOME_STATUS[d.status]}, ${d.agendados} marcado(s)`,
-      onclick: () => irPara(data, "dia")
-    }, el("span", { class: "num", text: String(n) }), el("span", { class: "st", text: texto }),
-      detalhe ? el("span", { class: "det", text: detalhe }) : null));
-  }
-  return el("div", { class: "calendario" }, DIAS_CURTO.map(x => el("span", { class: "cal-semana", text: x })), celulas);
-}
-
 // Ano: 12 mini calendários coloridos; toque abre o mês.
 function calendarioAno(oc, ano, irPara) {
   const porData = Object.fromEntries(oc.dias.map(d => [d.data, d]));
@@ -1574,17 +1550,20 @@ function gradeAgenda(ag, d, profs, disp) {
   const filhos = [el("div", { class: "grade-canto", text: "" })];
   for (let h = ini; h < fim; h += 60) filhos.push(posicionar(el("div", { class: "grade-hora", text: minParaHoraTela(h) }), linha(h), 60 / MIN_LINHA, 1));
   const hoje = d === ag.hoje;
+  const colunas = [];
   profs.forEach((p, i) => {
     const col = i + 2;
     const x = dispDe(p.id);
     const meus = ativos.filter(a => a.barbeiroId === p.id);
     const livres = x?.livres || [];
-    filhos.push(posicionar(el("div", { class: "grade-cab", "data-prof": p.nome },
+    const cab = el("div", { class: "grade-cab", "data-prof": p.nome },
       el("span", { class: "grade-avatar", text: iniciais(p.nome) }),
       el("span", { class: "grade-cab-txt" },
         el("strong", { text: p.nome.split(" ")[0] }),
         el("small", { class: "grade-cab-info", text: x && x.situacao !== "aberto" ? { fechado: "Fechado", folga: "Folga", bloqueado: "Bloqueado", sem_funcionamento: "Sem funcionamento" }[x.situacao]
-          : `${meus.length} marcado${meus.length === 1 ? "" : "s"}${disp && !disp.passado ? ` · ${livres.length} livre${livres.length === 1 ? "" : "s"}` : ""}` }))), 1, 1, col));
+          : `${meus.length} marcado${meus.length === 1 ? "" : "s"}${disp && !disp.passado ? ` · ${livres.length} livre${livres.length === 1 ? "" : "s"}` : ""}` })));
+    filhos.push(posicionar(cab, 1, 1, col));
+    colunas.push({ el: cab, data: d, barbeiroId: p.id, nome: p.nome.split(" ")[0] });
     filhos.push(posicionar(el("div", { class: `grade-fundo ${i % 2 ? "par" : ""}` }), 2, linhas, col));
     // Fora do expediente, intervalo e bloqueios: faixas cinzas.
     const j = x?.janela;
@@ -1605,10 +1584,13 @@ function gradeAgenda(ag, d, profs, disp) {
       const curto = dur < 30, medio = dur >= 30 && dur < 45;
       const hora = el("span", { class: "ev-hora", text: `${medio || curto ? a.inicio : `${a.inicio}–${a.fim}`}${a.situacao === "finalizado" ? " ✓" : ""}` });
       const cliente = el("strong", { class: "ev-cliente", text: a.cliente.nome });
-      filhos.push(posicionar(el("button", { type: "button", class: `grade-evento ${a.situacao} ${curto ? "curto" : medio ? "medio" : ""} ${gestao() && a.finalizacao?.valorAlterado ? "alterado" : ""}`, "data-evento": a.cliente.nome,
-        title: `${a.inicio}–${a.fim} · ${a.cliente.nome} · ${a.servicos.map(s => s.nome).join(" + ")}`, onclick: () => janelaAtendimento(a, profs.length > 1) },
+      const card = posicionar(el("button", { type: "button", class: `grade-evento ${a.situacao} ${curto ? "curto" : medio ? "medio" : ""} ${gestao() && a.finalizacao?.valorAlterado ? "alterado" : ""}`, "data-evento": a.cliente.nome,
+        title: `${a.inicio}–${a.fim} · ${a.cliente.nome} · ${a.servicos.map(s => s.nome).join(" + ")}`, "data-arrastavel": podeArrastar(a) ? "1" : null,
+        onclick: ev => { if (ev.currentTarget.dataset.arrastou) return; janelaAtendimento(a, profs.length > 1); } },
         medio || curto ? el("span", { class: "ev-linha" }, hora, cliente) : [hora, cliente],
-        curto ? null : el("span", { class: "ev-servico", text: a.servicos.map(s => s.nome).join(" + ") })), linha(minDe(a.inicio)), dur / MIN_LINHA, col));
+        curto ? null : el("span", { class: "ev-servico", text: a.servicos.map(s => s.nome).join(" + ") })), linha(minDe(a.inicio)), dur / MIN_LINHA, col);
+      card._agendamento = a;
+      filhos.push(card);
     }
   });
   // Linha de "agora" (hoje).
@@ -1618,13 +1600,255 @@ function gradeAgenda(ag, d, profs, disp) {
     if (m >= ini && m <= fim) { const l = posicionar(el("div", { class: "grade-agora", "aria-hidden": "true" }), linha(m), 1, 2); l.style.gridColumn = "2 / -1"; filhos.push(l); }
   }
   grade.append(...filhos);
+  ativarArrastar(grade, { ini, colunas });
   return el("div", { class: "grade-envolve" },
+    ativos.some(podeArrastar) ? el("p", { class: "suave dica-arrastar", text: "Para mudar um horário, segure o cartão e arraste (para outra hora ou outro barbeiro)." }) : null,
     el("div", { class: "grade-rolagem" }, grade),
     outros.length ? el("div", { class: "grade-outros" }, el("span", { class: "suave", text: "Faltas e cancelados:" }),
       outros.map(a => el("button", { type: "button", class: `chip-outro ${a.situacao}`, "data-mini": a.cliente.nome, onclick: () => janelaAtendimento(a, profs.length > 1) },
         `${a.inicio} ${a.cliente.nome} · ${NOME_SITUACAO[a.situacao]}`))) : null);
 }
 const minParaHoraTela = m => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
+// ---------- ARRASTAR O CARTÃO PARA MUDAR HORÁRIO / PROFISSIONAL / DIA (17/11/2026) ----------
+// Computador: segurar e arrastar. Celular: segurar ~0,4 s e arrastar. Ao soltar, confirma e usa "Remarcar".
+// colunas: [{ el (cabeçalho), data, barbeiroId (null = mantém o do horário), nome }]
+function ativarArrastar(grade, { ini, colunas }) {
+  const PASSO = 5;
+  let arr = null;
+  const alturaLinha = () => parseFloat(getComputedStyle(grade).getPropertyValue("--altura")) || 8;
+  const topoLinhas = () => Math.max(...colunas.map(c => c.el.getBoundingClientRect().bottom));
+  const colunaEm = x => colunas.find(c => { const r = c.el.getBoundingClientRect(); return x >= r.left && x <= r.right; });
+  const fmt = m => minParaHoraTela(Math.max(0, Math.min(24 * 60 - PASSO, m)));
+  const fim = () => {
+    if (!arr) return;
+    clearTimeout(arr.timer);
+    window.removeEventListener("pointermove", mover);
+    window.removeEventListener("pointerup", soltar);
+    window.removeEventListener("pointercancel", cancelar);
+    arr.card.classList.remove("arrastando", "segurando");
+    colunas.forEach(c => c.el.classList.remove("alvo"));
+    arr = null;
+  };
+  const destino = ev => {
+    const dy = ev.clientY - arr.y0;
+    const topo = arr.cardTopo + dy;
+    const minuto = ini + Math.round((topo - topoLinhas()) / alturaLinha()) * PASSO;
+    const col = colunaEm(ev.clientX) || arr.colOrigem;
+    return { minuto, col };
+  };
+  const iniciar = () => {
+    arr.ativo = true;
+    arr.card.classList.remove("segurando");
+    arr.card.classList.add("arrastando");
+    try { arr.card.setPointerCapture(arr.pid); } catch { /* sem captura */ }
+    navigator.vibrate?.(15);
+  };
+  function mover(ev) {
+    if (!arr) return;
+    const dx = ev.clientX - arr.x0, dy = ev.clientY - arr.y0;
+    if (!arr.ativo) {
+      if (arr.toque) { if (Math.hypot(dx, dy) > 10) fim(); return; }   // no celular: mexeu antes de segurar = rolar a tela
+      if (Math.hypot(dx, dy) < 5) return;
+      iniciar();
+    }
+    ev.preventDefault();
+    arr.card.style.transform = `translate(${dx}px, ${dy}px)`;
+    const { minuto, col } = destino(ev);
+    colunas.forEach(c => c.el.classList.toggle("alvo", c === col));
+    arr.rotulo.textContent = `${fmt(minuto)}${col && col !== arr.colOrigem ? ` · ${col.nome}` : ""}`;
+  }
+  function soltar(ev) {
+    if (!arr) return;
+    if (!arr.ativo) { fim(); return; }
+    const { minuto, col } = destino(ev);
+    const a = arr.a, card = arr.card, horaAntes = arr.horaAntes;
+    card.dataset.arrastou = "1";
+    setTimeout(() => { delete card.dataset.arrastou; }, 400);
+    fim();
+    card.style.transform = "";
+    arr = null;
+    card.querySelector(".ev-hora").textContent = horaAntes;
+    const hora = fmt(minuto);
+    const data = col?.data || a.data;
+    const barbeiroId = col?.barbeiroId || a.barbeiroId;
+    if (hora === a.inicio && data === a.data && barbeiroId === a.barbeiroId) return;
+    const nomeProf = barbeiroId !== a.barbeiroId ? (col?.nome || "") : null;
+    abrirJanela("Mudar o horário?", el("p", { text: `${a.cliente.nome}: ${dataBR(a.data)} ${a.inicio} → ${dataBR(data)} ${hora}${nomeProf ? ` com ${nomeProf}` : ""}. O tempo do atendimento continua o mesmo.` }), {
+      ok: "Mudar", aoConfirmar: async () => {
+        const r = await api("/agenda/remarcar", { metodo: "POST", corpo: { id: a.id, data, hora, ...(barbeiroId !== a.barbeiroId ? { barbeiroId } : {}) } });
+        avisar(r.mensagem || "Horário mudado.");
+        telaAgenda();
+      }
+    });
+  }
+  function cancelar() { if (arr) { arr.card.style.transform = ""; arr.card.querySelector(".ev-hora").textContent = arr.horaAntes; } fim(); }
+  grade.addEventListener("pointerdown", ev => {
+    const card = ev.target.closest(".grade-evento[data-arrastavel]");
+    if (!card || ev.button > 0) return;
+    const a = card._agendamento;
+    const r = card.getBoundingClientRect();
+    arr = { card, a, pid: ev.pointerId, x0: ev.clientX, y0: ev.clientY, cardTopo: r.top, toque: ev.pointerType !== "mouse", ativo: false,
+      colOrigem: colunas.find(c => c.data === a.data && (c.barbeiroId === null || c.barbeiroId === a.barbeiroId)),
+      rotulo: card.querySelector(".ev-hora"), horaAntes: card.querySelector(".ev-hora").textContent };
+    if (arr.toque) { card.classList.add("segurando"); arr.timer = setTimeout(() => arr && iniciar(), 400); }
+    window.addEventListener("pointermove", mover, { passive: false });
+    window.addEventListener("pointerup", soltar);
+    window.addEventListener("pointercancel", cancelar);
+  });
+  // Segurar no celular não abre o menu do navegador.
+  grade.addEventListener("contextmenu", ev => { if (ev.target.closest(".grade-evento[data-arrastavel]")) ev.preventDefault(); });
+}
+// Pode arrastar: agendado, de hoje em diante, e quem vê pode remarcar (barbeiro só o dele; caixa e gestão qualquer).
+const podeArrastar = a => a.situacao === "agendado" && a.data >= hojeLocal() && (veTodas() || a.barbeiroId === usuario.id);
+
+// ---------- SEMANA EM GRADE (17/11/2026): horas à esquerda, um dia por coluna; atendimentos lado a lado quando se cruzam ----------
+const CORES_PROF = 6;
+function gradeSemana(ag, d0, profs, disps, oc) {
+  const dias = [0, 1, 2, 3, 4, 5, 6].map(i => somaDias(d0, i));
+  const corDe = Object.fromEntries(profs.map((p, i) => [p.id, i % CORES_PROF]));
+  const varios = profs.length > 1;
+  const evs = ag.agendamentos.filter(a => (a.situacao === "agendado" || a.situacao === "finalizado") && profs.some(p => p.id === a.barbeiroId));
+  // Faixa de horas: expedientes da semana e atendimentos.
+  const janelas = dias.flatMap(d => (disps[d]?.profissionais || []).filter(x => x.janela).map(x => [minDe(x.janela.ini), minDe(x.janela.fim)]));
+  const marcas = [...janelas.flat(), ...evs.flatMap(a => [minDe(a.inicio), minDe(a.fim)])];
+  let ini = marcas.length ? Math.min(...marcas) : 8 * 60, fim = marcas.length ? Math.max(...marcas) : 20 * 60;
+  ini = Math.floor(ini / 60) * 60; fim = Math.min(24 * 60, Math.max(ini + 60, Math.ceil(fim / 60) * 60));
+  const linhas = (fim - ini) / MIN_LINHA;
+  const linha = t => (Math.max(ini, Math.min(fim, t)) - ini) / MIN_LINHA + 2;
+  // Faixas (lanes) por dia: atendimentos que se cruzam ficam lado a lado.
+  const faixasDia = {};
+  for (const d of dias) {
+    const doDia = evs.filter(a => a.data === d).sort((x, y) => x.inicio.localeCompare(y.inicio));
+    const fins = [];
+    for (const a of doDia) {
+      let k = fins.findIndex(f => f <= minDe(a.inicio));
+      if (k < 0) { k = fins.length; fins.push(0); }
+      fins[k] = minDe(a.fim);
+      a._faixa = k;
+    }
+    faixasDia[d] = { lista: doDia, n: Math.max(1, fins.length) };
+  }
+  let col = 2;
+  const colDia = {};
+  for (const d of dias) { colDia[d] = col; col += faixasDia[d].n; }
+  const grade = el("div", { class: "grade-agenda grade-semana", "data-grade-semana": d0 });
+  grade.style.setProperty("--linhas", String(linhas));
+  grade.style.gridTemplateColumns = `var(--col-horas) ${dias.map(d => { const n = faixasDia[d].n; return `repeat(${n}, minmax(calc(var(--col-dia) / ${n}), ${(1 / n).toFixed(4)}fr))`; }).join(" ")}`;
+  const filhos = [el("div", { class: "grade-canto" })];
+  for (let h = ini; h < fim; h += 60) filhos.push(posicionar(el("div", { class: "grade-hora", text: minParaHoraTela(h) }), linha(h), 60 / MIN_LINHA, 1));
+  const colunas = [];
+  const filtroProf = estadoAgenda.barbeiroId || (!veTodas() ? usuario.id : null);
+  for (const d of dias) {
+    const c0 = colDia[d], n = faixasDia[d].n;
+    const o = oc?.dias.find(x => x.data === d);
+    const ds = disps[d]?.profissionais || [];
+    const abertos = ds.filter(x => x.janela);
+    const marcados = faixasDia[d].lista.length;
+    const cab = el("button", { type: "button", class: `grade-cab grade-cab-dia ${d === ag.hoje ? "hoje" : ""}`, "data-dia-grade": d, onclick: () => { estadoAgenda.data = d; estadoAgenda.visao = "dia"; comCarga(telaAgenda); } },
+      el("span", { class: "dia-nome", text: DIAS_CURTO[diaDaSemana(d)] }),
+      el("span", { class: "dia-num", text: d.slice(8) }),
+      !abertos.length ? el("small", { text: "fechado" })
+        : el("small", {}, `${marcados} marc.`, o && !o.passado ? el("span", { class: "so-largo", text: ` · ${o.livres} livres` }) : null));
+    const cabPos = posicionar(cab, 1, 1, c0);
+    cabPos.style.gridColumn = `${c0} / span ${n}`;
+    filhos.push(cabPos);
+    colunas.push({ el: cab, data: d, barbeiroId: null, nome: `${DIAS_CURTO[diaDaSemana(d)]} ${d.slice(8)}` });
+    const fundo = posicionar(el("div", { class: `grade-fundo ${d === ag.hoje ? "hoje" : ""}` }), 2, linhas, c0);
+    fundo.style.gridColumn = `${c0} / span ${n}`;
+    filhos.push(fundo);
+    // Fora do expediente (de todos os profissionais mostrados) e dia fechado.
+    const faixa = (a, b, txt) => { if (b > a) { const f = posicionar(el("div", { class: "grade-fora", text: b - a >= 60 ? txt : "" }), linha(a), (Math.min(b, fim) - Math.max(a, ini)) / MIN_LINHA, c0); f.style.gridColumn = `${c0} / span ${n}`; filhos.push(f); } };
+    if (!abertos.length) faixa(ini, fim, disps[d] ? "Fechado" : "");
+    else {
+      const jIni = Math.min(...abertos.map(x => minDe(x.janela.ini))), jFim = Math.max(...abertos.map(x => minDe(x.janela.fim)));
+      faixa(ini, jIni, ""); faixa(jFim, fim, "");
+    }
+    // Toque no espaço livre do dia: marcar (de meia em meia hora, dentro do expediente, de hoje em diante).
+    if (abertos.length && d >= ag.hoje) {
+      const jIni = Math.min(...abertos.map(x => minDe(x.janela.ini))), jFim = Math.max(...abertos.map(x => minDe(x.janela.fim)));
+      for (let t = jIni; t < jFim; t += 30) {
+        const b = posicionar(el("button", { type: "button", class: "grade-livre", "data-hora": minParaHoraTela(t), "aria-label": `Marcar ${dataBR(d)} ${minParaHoraTela(t)}`,
+          onclick: () => janelaMarcar(ag, { data: d, hora: minParaHoraTela(t), ...(filtroProf ? { barbeiroId: filtroProf } : {}) }) }, el("span", { class: "mais", text: "+" })), linha(t), 30 / MIN_LINHA, c0);
+        b.style.gridColumn = `${c0} / span ${n}`;
+        filhos.push(b);
+      }
+    }
+    for (const a of faixasDia[d].lista) {
+      const dur = minDe(a.fim) - minDe(a.inicio);
+      const card = posicionar(el("button", { type: "button", class: `grade-evento ${a.situacao} cor-${corDe[a.barbeiroId]} ${dur < 30 ? "curto" : dur < 45 ? "medio" : ""}`, "data-evento": a.cliente.nome,
+        title: `${a.inicio}–${a.fim} · ${a.cliente.nome} · ${a.barbeiroNome || ""} · ${a.servicos.map(s => s.nome).join(" + ")}`,
+        "data-arrastavel": podeArrastar(a) ? "1" : null,
+        onclick: ev => { if (ev.currentTarget.dataset.arrastou) return; janelaAtendimento(a, varios); } },
+        el("span", { class: "ev-linha" }, el("span", { class: "ev-hora", text: `${a.inicio}${a.situacao === "finalizado" ? " ✓" : ""}` }), varios ? el("span", { class: "ev-prof", text: iniciais(a.barbeiroNome || "") }) : null),
+        dur >= 30 ? el("strong", { class: "ev-cliente", text: a.cliente.nome }) : null,
+        dur >= 60 ? el("span", { class: "ev-servico", text: a.servicos.map(s => s.nome).join(" + ") }) : null), linha(minDe(a.inicio)), dur / MIN_LINHA, c0 + a._faixa);
+      card._agendamento = a;
+      filhos.push(card);
+    }
+  }
+  if (dias.includes(ag.hoje)) {
+    const agora = new Date(Date.now() - 3 * 3600 * 1000);
+    const m = agora.getUTCHours() * 60 + agora.getUTCMinutes();
+    if (m >= ini && m <= fim) { const l = posicionar(el("div", { class: "grade-agora", "aria-hidden": "true" }), linha(m), 1, colDia[ag.hoje]); l.style.gridColumn = `${colDia[ag.hoje]} / span ${faixasDia[ag.hoje].n}`; filhos.push(l); }
+  }
+  grade.append(...filhos);
+  ativarArrastar(grade, { ini, colunas });
+  const legenda = varios ? el("div", { class: "grade-legenda" }, profs.map(p => el("span", { class: `leg-prof cor-${corDe[p.id]}` }, el("i"), p.nome.split(" ")[0]))) : null;
+  return el("div", { class: "grade-envolve" },
+    legenda,
+    el("p", { class: "suave dica-arrastar", text: "Toque no dia para abrir o Dia. Para mudar um horário, segure o cartão e arraste." }),
+    el("div", { class: "grade-rolagem" }, grade));
+}
+
+// ---------- MÊS (17/11/2026): calendário com ocupação e os atendimentos de cada dia ----------
+function calendarioMesNovo(oc, ag, ym, irPara, profs) {
+  const porData = Object.fromEntries(oc.dias.map(d => [d.data, d]));
+  const corDe = Object.fromEntries(profs.map((p, i) => [p.id, i % CORES_PROF]));
+  const primeiro = `${ym}-01`;
+  const vazios = diaDaSemana(primeiro);
+  const ultimo = Number(ultimoDiaMes(ym).slice(8));
+  const hoje = hojeLocal();
+  const evsDia = d => ag.agendamentos.filter(a => a.data === d && (a.situacao === "agendado" || a.situacao === "finalizado")).sort((x, y) => x.inicio.localeCompare(y.inicio));
+  const celulas = [];
+  for (let i = 0; i < vazios; i++) celulas.push(el("span", { class: "mes-dia vazio-cal", "aria-hidden": "true" }));
+  let totalMarc = 0, totalLivres = 0, cheios = 0;
+  for (let n = 1; n <= ultimo; n++) {
+    const data = `${ym}-${String(n).padStart(2, "0")}`;
+    const d = porData[data] || { status: "fechado", livres: 0, agendados: 0 };
+    const evs = evsDia(data);
+    totalMarc += evs.length; if (!d.passado) totalLivres += d.livres || 0; if (d.status === "cheio" && !d.passado) cheios++;
+    const ocup = evs.length + (d.passado ? 0 : d.livres || 0);
+    const pctOcup = ocup ? Math.round((evs.length / ocup) * 100) : 0;
+    const barra = el("progress", { class: `ocupacao ${d.status}`, max: "100", value: String(d.status === "fechado" ? 0 : pctOcup), "aria-label": `Ocupação ${pctOcup}%` });
+    celulas.push(el("button", {
+      type: "button", class: `mes-dia dia-cal ${d.status} ${d.passado ? "passado" : ""} ${data === hoje ? "hoje" : ""}`,
+      "data-dia": data, "data-status": d.status, "aria-label": `${dataBR(data)}: ${evs.length} marcado(s)${d.status === "fechado" ? ", fechado" : `, ${d.livres || 0} livre(s)`}`,
+      onclick: () => irPara(data, "dia")
+    },
+      el("span", { class: "mes-topo" }, el("span", { class: "num", text: String(n) }),
+        d.status === "fechado" ? el("span", { class: "mes-tag", text: "fechado" }) : evs.length ? el("span", { class: "mes-qtd", text: String(evs.length) }) : null),
+      d.status === "fechado" ? null : barra,
+      el("span", { class: "mes-evs" }, evs.slice(0, 3).map(a => el("span", { class: `mes-ev cor-${corDe[a.barbeiroId] ?? 0} ${a.situacao}` }, el("i"), `${a.inicio} ${a.cliente.nome.split(" ")[0]}`)),
+        evs.length > 3 ? el("span", { class: "mes-mais", text: `+${evs.length - 3} mais` }) : null),
+      d.status !== "fechado" && !d.passado ? el("span", { class: "mes-livres", text: d.livres ? `${d.livres} livres` : "cheio" }) : null));
+  }
+  const resumo = el("div", { class: "mes-resumo" },
+    el("div", {}, el("strong", { text: String(totalMarc) }), el("span", { text: "marcados no mês" })),
+    el("div", {}, el("strong", { text: String(totalLivres) }), el("span", { text: "horários livres (de hoje em diante)" })),
+    el("div", {}, el("strong", { text: String(cheios) }), el("span", { text: "dias cheios" })));
+  return el("div", { class: "mes-novo" }, resumo,
+    el("div", { class: "calendario mes-calendario" }, DIAS_CURTO.map(x => el("span", { class: "cal-semana", text: x })), celulas));
+}
+
+// Grade (horas × colunas) ou Lista: vale para Dia e Semana; a escolha fica guardada no aparelho.
+function alternaModoAgenda() {
+  return el("div", { class: "alterna modo-dia", role: "group", "aria-label": "Jeito de ver a agenda" },
+    [["grade", "Grade"], ["lista", "Lista"]].map(([k, t]) => botao(t, () => {
+      estadoAgenda.modoDia = k; try { localStorage.setItem("4blade.agendaModo", k); } catch { /* sem espaço */ }
+      comCarga(telaAgenda);
+    }, `pequeno ${estadoAgenda.modoDia === k ? "ativo" : ""}`)));
+}
 
 function itensDoDia(ag, data, profId, mostrarNome = false) {
   const lista = [

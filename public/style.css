@@ -1028,3 +1028,73 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
   .grade-cab-txt small { white-space: normal; }
   .grade-evento { margin: 1px 3px; padding-left: 6px; padding-right: 6px; }
 }
+
+/* ---------- Semana em grade, arrastar e mês (17/11/2026) ---------- */
+.cor-0 { --c: #2a78d6; } .cor-1 { --c: #eb6834; } .cor-2 { --c: #0f9d8f; } .cor-3 { --c: #8b5cf6; } .cor-4 { --c: #db2777; } .cor-5 { --c: #65a30d; }
+:root[data-tema="escuro"] .cor-0 { --c: #3987e5; } :root[data-tema="escuro"] .cor-1 { --c: #d95926; }
+.grade-semana { --col-horas: 50px; --col-dia: 112px; }
+.grade-cab-dia { flex-direction: column; align-items: center; justify-content: center; gap: 0; border: 0; border-left: 1px solid var(--borda); border-bottom: 1px solid var(--borda);
+  background: none; font: inherit; color: var(--texto); cursor: pointer; padding: 4px 2px; }
+.grade-cab-dia:hover { background: var(--neutro-2); }
+.grade-cab-dia .dia-nome { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--suave); letter-spacing: .04em; }
+.grade-cab-dia .dia-num { font-size: 19px; font-weight: 800; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; }
+.grade-cab-dia.hoje .dia-num { background: var(--dourado); color: var(--sobre-dourado); }
+.grade-cab-dia small { font-size: 10.5px; color: var(--suave); white-space: nowrap; }
+.grade-cab.alvo, .grade-cab-dia.alvo { background: var(--ok-fundo); box-shadow: inset 0 -3px 0 var(--ok); }
+.grade-fundo.hoje { background-color: var(--amarelo-fundo); }
+.grade-semana .grade-evento[class*="cor-"] { background: color-mix(in srgb, var(--c) 15%, var(--cartao)); border-left-color: var(--c); color: var(--texto); }
+.grade-semana .grade-evento.finalizado { opacity: .72; }
+.grade-semana .grade-evento { margin: 1px 2px; padding: 3px 5px; border-left-width: 3px; border-radius: 8px; }
+.grade-semana .grade-evento .ev-cliente { font-size: 12px; }
+.ev-prof { font-size: 10px; font-weight: 800; padding: 0 4px; border-radius: 6px; background: color-mix(in srgb, var(--c, var(--dourado)) 30%, transparent); }
+.grade-legenda { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--suave); }
+.leg-prof { display: inline-flex; align-items: center; gap: 6px; }
+.leg-prof i { width: 12px; height: 12px; border-radius: 4px; background: var(--c); }
+.dica-arrastar { margin: 0; font-size: 12.5px; }
+.grade-evento[data-arrastavel] { cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.grade-evento.segurando { transform: scale(.97); }
+.grade-evento.arrastando { z-index: 20; cursor: grabbing; opacity: .92; box-shadow: 0 12px 28px rgba(16, 24, 40, .28); transition: none; outline: 2px solid var(--ok); }
+@media (max-width: 699px) { .grade-semana { --col-horas: 40px; --col-dia: 84px; } .grade-cab-dia .dia-num { font-size: 16px; width: 28px; height: 28px; } .dica-arrastar { font-size: 12px; } }
+
+/* Mês */
+.mes-novo { display: grid; gap: 12px; }
+.mes-resumo { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.mes-resumo > div { background: var(--cartao); border-radius: 12px; box-shadow: var(--sombra); padding: 10px 12px; display: grid; }
+.mes-resumo strong { font-size: 22px; line-height: 1.1; }
+.mes-resumo span { font-size: 12px; color: var(--suave); }
+.mes-calendario { gap: 6px; }
+.mes-dia { display: flex; flex-direction: column; align-items: stretch; gap: 4px; text-align: left; padding: 6px 7px; min-height: 92px; border-radius: 12px; overflow: hidden; }
+.mes-dia.livre, .mes-dia.poucos, .mes-dia.cheio { background: var(--cartao); }
+.mes-dia.cheio { border-color: var(--cal-cheio-borda); }
+.mes-topo { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.mes-dia .num { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; font-size: 13.5px; }
+.mes-dia.hoje { outline: none; }
+.mes-dia.hoje .num { background: var(--dourado); color: var(--sobre-dourado); }
+.mes-qtd { font-size: 11px; font-weight: 800; min-width: 20px; height: 20px; padding: 0 6px; display: grid; place-items: center; border-radius: 999px; background: var(--info-fundo); color: var(--info-texto); }
+.mes-tag { font-size: 10.5px; color: var(--suave); }
+.ocupacao { width: 100%; height: 5px; appearance: none; -webkit-appearance: none; border: 0; border-radius: 3px; background: var(--neutro); overflow: hidden; }
+.ocupacao::-webkit-progress-bar { background: var(--neutro); border-radius: 3px; }
+.ocupacao::-webkit-progress-value { background: #22c55e; border-radius: 3px; }
+.ocupacao::-moz-progress-bar { background: #22c55e; border-radius: 3px; }
+.ocupacao.poucos::-webkit-progress-value { background: #f59e0b; } .ocupacao.poucos::-moz-progress-bar { background: #f59e0b; }
+.ocupacao.cheio::-webkit-progress-value { background: #ef4444; } .ocupacao.cheio::-moz-progress-bar { background: #ef4444; }
+.mes-evs { display: grid; gap: 2px; min-width: 0; }
+.mes-ev { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--texto); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.mes-ev i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+.mes-ev.finalizado { color: var(--suave); }
+.mes-mais { font-size: 10.5px; color: var(--suave); font-weight: 700; }
+.mes-livres { margin-top: auto; font-size: 10.5px; color: var(--ok); font-weight: 700; }
+.mes-dia.cheio .mes-livres { color: var(--erro); }
+@media (max-width: 699px) {
+  .mes-calendario { gap: 4px; }
+  .mes-dia { min-height: 64px; padding: 4px; gap: 3px; border-radius: 10px; }
+  .mes-dia .num { width: 22px; height: 22px; font-size: 12px; }
+  .mes-qtd { min-width: 16px; height: 16px; font-size: 10px; padding: 0 4px; }
+  .mes-evs { display: flex; flex-wrap: wrap; gap: 3px; }
+  .mes-ev { font-size: 0; gap: 0; } .mes-ev i { width: 7px; height: 7px; }
+  .mes-mais { font-size: 9.5px; }
+  .mes-livres, .mes-tag { font-size: 9.5px; }
+  .mes-resumo strong { font-size: 18px; } .mes-resumo span { font-size: 11px; }
+}
+@media (min-width: 1024px) { .mes-dia { min-height: 110px; } }
+@media (max-width: 699px) { .grade-cab-dia .so-largo { display: none; } }

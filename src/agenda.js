@@ -66,7 +66,7 @@ async function listarAgenda(ctx) {
   const { db, user, request } = ctx;
   const url = new URL(request.url);
   const data = exigirData(url.searchParams.get("data") || hojeBrasil());
-  const dias = url.searchParams.get("dias") === "7" ? 7 : 1;
+  const dias = Math.min(42, Math.max(1, parseInt(url.searchParams.get("dias") || "1", 10) || 1));   // dia, semana ou mês (até 6 semanas)
   const ate = somarDias(data, dias - 1);
   const gestao = isGestao(user);
   const todas = veTodasAgendas(user);
