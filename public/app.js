@@ -4272,6 +4272,7 @@ async function telaEquipe() {
     el("p", { class: "suave", text: [`Usuário: ${u.login}`, u.telefone ? fone(u.telefone) : null].filter(Boolean).join(" · ") }),
     atendePerfil(u.perfil)
       ? el("p", { class: "suave", text: `Comissão: ${pct(u.comissaoServicoBp)} em serviços · ${pct(u.comissaoProdutoBp)} em produtos` }) : null,
+    u.salarioCentavos ? el("p", { class: "suave", "data-teste": "salario-base", text: `Salário base: ${reais(u.salarioCentavos)}` }) : null,
     !u.ativo && u.motivoDesativacao ? el("p", { class: "suave", text: `Motivo: ${u.motivoDesativacao}` }) : null,
     !u.podeGerenciar && u.id === usuario.id && (u.perfil === "gerente" || u.perfil === "proprietario")
       ? el("div", { class: "item-acoes" },
@@ -4316,6 +4317,16 @@ function lerComissoes(form) {
   return { comissaoServicoBp: s, comissaoProdutoBp: p };
 }
 
+// Salário base (opcional, 17/11/2026): entra no cálculo de custos e no Pagamento da equipe.
+const campoSalarioBase = (u = null) => campo("Salário base (R$) — opcional", { name: "salBase", inputmode: "decimal", placeholder: "0,00",
+  value: u && u.salarioCentavos ? centavosParaTexto(u.salarioCentavos) : "" }, "Salário fixo por mês. Serve para calcular o custo da equipe. Deixe em branco se for só comissão.");
+function lerSalarioBase(form, obrigatorioZero = false) {
+  const t = (form.salBase?.value || "").trim();
+  if (!t) return obrigatorioZero ? { salarioCentavos: 0 } : {};
+  const v = paraCentavos(t);
+  if (v === null || v < 0) throw new Error("Salário base inválido. Exemplo: 1500,00");
+  return { salarioCentavos: v };
+}
 function formUsuario(perfis) {
   const blocoComissao = camposComissao();
   const form = el("form", { class: "cartao" },
@@ -4325,6 +4336,7 @@ function formUsuario(perfis) {
     campo("Usuário de acesso", { name: "login", required: true, autocapitalize: "none", spellcheck: "false", autocomplete: "off" }, "Minúsculas, sem espaço. Ex.: pedro.silva"),
     campo("Telefone (opcional)", { name: "telefone", inputmode: "tel", autocomplete: "off" }),
     blocoComissao,
+    campoSalarioBase(),
     el("button", { type: "submit", class: "botao principal", text: "Criar acesso" }));
   const ajustar = () => { blocoComissao.hidden = form.perfil.value === "caixa"; };
   form.perfil.addEventListener("change", ajustar);
@@ -4335,7 +4347,8 @@ function formUsuario(perfis) {
       const corpo = {
         perfil: form.perfil.value, nome: form.nome.value, login: form.login.value.trim().toLowerCase(),
         telefone: form.telefone.value || undefined,
-        ...(form.perfil.value === "caixa" ? {} : lerComissoes(form))
+        ...(form.perfil.value === "caixa" ? {} : lerComissoes(form)),
+        ...lerSalarioBase(form)
       };
       const r = await api("/usuarios", { metodo: "POST", corpo });
       await mostrarSenha(r.usuario.login, r.senhaProvisoria, r.usuario.nome, { nome: r.usuario.nome, telefone: r.usuario.telefone });
@@ -4350,13 +4363,16 @@ function janelaUsuario(u) {
   return abrirJanela(`Editar ${u.nome}`, [
     campo("Nome", { name: "nome", value: u.nome, required: true }),
     campo("Telefone", { name: "telefone", value: u.telefone ? fone(u.telefone) : "", inputmode: "tel" }),
-    atendeAgenda ? camposComissao(u) : null
+    atendeAgenda ? camposComissao(u) : null,
+    // salário: o dono define o de todos (inclusive o próprio); o gerente, de quem ele gerencia
+    u.id !== usuario.id || usuario.perfil === "proprietario" ? campoSalarioBase(u) : null
   ], {
     ok: "Salvar",
     aoConfirmar: async form => {
       await api("/usuarios/alterar", {
         metodo: "POST",
-        corpo: { id: u.id, nome: form.nome.value, telefone: form.telefone.value || null, ...(atendeAgenda ? lerComissoes(form) : {}) }
+        corpo: { id: u.id, nome: form.nome.value, telefone: form.telefone.value || null, ...(atendeAgenda ? lerComissoes(form) : {}),
+          ...(form.salBase ? lerSalarioBase(form, Boolean(u.salarioCentavos)) : {}) }
       });
       avisar("Dados salvos.");
       telaEquipe();

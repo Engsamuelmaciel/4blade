@@ -64,6 +64,27 @@ describe("pagamento da equipe", () => {
     void b;
   });
 
+  test("salário base no cadastro da equipe (opcional) e na edição; aparece no pagamento da equipe", async () => {
+    const amb = await cenario("eqc");
+    const { post, get, ger, b } = amb;
+    const r = await post("/api/usuarios", ger.token, { perfil: "barbeiro", nome: "Novo Fictício", login: "novo.eqc", comissaoServicoBp: 4000, comissaoProdutoBp: 0, salarioCentavos: 180000 });
+    assert.equal(r.status, 201, JSON.stringify(r.dados));
+    assert.equal(r.dados.usuario.salarioCentavos, 180000);
+    const sem = await post("/api/usuarios", ger.token, { perfil: "caixa", nome: "Sem Salário", login: "sem.eqc" });
+    assert.equal(sem.dados.usuario.salarioCentavos, 0, "opcional");
+    assert.equal((await post("/api/usuarios", ger.token, { perfil: "caixa", nome: "Erro", login: "erro.eqc", salarioCentavos: -1 })).status, 400);
+    let q = (await get(`/api/equipe/pagamento?mes=${MES}`, ger.token)).dados;
+    assert.equal(q.pessoas.find(x => x.id === r.dados.usuario.id).salario.valorCentavos, 180000);
+    const alt = await post("/api/usuarios/alterar", ger.token, { id: r.dados.usuario.id, salarioCentavos: 190000 });
+    assert.equal(alt.status, 200, JSON.stringify(alt.dados));
+    assert.equal(alt.dados.usuario.salarioCentavos, 190000);
+    assert.equal((await get("/api/usuarios", ger.token)).dados.usuarios.find(u => u.id === r.dados.usuario.id).salarioCentavos, 190000);
+    // gerente não muda o próprio salário pela equipe
+    assert.equal((await post("/api/usuarios/alterar", ger.token, { id: ger.id, salarioCentavos: 1 })).status, 403);
+    // o dono define o pró-labore dele
+    assert.equal((await post("/api/usuarios/alterar", b.prop, { id: (await get("/api/usuarios", b.prop)).dados.usuarios.find(u => u.perfil === "proprietario").id, salarioCentavos: 300000 })).status, 200);
+  });
+
   test("pagar com dinheiro do caixa vira sangria; permissões; isolamento", async () => {
     const amb = await cenario("eq2");
     const { post, get, ger, barb, cx } = amb;

@@ -20,6 +20,17 @@ const barbeariaDaSessao = ctx => ({
   barbeiros_adicionais: ctx.user.barbearia_adicionais
 });
 
+// Salário base (opcional): vazio/ausente = não mexe; número ≥ 0 em centavos.
+function lerSalario(v) {
+  if (v === undefined || v === null || v === "") return undefined;
+  if (!Number.isInteger(v) || v < 0 || v > 100000000) throw new HttpError("Salário base inválido.", 400);
+  return v;
+}
+const comandoSalario = (ctx, usuarioId, valor) => ctx.db.prepare(`INSERT INTO usuarios_salarios (usuario_id, barbearia_id, salario_centavos, atualizado_por) VALUES (?, ?, ?, ?)
+  ON CONFLICT(usuario_id) DO UPDATE SET salario_centavos = excluded.salario_centavos, atualizado_em = CURRENT_TIMESTAMP, atualizado_por = excluded.atualizado_por`)
+  .bind(usuarioId, ctx.barbeariaId, valor, ctx.user.id);
+const LER_COM_SALARIO = "SELECT usuarios.*, (SELECT s.salario_centavos FROM usuarios_salarios s WHERE s.usuario_id = usuarios.id) AS salario_centavos FROM usuarios WHERE id = ? AND barbearia_id = ?";
+
 function usuarioPublico(u, quemVe) {
   return {
     id: u.id,
@@ -32,6 +43,7 @@ function usuarioPublico(u, quemVe) {
     ativo: Boolean(u.ativo),
     motivoDesativacao: u.motivo_desativacao || null,
     trocaPendente: Boolean(u.trocar_senha),
+    salarioCentavos: Number(u.salario_centavos || 0),   // salário base (opcional; 17/11/2026), usado nos custos e no pagamento da equipe
     criadoEm: u.criado_em,
     podeGerenciar: u.id !== quemVe.id && podeGerenciarPerfil(quemVe, u.perfil)
   };
@@ -67,7 +79,8 @@ export async function rotasUsuarios(ctx, path, method) {
 
   if (path === "/usuarios" && method === "GET") {
     const r = await db.prepare(`
-      SELECT * FROM usuarios WHERE barbearia_id = ?
+      SELECT usuarios.*, (SELECT s.salario_centavos FROM usuarios_salarios s WHERE s.usuario_id = usuarios.id) AS salario_centavos
+      FROM usuarios WHERE barbearia_id = ?
       ORDER BY ativo DESC, CASE perfil WHEN 'proprietario' THEN 0 WHEN 'gerente' THEN 1 WHEN 'barbeiro' THEN 2 ELSE 3 END, nome
     `).bind(ctx.barbeariaId).all();
     return json({ usuarios: r.results.map(u => usuarioPublico(u, user)), vagas: await vagas(ctx) });
@@ -90,6 +103,7 @@ export async function rotasUsuarios(ctx, path, method) {
       if (!telefone) return fail("Telefone inválido (DDD + número).");
     }
     const com = lerComissoes(input, perfil);
+    const salario = lerSalario(input.salarioCentavos);
     if (await db.prepare("SELECT 1 FROM usuarios WHERE login = ?").bind(login).first()) {
       return fail("Esse usuário de acesso já existe. Escolha outro.", 409);
     }
@@ -107,10 +121,11 @@ export async function rotasUsuarios(ctx, path, method) {
     if (ins.meta.changes !== 1) {
       return fail(`Limite do plano atingido: ${limite} ${perfil}(s) ativo(s). Desative alguém ou mude de plano.`, 409);
     }
-    await auditoria(ctx, "usuario_criado", id, {
-      depois: { login, nome, telefone, perfil, ...com }
-    }).run();
-    const novo = await db.prepare("SELECT * FROM usuarios WHERE id = ? AND barbearia_id = ?").bind(id, ctx.barbeariaId).first();
+    await db.batch([
+      auditoria(ctx, "usuario_criado", id, { depois: { login, nome, telefone, perfil, ...com, ...(salario !== undefined ? { salario } : {}) } }),
+      ...(salario !== undefined ? [comandoSalario(ctx, id, salario)] : [])
+    ]);
+    const novo = await db.prepare(LER_COM_SALARIO).bind(id, ctx.barbeariaId).first();
     return json({ usuario: usuarioPublico(novo, user), senhaProvisoria: senha }, 201);
   }
 
@@ -131,6 +146,9 @@ export async function rotasUsuarios(ctx, path, method) {
     const input = await readJson(request);
     const alvo = await alvoGerenciavel(input.id, { proprioDono: true });
     if (alvo.id === user.id && input.ativo !== undefined) return fail("Você não pode desativar o seu próprio acesso.", 403);
+    const salarioNovo = lerSalario(input.salarioCentavos);
+    const salarioAntes = Number((await db.prepare("SELECT salario_centavos FROM usuarios_salarios WHERE usuario_id = ?").bind(alvo.id).first())?.salario_centavos || 0);
+    const mudaSalario = salarioNovo !== undefined && salarioNovo !== salarioAntes;
     const novo = {
       nome: alvo.nome,
       telefone: alvo.telefone,
@@ -159,7 +177,7 @@ export async function rotasUsuarios(ctx, path, method) {
       comissao_produto_bp: Number(alvo.comissao_produto_bp), ativo: Number(alvo.ativo)
     };
     const dif = diferenca(antes, novo);
-    if (!dif.mudou) return fail("Nada foi alterado.");
+    if (!dif.mudou && !mudaSalario) return fail("Nada foi alterado.");
     const desativando = alvo.ativo && !novo.ativo;
     const reativando = !alvo.ativo && novo.ativo;
     const motivo = desativando || reativando ? exigirMotivo(input.motivo) : (textoLimpo(input.motivo, 3, 300) || null);
@@ -186,13 +204,17 @@ export async function rotasUsuarios(ctx, path, method) {
       auditoria(ctx, desativando ? "usuario_desativado" : reativando ? "usuario_reativado" : "usuario_alterado",
         alvo.id, { motivo, antes: dif.antes, depois: dif.depois })
     ];
+    if (mudaSalario) {
+      comandos.push(comandoSalario(ctx, alvo.id, salarioNovo),
+        auditoria(ctx, "salario_alterado", alvo.id, { antes: { salario: salarioAntes }, depois: { salario: salarioNovo } }));
+    }
     if (desativando) {
       comandos.push(db.prepare(
         "UPDATE sessoes SET revogado_em = CURRENT_TIMESTAMP WHERE usuario_id = ? AND revogado_em IS NULL"
       ).bind(alvo.id));
     }
     await db.batch(comandos);
-    const depois = await db.prepare("SELECT * FROM usuarios WHERE id = ? AND barbearia_id = ?").bind(alvo.id, ctx.barbeariaId).first();
+    const depois = await db.prepare(LER_COM_SALARIO).bind(alvo.id, ctx.barbeariaId).first();
     return json({ usuario: usuarioPublico(depois, user) });
   }
 

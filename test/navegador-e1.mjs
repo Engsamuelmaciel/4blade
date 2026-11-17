@@ -92,7 +92,7 @@ async function rodar(tela) {
     return s;
   };
   const fecharJanela = () => page.click("dialog[open] button[type=submit]");
-  const criarPessoa = async (perfil, nome, login, comServ, comProd, printarSenha = false) => {
+  const criarPessoa = async (perfil, nome, login, comServ, comProd, printarSenha = false, salario = null) => {
     await page.selectOption("#c-perfil", perfil);
     await page.fill("#c-nome", nome);
     await page.fill("#c-login", login);
@@ -100,6 +100,7 @@ async function rodar(tela) {
       await page.fill("#c-comServ", comServ);
       await page.fill("#c-comProd", comProd);
     }
+    if (salario) await page.fill("#c-salBase", salario);   // salário base (opcional)
     await page.click("button:has-text('Criar acesso')");
     const senha = await lerSenhaDaJanela();
     if (printarSenha) await print("senha-provisoria-da-equipe", false);
@@ -191,7 +192,8 @@ async function rodar(tela) {
     await page.waitForSelector("text=Nova pessoa");
     const senhaGer = await criarPessoa("gerente", "Gabriel Gerente", "gabriel.navalha", "40", "10");
     const senhaBarb = await criarPessoa("barbeiro", "Bruno Barbeiro", "bruno.navalha", "50", "10", true);
-    const senhaCx = await criarPessoa("caixa", "Camila Caixa", "camila.navalha");
+    const senhaCx = await criarPessoa("caixa", "Camila Caixa", "camila.navalha", undefined, undefined, false, "1.320,00");
+    assert.match(await page.textContent('[data-usuario="camila.navalha"] [data-teste=salario-base]'), /Salário base: R\$\s?1\.320,00/);
     // limite do plano Básico: 2 barbeiros; o 3º é recusado pelo servidor (gerentes e caixas sem limite)
     await criarPessoa("barbeiro", "Diego Barbeiro", "diego.navalha", "50", "10");
     await page.waitForSelector('[data-vaga="barbeiro"] >> text=2/2');
