@@ -259,6 +259,7 @@ async function rodar(tela) {
     await ir(page, "Contador e dados");
     await page.waitForSelector(`[data-envio="${dia(4).slice(0, 7)}"] >> text=Alterado depois do envio`);
     await print("gerente-contador-aviso-alteracao");
+    await page.click("[data-teste=copia-dados] > summary");
     const planilha = await baixados(() => page.click(".botoes-planilha button:has-text('Clientes')"), 1);
     assert.match(planilha[0][0], /^4blade-clientes-\d{4}-\d{2}-\d{2}\.csv$/);
     assert.match(planilha[0][1].toString("utf8"), /^﻿Nome;Telefone/);

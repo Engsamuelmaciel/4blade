@@ -313,17 +313,18 @@ async function marcar(ctx) {
       erro(b ? "Esse horário está bloqueado na agenda do profissional." : "Já existe outro atendimento nesse horário para esse profissional.", 409);
     }
   }
-  // Link pronto para confirmar o horário com o cliente pelo WhatsApp (se ele tiver telefone).
-  let confirmacao = null;
+  // Link pronto para confirmar o horário com o cliente pelo WhatsApp. Sem telefone: abre o WhatsApp para escolher o contato.
+  let confirmacao = null, confirmacaoComNumero = false;
   if (primeiro && criadosSet.has(primeiro[1])) {
     const novo = await agendamentoPermitido(ctx, primeiro[1]);
-    confirmacao = linksWhatsapp(novo, { confirmacao: (await carregarModelos(db, ctx.barbeariaId)).confirmacao }, user.barbearia_nome)?.confirmacao || null;
+    confirmacao = linksWhatsapp(novo, { confirmacao: (await carregarModelos(db, ctx.barbeariaId)).confirmacao }, user.barbearia_nome, { semNumero: true })?.confirmacao || null;
+    confirmacaoComNumero = Boolean(telefoneReal(novo.cliente_telefone));
   }
   return json({
     agendamento: primeiro && criadosSet.has(primeiro[1])
       ? { id: primeiro[1], inicio: momento(data, ini), fim: momento(data, fim), barbeiroId: prof.id, cliente }
       : null,
-    whatsappConfirmacao: confirmacao,
+    whatsappConfirmacao: confirmacao, whatsappComNumero: confirmacaoComNumero,
     ...(rep ? {
       serie: {
         id: serieId, intervaloSemanas: rep.intervaloSemanas, diaSemana: NOME_DIA_SEMANA[diaSemana(data)], hora: input.hora,
@@ -567,6 +568,11 @@ async function editar(ctx) {
   conferirHorario(await regrasDoDia(db, ctx.barbeariaId, a.barbeiro_id, a.data), ini, fim);
   const comandos = [];
   const cliente = input.cliente ? await clienteDaMarcacao(ctx, input.cliente, comandos) : { id: a.cliente_id, nome: a.cliente_nome };
+  // Trocou para outro cliente já cadastrado: mesmas regras de marcar (bloqueado não; nota vencida pede o aceite).
+  if (!cliente.novo && cliente.id !== a.cliente_id) {
+    const nv = await conferirClienteParaMarcar(ctx, cliente.id, input.aceiteNotaVencida);
+    if (nv) comandos.push(auditoria(ctx, "marcou_com_nota_vencida", cliente.id, { totalCentavos: nv.totalCentavos, desde: nv.desde, agendamento: a.id, edicao: true }));
+  }
   const termino = momento(a.data, fim);
   const antes = (await db.prepare("SELECT servico_id, nome FROM agendamento_servicos WHERE agendamento_id = ? AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = agendamento_servicos.id) ORDER BY rowid").bind(a.id).all()).results;
   const marca = new Date().toISOString();

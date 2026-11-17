@@ -31,7 +31,7 @@ export async function rotasMensagens(ctx, path, method) {
   exigirMensagens(ctx);
   const { db, user, request } = ctx;
 
-  // Clientes do dia: quem tem telefone pode ser escolhido.
+  // Clientes do dia: todos podem ser escolhidos; sem telefone, o link abre o WhatsApp para escolher o contato (17/11/2026).
   if (path === "/mensagens/clientes-do-dia" && method === "GET") {
     const data = exigirData(new URL(request.url).searchParams.get("data") || hojeBrasil());
     const lista = await horariosDoDia(ctx, data);
@@ -40,17 +40,17 @@ export async function rotasMensagens(ctx, path, method) {
       clientes: lista.map(a => ({
         agendamentoId: a.id, hora: a.inicio.slice(11, 16), situacao: a.situacao, cliente: a.cliente_nome,
         telefone: telefoneReal(a.cliente_telefone), barbeiro: a.barbeiro_nome, servicos: a.servicos_nomes || "",
-        podeReceber: Boolean(telefoneReal(a.cliente_telefone)) && Boolean(a.cliente_ativo)
+        podeReceber: Boolean(a.cliente_ativo), comNumero: Boolean(telefoneReal(a.cliente_telefone))
       }))
     });
   }
 
-  // Clientes cadastrados com telefone (para mandar mensagem a quem não tem horário no dia).
+  // Clientes cadastrados (para mandar mensagem a quem não tem horário no dia). Sem telefone também (escolhe o contato no WhatsApp).
   if (path === "/mensagens/contatos" && method === "GET") {
-    const r = await db.prepare(`SELECT id, nome, telefone FROM clientes WHERE barbearia_id = ? AND ativo = 1 AND telefone NOT LIKE 'sem:%'
+    const r = await db.prepare(`SELECT id, nome, telefone FROM clientes WHERE barbearia_id = ? AND ativo = 1
                                 AND id NOT IN (SELECT cliente_id FROM clientes_excluidos WHERE barbearia_id = ?) ORDER BY nome LIMIT 1000`)
       .bind(ctx.barbeariaId, ctx.barbeariaId).all();
-    return json({ contatos: r.results.map(c => ({ clienteId: c.id, nome: c.nome, telefone: telefoneReal(c.telefone) })).filter(c => c.telefone) });
+    return json({ contatos: r.results.map(c => ({ clienteId: c.id, nome: c.nome, telefone: telefoneReal(c.telefone) })) });
   }
 
   // Prepara o envio: guarda a mensagem e devolve um link wa.me por cliente, com o texto já personalizado.
@@ -66,8 +66,8 @@ export async function rotasMensagens(ctx, path, method) {
     if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100 || !ids.every(validId) || new Set(ids).size !== ids.length) erro("Escolha de 1 a 100 clientes.");
     const lista = await horariosDoDia(ctx, data, ids);
     if (lista.length !== ids.length) erro("Algum cliente escolhido não é deste dia. Atualize a lista.", 404);
-    const semFone = lista.filter(a => !telefoneReal(a.cliente_telefone) || !a.cliente_ativo);
-    if (semFone.length) erro(`Sem telefone (ou desativado): ${semFone.map(a => a.cliente_nome).join(", ")}.`);
+    const inativos = lista.filter(a => !a.cliente_ativo);
+    if (inativos.length) erro(`Cliente desativado: ${inativos.map(a => a.cliente_nome).join(", ")}.`);
     const id = crypto.randomUUID();
     const destinos = lista.map(a => ({ id: crypto.randomUUID(), a }));
     await db.batch([
@@ -80,7 +80,7 @@ export async function rotasMensagens(ctx, path, method) {
       envio: {
         id, data, total: destinos.length,
         destinos: destinos.map(d => ({
-          id: d.id, cliente: d.a.cliente_nome, hora: d.a.inicio.slice(11, 16),
+          id: d.id, cliente: d.a.cliente_nome, hora: d.a.inicio.slice(11, 16), comNumero: Boolean(telefoneReal(d.a.cliente_telefone)),
           link: linkWhatsapp(telefoneReal(d.a.cliente_telefone), preencherModelo(texto, camposMensagem(d.a, user.barbearia_nome)))
         }))
       }
@@ -112,8 +112,6 @@ async function enviarParaContatos(ctx, texto, ids) {
   const r = await db.prepare(`SELECT id, nome, telefone FROM clientes WHERE barbearia_id = ? AND ativo = 1 AND id IN (${ids.map(() => "?").join(",")})
                               AND id NOT IN (SELECT cliente_id FROM clientes_excluidos WHERE barbearia_id = ?)`).bind(ctx.barbeariaId, ...ids, ctx.barbeariaId).all();
   if (r.results.length !== ids.length) erro("Algum cliente escolhido não foi encontrado. Atualize a lista.", 404);
-  const semFone = r.results.filter(c => !telefoneReal(c.telefone));
-  if (semFone.length) erro(`Sem telefone: ${semFone.map(c => c.nome).join(", ")}.`);
   const id = crypto.randomUUID();
   const destinos = r.results.sort((a, b) => a.nome.localeCompare(b.nome)).map(c => ({ id: crypto.randomUUID(), c }));
   await db.batch([
@@ -125,7 +123,7 @@ async function enviarParaContatos(ctx, texto, ids) {
     envio: {
       id, total: destinos.length,
       destinos: destinos.map(d => ({
-        id: d.id, cliente: d.c.nome, hora: "",
+        id: d.id, cliente: d.c.nome, hora: "", comNumero: Boolean(telefoneReal(d.c.telefone)),
         link: linkWhatsapp(telefoneReal(d.c.telefone), preencherModelo(texto, { cliente: d.c.nome.split(" ")[0], barbearia: user.barbearia_nome }))
       }))
     }

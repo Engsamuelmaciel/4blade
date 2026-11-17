@@ -44,7 +44,7 @@ export async function rotasPromissorias(ctx, path, method) {
     const clientes = [...porCliente.values()].map(c => ({
       ...c,
       // Lembrete de cobrança pronto no WhatsApp (só se o cliente tiver telefone).
-      whatsapp: c.telefone ? linkWhatsapp(c.telefone, `Olá, ${c.cliente.split(" ")[0]}! Passando para lembrar da sua nota na ${user.barbearia_nome}: ${reais(c.totalCentavos)} (${c.notas.length} lançamento(s) desde ${c.desde.split("-").reverse().join("/")}). Obrigado!`) : null
+      whatsapp: linkWhatsapp(c.telefone, `Olá, ${c.cliente.split(" ")[0]}! Passando para lembrar da sua nota na ${user.barbearia_nome}: ${reais(c.totalCentavos)} (${c.notas.length} lançamento(s) desde ${c.desde.split("-").reverse().join("/")}). Obrigado!`), comNumero: Boolean(c.telefone)
     })).sort((a, b) => b.totalCentavos - a.totalCentavos);
     return json({ clientes, resumo: await resumoNotasAbertas(db, ctx.barbeariaId) });
   }

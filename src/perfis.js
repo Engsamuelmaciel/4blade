@@ -55,5 +55,5 @@ export const TELA_INICIAL = {
   proprietario: "inicio",
   gerente: "inicio",
   barbeiro: "inicio",
-  caixa: "caixa"
+  caixa: "visao-dia"   // 17/11/2026: o caixa entra na Visão do dia
 };

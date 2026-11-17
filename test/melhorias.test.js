@@ -336,14 +336,14 @@ describe("desconto na venda do caixa (pedido de 16/11/2026)", () => {
 });
 
 describe("enviar mensagem pelo WhatsApp para clientes do dia (pedido de 16/11/2026)", () => {
-  test("lista do dia, prepara links personalizados por cliente, marca aberto; sem telefone fica de fora; permissões e isolamento", async () => {
+  test("lista do dia, prepara links personalizados por cliente, marca aberto; sem telefone abre o WhatsApp para escolher o contato; permissões e isolamento", async () => {
     const amb = await cenario();
     const { post, get, ger, barb, cx, corte } = amb;
     const m1 = (await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "09:00", servicoIds: [corte.id], cliente: { telefone: "11 97000-0001", nome: "Davi Fictício", aceiteLgpd: true } })).dados.agendamento;
     const m2 = (await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "10:00", servicoIds: [corte.id], cliente: { telefone: "11 97000-0002", nome: "Enzo Fictício", aceiteLgpd: true } })).dados.agendamento;
     const m3 = (await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "11:00", servicoIds: [corte.id], cliente: { nome: "Sem Fone Fictício" } })).dados.agendamento;
     const lista = (await get(`/api/mensagens/clientes-do-dia?data=${AMANHA}`, cx.token)).dados.clientes;
-    assert.deepEqual(lista.map(c => [c.cliente, c.podeReceber]), [["Davi Fictício", true], ["Enzo Fictício", true], ["Sem Fone Fictício", false]]);
+    assert.deepEqual(lista.map(c => [c.cliente, c.podeReceber]), [["Davi Fictício", true], ["Enzo Fictício", true], ["Sem Fone Fictício", true]]);
     const texto = "Olá {cliente}! Seu horário é às {hora} com {barbeiro}.";
     const r = await post("/api/mensagens/envios", cx.token, { data: AMANHA, texto, agendamentoIds: [m1.id, m2.id] });
     assert.equal(r.status, 201, JSON.stringify(r.dados));
@@ -356,8 +356,13 @@ describe("enviar mensagem pelo WhatsApp para clientes do dia (pedido de 16/11/20
     assert.equal((await post("/api/mensagens/envios/aberto", cx.token, { destinoId: d1.id })).status, 200);
     assert.ok(amb.env.DB.raw.prepare("SELECT aberto_em FROM mensagens_livres_destinos WHERE id = ?").get(d1.id).aberto_em);
     assert.ok(amb.env.DB.raw.prepare("SELECT 1 FROM auditoria WHERE acao = 'mensagem_livre_preparada' AND alvo = ?").get(r.dados.envio.id));
-    // sem telefone: recusado; campo inexistente: recusado; vazio: recusado
-    assert.equal((await post("/api/mensagens/envios", cx.token, { data: AMANHA, texto, agendamentoIds: [m3.id] })).status, 400);
+    // sem telefone (17/11/2026): link sem número, com o texto pronto (nome e horário já preenchidos)
+    const s3 = await post("/api/mensagens/envios", cx.token, { data: AMANHA, texto, agendamentoIds: [m3.id] });
+    assert.equal(s3.status, 201, JSON.stringify(s3.dados));
+    assert.equal(s3.dados.envio.destinos[0].comNumero, false);
+    assert.match(s3.dados.envio.destinos[0].link, /^https:\/\/wa\.me\/\?text=/);
+    assert.match(decodeURIComponent(s3.dados.envio.destinos[0].link.split("text=")[1]), /^Olá Sem! Seu horário é às 11:00/);
+    // campo inexistente: recusado; vazio: recusado
     assert.equal((await post("/api/mensagens/envios", cx.token, { data: AMANHA, texto: "Oi {apelido}", agendamentoIds: [m1.id] })).status, 400);
     assert.equal((await post("/api/mensagens/envios", cx.token, { data: AMANHA, texto: "Oi", agendamentoIds: [] })).status, 400);
     // outro dia: o horário não é deste dia
@@ -650,9 +655,10 @@ describe("confirmação de horário e mensagem para clientes cadastrados (pedido
     const m = await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "09:00", servicoIds: [corte.id], cliente: { telefone: "11 97100-0001", nome: "Confirmado Fictício", aceiteLgpd: true } });
     assert.match(m.dados.whatsappConfirmacao, /^https:\/\/wa\.me\/5511971000001\?text=/);
     assert.match(decodeURIComponent(m.dados.whatsappConfirmacao), /Confirmado! Seu horário|Olá, Confirmado! Seu horário na .* está confirmado: \d\d\/\d\d às 09:00/);
-    // sem telefone: sem link
+    // sem telefone: link sem número (escolhe o contato no WhatsApp), com a mensagem pronta
     const s = await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "10:00", servicoIds: [corte.id], cliente: { nome: "Sem Fone Conf" } });
-    assert.equal(s.dados.whatsappConfirmacao, null);
+    assert.match(s.dados.whatsappConfirmacao, /^https:\/\/wa\.me\/\?text=.*10%3A00/);
+    assert.equal(s.dados.whatsappComNumero, false);
     // editar o modelo e restaurar
     assert.equal((await post("/api/modelos-mensagem/alterar", ger.token, { tipo: "confirmacao", texto: "Confirmado, {cliente}: {data} {hora}." })).status, 200);
     const ag = (await get(`/api/agenda?data=${AMANHA}`, cx.token)).dados.agendamentos.find(a => a.id === m.dados.agendamento.id);
@@ -661,10 +667,10 @@ describe("confirmação de horário e mensagem para clientes cadastrados (pedido
     const ag2 = (await get(`/api/agenda?data=${AMANHA}`, cx.token)).dados.agendamentos.find(a => a.id === ag.id);
     assert.equal(ag2.mensagens.at(-1).tipo, "confirmacao");
     assert.equal((await post("/api/modelos-mensagem/alterar", ger.token, { tipo: "confirmacao", restaurarPadrao: true })).status, 200);
-    // clientes cadastrados: lista só com telefone; envio para vários; campos de horário recusados
+    // clientes cadastrados: todos (sem telefone também); envio para vários; campos de horário recusados
     const c2 = (await post("/api/clientes", ger.token, { nome: "Contato Dois", telefone: "11 97100-0002", aceiteLgpd: true })).dados.cliente;
     const contatos = (await get("/api/mensagens/contatos", cx.token)).dados.contatos;
-    assert.ok(contatos.some(c => c.nome === "Contato Dois") && !contatos.some(c => c.nome === "Sem Fone Conf"));
+    assert.ok(contatos.some(c => c.nome === "Contato Dois") && contatos.some(c => c.nome === "Sem Fone Conf" && c.telefone === null));
     const idsC = contatos.filter(c => ["Contato Dois", "Confirmado Fictício"].includes(c.nome)).map(c => c.clienteId);
     assert.equal((await post("/api/mensagens/envios", cx.token, { texto: "Oi {cliente}, às {hora}", clienteIds: idsC })).status, 400);
     const env = await post("/api/mensagens/envios", cx.token, { texto: "Oi {cliente}! Promoção na {barbearia}.", clienteIds: idsC });

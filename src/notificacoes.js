@@ -189,17 +189,17 @@ async function visaoDoDia(ctx) {
     agenda: ags.results.map(a => ({
       id: a.id, hora: a.inicio.slice(11), fim: a.fim.slice(11), situacao: a.situacao, cliente: a.cliente, clienteId: a.cliente_id, barbeiro: a.barbeiro,
       ...(sinais.get(a.cliente_id) || {}),
-      whatsapp: telefoneReal(a.telefone) ? linkWhatsapp(telefoneReal(a.telefone), `Olá, ${primeiro(a.cliente)}! Seu horário hoje na ${nomeB} é às ${a.inicio.slice(11)} com ${primeiro(a.barbeiro)}. Te esperamos!`) : null
+      whatsapp: linkWhatsapp(telefoneReal(a.telefone), `Olá, ${primeiro(a.cliente)}! Seu horário hoje na ${nomeB} é às ${a.inicio.slice(11)} com ${primeiro(a.barbeiro)}. Te esperamos!`), comNumero: Boolean(telefoneReal(a.telefone))
     })),
     naoFechados: abertos.map(a => ({ id: a.id, data: a.data, hora: a.inicio.slice(11), cliente: a.cliente, barbeiro: a.barbeiro })),
     notasVencidas: notas.map(n => ({
       ...n, bloqueado: Boolean(sinais.get(n.clienteId)?.bloqueado),
-      whatsapp: n.telefone ? linkWhatsapp(n.telefone, `Olá, ${primeiro(n.cliente)}! Passando para lembrar da sua nota na ${nomeB}: ${reais(n.totalCentavos)} em aberto desde ${dataBR(n.desde)}. Podemos acertar na sua próxima visita ou por Pix? Obrigado!`) : null
+      whatsapp: linkWhatsapp(n.telefone, `Olá, ${primeiro(n.cliente)}! Passando para lembrar da sua nota na ${nomeB}: ${reais(n.totalCentavos)} em aberto desde ${dataBR(n.desde)}. Podemos acertar na sua próxima visita ou por Pix? Obrigado!`), comNumero: Boolean(n.telefone)
     })),
     faltas: faltas.results.map(f => ({
       id: f.id, data: f.data, hora: f.inicio.slice(11), cliente: f.cliente, clienteId: f.cliente_id, barbeiro: f.barbeiro,
       bloqueado: Boolean(sinais.get(f.cliente_id)?.bloqueado),
-      whatsapp: telefoneReal(f.telefone) ? linkWhatsapp(telefoneReal(f.telefone), `Olá, ${primeiro(f.cliente)}! Sentimos sua falta no horário de ${dataBR(f.data)} na ${nomeB}. Quer marcar um novo horário?`) : null
+      whatsapp: linkWhatsapp(telefoneReal(f.telefone), `Olá, ${primeiro(f.cliente)}! Sentimos sua falta no horário de ${dataBR(f.data)} na ${nomeB}. Quer marcar um novo horário?`), comNumero: Boolean(telefoneReal(f.telefone))
     })),
     produtosAVencer: produtos.map(p => ({ nome: p.nome, validade: p.validade, saldo: p.saldo, vencido: p.validade < hoje })),
     bloqueados: bloqueados.results.map(x => ({ clienteId: x.cliente_id, cliente: x.nome, motivo: x.motivo, desde: x.bloqueado_em.slice(0, 10) }))

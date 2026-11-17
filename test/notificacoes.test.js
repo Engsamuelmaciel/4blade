@@ -54,6 +54,24 @@ describe("nota vencida e bloqueio de cliente", () => {
     assert.equal(ag.cliente.notaVencida.dias, 30);
   });
 
+  test("editar horário trocando para cliente com nota vencida também pede o aceite; bloqueado é recusado", async () => {
+    const amb = await cenario("edit");
+    const { post, cx, barb, corte, cli } = amb;
+    await notaAntiga(amb, 31);
+    const outro = (await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "11:00", servicoIds: [corte.id], cliente: { nome: "Sem Nota Fictício" } })).dados.agendamento;
+    const pedido = { id: outro.id, servicoIds: [corte.id], cliente: { id: cli.id } };
+    const r = await post("/api/agenda/editar", cx.token, pedido);
+    assert.equal(r.status, 409);
+    assert.equal(r.dados.codigo, "nota_vencida");
+    assert.equal((await post("/api/agenda/editar", cx.token, { ...pedido, aceiteNotaVencida: true })).status, 200);
+    // mesmo cliente de novo (sem troca): não pergunta
+    assert.equal((await post("/api/agenda/editar", cx.token, { id: outro.id, servicoIds: [corte.id], observacao: "ok" })).status, 200);
+    await post("/api/clientes/bloquear", cx.token, { clienteId: cli.id, motivo: "Teste" });
+    const outro2 = (await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: AMANHA, hora: "12:00", servicoIds: [corte.id], cliente: { nome: "Outro Sem Nota" } })).dados.agendamento;
+    const b = await post("/api/agenda/editar", cx.token, { id: outro2.id, servicoIds: [corte.id], cliente: { id: cli.id }, aceiteNotaVencida: true });
+    assert.equal(b.dados.codigo, "cliente_bloqueado");
+  });
+
   test("nota com 29 dias ainda não está vencida", async () => {
     const amb = await cenario("n29");
     await notaAntiga(amb, 29);

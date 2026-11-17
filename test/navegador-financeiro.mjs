@@ -73,6 +73,7 @@ async function rodar(tela) {
   };
   const sair = async () => { await page.click("#btn-conta"); await page.click("#btn-sair"); await page.waitForSelector("text=Você saiu do sistema."); };
   const cartao = async id => (await page.textContent(`[data-cartao=${id}]`)).replace(/\s+/g, " ");
+  const abrirSecao = async id => { const d = page.locator(`[data-secao-fin=${id}]`); if (await d.getAttribute("open") === null) await d.locator(":scope > summary").click(); };
   const periodo = async nome => { await page.click(`.fin-controles .alterna button:has-text('${nome}')`); await pronto(); };
 
   try {
@@ -141,6 +142,8 @@ async function rodar(tela) {
 
     passo("movimentos: filtro Saídas");
     await periodo("Ano");
+    if (tela.movel) assert.equal(await page.locator("[data-secao-fin=movimentos]").getAttribute("open"), null, "no celular os blocos começam fechados");
+    await abrirSecao("movimentos");
     await page.locator(".fin-movs").scrollIntoViewIfNeeded();
     await page.click(".fin-movs .alterna button:has-text('Saídas')");
     const tipos = await page.locator(".fin-mov-lista li").evaluateAll(l => l.map(x => x.dataset.mov));

@@ -292,10 +292,12 @@ async function rodar(tela) {
     await sair();
 
     // ---------- CAIXA ----------
-    passo("caixa entra e abre direto na tela do caixa");
+    passo("caixa entra e abre direto na Visão do dia (17/11/2026); o Caixa fica no menu");
     await primeiroAcesso("camila.navalha", senhaCx, "Senha-Camila-2026");
+    await page.waitForSelector("[data-teste=visao-resumo]");
+    assert.match(page.url(), /#\/visao-dia$/);
+    await ir(page, "Caixa");
     await page.waitForSelector("[data-tela=caixa]");
-    assert.match(page.url(), /#\/caixa$/);
     await print("caixa-tela-inicial");
     await sair();
 
@@ -319,7 +321,7 @@ async function rodar(tela) {
     await page.waitForSelector('[data-barbearia="Barbearia Navalha Fictícia"] .etiqueta:has-text("Ativa")');
     await sair();
     await entrar("camila.navalha", "Senha-Camila-2026");
-    await page.waitForSelector("[data-tela=caixa]");
+    await page.waitForSelector("[data-teste=visao-resumo]");
 
     assert.deepEqual(problemas, [], `erros no console (CSP etc.): ${problemas.join(" | ")}`);
     passo("OK — nenhum erro no console (inclui bloqueios de CSP)");

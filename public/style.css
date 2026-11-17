@@ -1344,3 +1344,17 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
   .topo-conta-txt { display: none; }
 }
 .chips-quebra { flex-wrap: wrap; overflow: visible; }
+/* Relatório financeiro mais curto (17/11/2026): blocos que abrem ao tocar */
+.fin-mais { margin: 0 0 14px; }
+.fin-mais > summary, .fin-secao > summary { cursor: pointer; list-style: none; }
+.fin-mais > summary::-webkit-details-marker, .fin-secao > summary::-webkit-details-marker { display: none; }
+.fin-mais > summary { padding: 10px 14px; border-radius: 12px; background: var(--cartao); box-shadow: var(--sombra); font-weight: 700; font-size: 14px; color: var(--suave); }
+.fin-mais[open] > summary { margin-bottom: 10px; }
+.fin-mais > summary::before, .fin-secao > summary::after { content: "▸"; display: inline-block; margin-right: 8px; transition: transform .15s; }
+.fin-mais[open] > summary::before { transform: rotate(90deg); }
+.fin-secao > summary { display: flex; align-items: center; gap: 10px; }
+.fin-secao > summary::after { margin: 0 0 0 auto; order: 3; color: var(--suave); }
+.fin-secao[open] > summary { margin-bottom: 10px; }
+.fin-secao[open] > summary::after { transform: rotate(90deg); }
+.fin-secao-tit { font-weight: 800; font-size: 16px; }
+.fin-secao-res { color: var(--suave); font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; margin-left: auto; }

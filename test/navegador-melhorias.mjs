@@ -173,6 +173,10 @@ async function rodar(tela) {
     assert.ok(await page.locator("dialog[open] #c-cliNome").isVisible(), "nome aparece mesmo sem telefone");
     await page.fill("dialog[open] #c-cliNome", "Seu Zé Fictício");
     await ok();
+    // sem telefone: a confirmação também sai pelo WhatsApp, escolhendo o contato (17/11/2026)
+    await page.waitForSelector("dialog[open] >> text=Horário marcado");
+    assert.match(await page.textContent("dialog[open]"), /escolher contato/);
+    await page.click("dialog[open] button[type=submit]");
     await page.waitForSelector('[data-agendamento="Seu Zé Fictício"] >> text=sem telefone');
     await print("agenda-dia-com-fixo-e-sem-telefone");
     // sem telefone: os botões do WhatsApp abrem para escolher o contato (wa.me/?text=), já com a mensagem
@@ -199,6 +203,8 @@ async function rodar(tela) {
     await page.check("dialog[open] input[name=serv] >> nth=0");
     await page.fill("dialog[open] #c-cliNome", "Lançado Errado Fictício");
     await ok();
+    await page.waitForSelector("dialog[open] >> text=Horário marcado");   // sem telefone: confirmação pelo WhatsApp (escolher contato)
+    await page.click("dialog[open] button[type=submit]");
     await page.waitForSelector('[data-agendamento="Lançado Errado Fictício"]');
     await abrirHorarios(page, "Lançado Errado Fictício");
     const cartaoErr = '[data-agendamento="Lançado Errado Fictício"]';
@@ -255,6 +261,7 @@ async function rodar(tela) {
     const corte = servs.find(s => s.nome === "Corte");
     await chamar("/agenda", { data: HOJE, hora: "18:00", servicoIds: [corte.id], cliente: { telefone: "11 96666-5555", nome: "Gil Fila Fictício", aceiteLgpd: true } }, beto);
     await entrar("caixa.semana");
+    await ir(page, "Caixa");
     await page.waitForSelector(".pdv-topo");
     await page.waitForSelector('[data-cobrar="Gil Fila Fictício"]');
     const entradas0 = await page.textContent("[data-teste=entradas]");
@@ -368,6 +375,8 @@ async function rodar(tela) {
     await page.check("dialog[open] input[name=serv] >> nth=0");
     await page.fill("dialog[open] #c-cliNome", "Ivo Recepção Fictício");
     await ok();
+    await page.waitForSelector("dialog[open] >> text=Horário marcado");   // sem telefone: confirmação pelo WhatsApp (escolher contato)
+    await page.click("dialog[open] button[type=submit]");
     await page.waitForSelector('[data-prof="Beto Barbeiro"] [data-agendamento="Ivo Recepção Fictício"]');
     assert.equal(await page.locator('[data-agendamento="Ivo Recepção Fictício"] button:has-text("Finalizar")').count(), 0, "caixa cobra pela tela do caixa");
     assert.ok(await page.locator('[data-prof="Ana Barbeira"]').isVisible(), "vê a agenda da Ana também");
@@ -406,6 +415,8 @@ async function rodar(tela) {
     await print("marcar-com-disponibilidade-e-cliente-da-base", false);
     await page.click('dialog[open] [data-hora-livre="11:00"]');
     await ok();
+    await page.waitForSelector("dialog[open] >> text=Horário marcado");   // Ivo não tem telefone: confirmação escolhendo o contato
+    await page.click("dialog[open] button[type=submit]");
     await page.waitForSelector('[data-prof="Ana Barbeira"] [data-agendamento="Ivo Recepção Fictício"]');
     await page.waitForSelector('[data-prof="Ana Barbeira"] [data-livre-lista]');
     await print("agenda-dia-horarios-livres");
@@ -421,16 +432,24 @@ async function rodar(tela) {
     await page.fill("#env-data", AMANHA);
     await page.locator("#env-data").dispatchEvent("change");
     await page.waitForSelector('[data-destino="Fábio Fixo Fictício"]');
-    assert.ok(await page.locator('[data-destino="Seu Zé Fictício"] input').isDisabled(), "sem telefone não pode ser escolhido");
+    // 17/11/2026: sem telefone também pode ser escolhido (o WhatsApp abre para escolher o contato)
+    assert.ok(!(await page.locator('[data-destino="Seu Zé Fictício"] input').isDisabled()), "sem telefone pode ser escolhido");
+    assert.match(await page.textContent('[data-destino="Seu Zé Fictício"]'), /escolhe o contato/);
     await page.check('[data-destino="Fábio Fixo Fictício"] input');
+    await page.check('[data-destino="Seu Zé Fictício"] input');
     await page.fill("#env-texto", "Olá {cliente}! Amanhã às {hora} te esperamos.");
     await print("mensagem-escolher-clientes", false);
     await page.click("[data-teste=enviar-mensagem] button[type=submit]");
     const linkFabio = page.locator('[data-enviar="Fábio Fixo Fictício"]');
     await linkFabio.waitFor();
     assert.match(decodeURIComponent(await linkFabio.getAttribute("href")), /wa\.me\/55\d+\?text=Olá Fábio! Amanhã às 10:00 te esperamos\./);
+    const linkZe = page.locator('[data-enviar="Seu Zé Fictício"]');
+    assert.match(await linkZe.textContent(), /escolher contato/);
+    assert.match(decodeURIComponent(await linkZe.getAttribute("href")), /^https:\/\/wa\.me\/\?text=Olá Seu! Amanhã às \d\d:\d\d te esperamos\./);
     const [aba] = await Promise.all([page.context().waitForEvent("page"), linkFabio.click()]);
     await aba.close();
+    const [aba2] = await Promise.all([page.context().waitForEvent("page"), linkZe.click()]);
+    await aba2.close();
     await page.waitForSelector("[data-teste=fila-envio] >> text=Aberto ✓");
     await page.waitForSelector("[data-teste=progresso-envio] >> text=Pronto");
     await print("mensagem-fila-enviada");

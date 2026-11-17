@@ -123,8 +123,10 @@ export function telefoneReal(t) {
   return typeof t === "string" && /^\d{10,11}$/.test(t) ? t : null;
 }
 
+// Com telefone: abre a conversa direto com o cliente. Sem telefone (17/11/2026): abre o WhatsApp com a mensagem pronta
+// para a pessoa escolher o contato (wa.me/?text=) — não precisa digitar nome nem horário.
 export function linkWhatsapp(telefone, texto) {
-  return `https://wa.me/55${telefone}?text=${encodeURIComponent(texto)}`;
+  return telefone ? `https://wa.me/55${telefone}?text=${encodeURIComponent(texto)}` : `https://wa.me/?text=${encodeURIComponent(texto)}`;
 }
 
 export function camposMensagem(ag, barbeariaNome) {

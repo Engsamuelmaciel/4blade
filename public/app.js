@@ -2033,7 +2033,7 @@ async function janelaEditarHorario(a) {
       const esc = seletor.escolhido();
       const cliente = esc ? { id: esc.id }
         : (f.eNome.value.trim() || f.eTel.value.trim()) ? { nome: f.eNome.value.trim() || undefined, telefone: f.eTel.value, aceiteLgpd: f.eLgpd.checked } : undefined;
-      const r = await api("/agenda/editar", { metodo: "POST", corpo: { id: a.id, servicoIds, observacao: f.eObs.value, ...(cliente ? { cliente } : {}) } });
+      const r = await comAceiteNota(extra => api("/agenda/editar", { metodo: "POST", corpo: { ...extra, id: a.id, servicoIds, observacao: f.eObs.value, ...(cliente ? { cliente } : {}) } }));
       avisar(`${r.mensagem} Termina às ${r.fim}.`);
       telaAgenda();
     }
@@ -2141,7 +2141,7 @@ function janelaMarcar(ag, pre = {}) {
   lgpd.hidden = true;
   const achado = el("p", { class: "cliente-achado", role: "status" });
   const tel = campo("Telefone do cliente (WhatsApp) — opcional", { name: "cliTel", inputmode: "tel", autocomplete: "off", placeholder: "(11) 91234-5678" },
-    "Sem telefone, o cliente fica só com o nome (sem lembrete pelo WhatsApp).");
+    "Sem telefone, o cliente fica só com o nome. As mensagens abrem o WhatsApp para você escolher o contato.");
   const blocoAvulso = el("div", { class: "cliente-avulso" }, el("p", { class: "separador-ou", text: "ou cliente novo / avulso" }), tel, achado, blocoNovo);
   const seletor = seletorCliente({ id: "cli", preSelecionado: pre.cliente || null, aoMudar: c => { blocoAvulso.hidden = Boolean(c); } });
   const buscar = async () => {
@@ -2209,7 +2209,7 @@ function janelaMarcar(ag, pre = {}) {
       estadoAgenda.data = f.data.value;
       telaAgenda();
       // Confirmação pelo WhatsApp (cliente com telefone): o link já vem com a mensagem do modelo "Confirmação".
-      const confirmar = r.whatsappConfirmacao && r.agendamento ? botaoWhatsapp({ id: r.agendamento.id, whatsapp: { confirmacao: r.whatsappConfirmacao } }, "confirmacao", "Enviar confirmação no WhatsApp") : null;
+      const confirmar = r.whatsappConfirmacao && r.agendamento ? botaoWhatsapp({ id: r.agendamento.id, whatsapp: { confirmacao: r.whatsappConfirmacao } }, "confirmacao", r.whatsappComNumero === false ? "Enviar confirmação no WhatsApp (escolher contato)" : "Enviar confirmação no WhatsApp") : null;
       confirmar?.classList.add("largo");
       if (r.serie) {
         const sr = r.serie;
@@ -3527,7 +3527,10 @@ async function telaFinanceiro() {
     cartaoFin("Entradas", reais(t.entradasCentavos), "Dinheiro que entrou no caixa", variacao(t.entradasCentavos, a.entradasCentavos, tipo), "entradas", "fin-entrada"),
     cartaoFin("Saídas", reais(t.saidasCentavos), "Contas, compras, vales, comissões e retiradas", variacao(t.saidasCentavos, a.saidasCentavos, tipo, false), "saidas", "fin-saida"),
     cartaoFin("Saldo do período", reais(t.saldoCentavos), "Entradas − saídas", variacao(t.saldoCentavos, a.saldoCentavos, tipo), "saldo", t.saldoCentavos < 0 ? "negativo" : "positivo"),
-    cartaoFin("Resultado (lucro)", reais(t.resultadoCentavos), "Faturamento − comissões − custo dos produtos − contas", variacao(t.resultadoCentavos, a.resultadoCentavos, tipo), "resultado", t.resultadoCentavos < 0 ? "negativo" : "positivo"),
+    cartaoFin("Resultado (lucro)", reais(t.resultadoCentavos), "Faturamento − comissões − custo dos produtos − contas", variacao(t.resultadoCentavos, a.resultadoCentavos, tipo), "resultado", t.resultadoCentavos < 0 ? "negativo" : "positivo"));
+  // 17/11/2026: os 4 números principais ficam à vista; os outros em "Mais números" (aberto no computador).
+  const largo = window.matchMedia("(min-width: 1024px)").matches;
+  const maisNumeros = el("div", { class: "cartoes fin-cartoes" },
     cartaoFin("Faturamento", reais(t.faturamentoCentavos), `Serviços ${reais(en.servicosCentavos)} · produtos ${reais(en.produtosCentavos)}`, variacao(t.faturamentoCentavos, a.faturamentoCentavos, tipo), "faturamento"),
     cartaoFin("Atendimentos", String(t.atendimentosQtd), `Ticket médio ${reais(ds.ticketMedioCentavos)}`, variacao(t.atendimentosQtd, a.atendimentosQtd, tipo), "atendimentos"),
     tipo === "dia" ? cartaoFin("Vendas de produtos", String(t.vendasQtd), reais(en.produtosCentavos), variacao(t.vendasQtd, a.vendasQtd, tipo), "vendas")
@@ -3536,6 +3539,8 @@ async function telaFinanceiro() {
     tipo === "dia" ? cartaoFin("Notas (a receber)", reais(en.notasLancadasCentavos), `Recebidas no dia ${reais(en.notasRecebidasCentavos)}`, null, "notas")
       : cartaoFin(tipo === "ano" ? "Melhor mês" : "Melhor dia", ds.melhor ? reais(ds.melhor.entradasCentavos) : "—",
         ds.melhor ? rotuloChave(ds.melhor.chave, f.serie.porMes) : "Sem entradas ainda", null, "melhor"));
+  const blocoMais = el("details", { class: "fin-mais", "data-teste": "fin-mais", open: largo || null },
+    el("summary", {}, `Mais números · faturamento ${reais(t.faturamentoCentavos)} · ${t.atendimentosQtd} atendimento(s)`), maisNumeros);
 
   const tituloGrafico = tipo === "dia" ? "Entradas e saídas nos últimos 7 dias" : tipo === "ano" ? "Entradas e saídas por mês" : "Entradas e saídas por dia";
   const temSerie = f.serie.pontos.some(p => p.entradasCentavos || p.saidasCentavos);
@@ -3593,30 +3598,35 @@ async function telaFinanceiro() {
   };
   desenharMov();
 
-  const secao = (titulo, ...filhos) => el("section", { class: "cartao" }, el("h3", { text: titulo }), ...filhos);
+  const secaoFixa = (titulo, ...filhos) => el("section", { class: "cartao" }, el("h3", { text: titulo }), ...filhos);
+  // Demais blocos: recolhidos no celular (toque no título abre), abertos no computador. O resumo já mostra o principal.
+  const secao = (titulo, resumo, id, ...filhos) => el("details", { class: "cartao fin-secao", "data-secao-fin": id, open: largo || null },
+    el("summary", {}, el("span", { class: "fin-secao-tit", text: titulo }), resumo ? el("span", { class: "fin-secao-res", text: resumo }) : null), ...filhos);
+  const maiorDe = l => (l[0] ? `${l[0].nome} ${reais(l[0].valor)}` : "");
   mostrar(
     cabecalho("Relatório financeiro", "Entradas, saídas e resultado da barbearia"),
     controles,
     cartoes,
-    secao(tituloGrafico, temSerie ? graficoEntradasSaidas(f.serie, f.periodo, aoEscolher) : el("p", { class: "vazio", text: "Sem entradas nem saídas neste período." }), temSerie ? tabelaSerie(f.serie) : null),
-    saldo ? secao("Saldo acumulado no período", saldo) : null,
+    blocoMais,
+    secaoFixa(tituloGrafico, temSerie ? graficoEntradasSaidas(f.serie, f.periodo, aoEscolher) : el("p", { class: "vazio", text: "Sem entradas nem saídas neste período." }), temSerie ? tabelaSerie(f.serie) : null),
+    saldo ? secao("Saldo acumulado no período", `Fim: ${reais(t.saldoCentavos)}`, "saldo", saldo) : null,
     el("div", { class: "duas-colunas iguais" },
-      secao("De onde veio o dinheiro",
+      secao("De onde veio o dinheiro", maiorDe(formas), "entradas",
         formas.length ? listaPartes(formas, "partes-entrada") : el("p", { class: "vazio", text: "Sem entradas no período." }),
         origens.length ? el("h4", { text: "Por origem" }) : null, origens.length ? listaPartes(origens, "partes-entrada") : null,
         en.notasLancadasCentavos ? el("p", { class: "suave", text: `Vendido em nota (a receber depois): ${reais(en.notasLancadasCentavos)}. Entra no faturamento, mas só vira entrada quando o cliente paga.` }) : null),
-      secao("Para onde foi o dinheiro",
+      secao("Para onde foi o dinheiro", maiorDe(saidas), "saidas",
         saidas.length ? listaPartes(saidas, "partes-saida") : el("p", { class: "vazio", text: "Sem saídas no período." }))),
     el("div", { class: "duas-colunas iguais" },
-      secao("Resultado do período", demonstrativo,
+      secao("Resultado do período", reais(r.resultadoCentavos), "resultado", demonstrativo,
         el("p", { class: "suave", text: "Entradas e saídas mostram o dinheiro que passou pelo caixa. O resultado mostra se a barbearia ganhou ou perdeu no período." }),
         ds.diferencasCaixa.length ? el("ul", { class: "lista-avisos" }, ds.diferencasCaixa.map(x => el("li", { class: "aviso-vermelha",
           text: `Diferença no caixa de ${dataBR(x.data)}: ${x.diferencaCentavos > 0 ? "sobra" : "falta"} de ${reais(Math.abs(x.diferencaCentavos))}` }))) : null),
-      secao("Por profissional", profs)),
+      secao("Por profissional", f.profissionais.length ? `${f.profissionais.length} profissional(is)` : "", "profissionais", profs)),
     el("div", { class: "duas-colunas iguais" },
-      secao("Serviços que mais faturaram", top(f.maisVendidos.servicos, "vez(es)")),
-      secao("Produtos mais vendidos", top(f.maisVendidos.produtos, "un."))),
-    secao("Movimentos do período", listaMov));
+      secao("Serviços que mais faturaram", f.maisVendidos.servicos[0]?.nome || "", "servicos", top(f.maisVendidos.servicos, "vez(es)")),
+      secao("Produtos mais vendidos", f.maisVendidos.produtos[0]?.nome || "", "produtos", top(f.maisVendidos.produtos, "un."))),
+    secao("Movimentos do período", `${f.movimentosTotal ?? f.movimentos.length} lançamento(s)`, "movimentos", listaMov));
 }
 
 // ---------- DESEMPENHO DO BARBEIRO (só dele) + EXTRATO ----------
@@ -4020,8 +4030,9 @@ const NOME_PLANILHA = {
 };
 async function telaContador() {
   const [{ contador }, { envios }] = await Promise.all([api("/configuracoes/contador"), api("/contador/envios")]);
-  const formContato = el("form", { class: "cartao" },
-    el("h3", { text: "Contato do contador" }),
+  // 17/11/2026: contato e cópia dos dados ficam recolhidos (o contato abre sozinho enquanto não estiver preenchido).
+  const temContato = Boolean(contador.nome || contador.telefone || contador.email);
+  const formContato = el("form", {},
     campo("Nome", { name: "nome", value: contador.nome || "", maxlength: "80" }),
     el("div", { class: "lado-a-lado" },
       campo("WhatsApp", { name: "tel", value: contador.telefone ? fone(contador.telefone) : "", inputmode: "tel" }),
@@ -4071,18 +4082,22 @@ async function telaContador() {
       e.alteradoDepois ? el("p", { class: "erro", text: "Houve alteração depois do envio ao contador; gere de novo." }) : null)))
     : el("p", { class: "suave", text: "Nenhum envio ainda." });
 
-  const copia = el("section", { class: "cartao" },
-    el("h3", { text: "Cópia dos dados" }),
+  const blocoContato = el("details", { class: "cartao fin-secao", "data-teste": "contato-contador", open: temContato ? null : true },
+    el("summary", {}, el("span", { class: "fin-secao-tit", text: "Contato do contador" }),
+      el("span", { class: "fin-secao-res", text: temContato ? [contador.nome, contador.telefone ? fone(contador.telefone) : null].filter(Boolean).join(" · ") : "Não preenchido" })),
+    formContato);
+  const copia = el("details", { class: "cartao fin-secao", "data-teste": "copia-dados" },
+    el("summary", {}, el("span", { class: "fin-secao-tit", text: "Cópia dos dados (planilhas)" }), el("span", { class: "fin-secao-res", text: "Excel" })),
     el("p", { class: "suave", text: "Baixe todos os dados da barbearia em planilhas (abrem no Excel), quando quiser." }),
     el("div", { class: "botoes-planilha" }, Object.entries(NOME_PLANILHA).map(([k, nome]) =>
       botao(nome, async () => {
         try { await baixarPlanilha(`/exportar/${k}`, `4blade-${k}-${hojeLocal()}.csv`); } catch (e) { avisar(e.message, "erro"); }
       }, "pequeno"))));
 
-  mostrar(cabecalho("Contador e cópia dos dados"),
+  mostrar(cabecalho("Contador e cópia dos dados", "Gere o relatório do mês e mande para o contador em 1 toque."),
     el("div", { class: "duas-colunas" },
       el("section", {}, formEnviar, el("h3", { text: "Envios registrados" }), listaEnvios),
-      el("section", {}, formContato, copia)));
+      el("section", {}, blocoContato, copia)));
 }
 
 function janelaEnvio(r, arqs) {
@@ -4101,7 +4116,9 @@ function janelaEnvio(r, arqs) {
         const res = await compartilharOuBaixar(arqs, `Relatório ${rel.periodo.titulo}`);
         if (res !== "cancelado") avisar(res === "compartilhado" ? "Arquivos compartilhados." : "Arquivos baixados.");
       }, "principal pequeno"),
-      tel ? el("a", { class: "botao pequeno whats", href: `https://wa.me/55${tel}?text=${encodeURIComponent(`Olá${r.contador.nome ? `, ${r.contador.nome.split(" ")[0]}` : ""}! Segue o relatório da ${usuario.barbearia.nome} de ${rel.periodo.titulo} (PDF e planilha).`)}`, target: "_blank", rel: "noopener", text: "Abrir WhatsApp do contador" }) : null)
+      // Sem WhatsApp do contador cadastrado: abre o WhatsApp com a mensagem pronta para escolher o contato.
+      el("a", { class: "botao pequeno whats", href: `https://wa.me/${tel ? `55${tel}` : ""}?text=${encodeURIComponent(`Olá${r.contador?.nome ? `, ${r.contador.nome.split(" ")[0]}` : ""}! Segue o relatório da ${usuario.barbearia.nome} de ${rel.periodo.titulo} (PDF e planilha).`)}`,
+        target: "_blank", rel: "noopener", text: tel ? "Abrir WhatsApp do contador" : "Enviar pelo WhatsApp (escolher contato)" }))
   ], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
 }
 
@@ -4481,7 +4498,9 @@ async function telaClientes(busca = null) {
         el("p", { class: "suave", text: [c.telefone ? (c.aceiteLgpd ? "Aceitou o uso do telefone (LGPD)" : "Sem aceite LGPD") : null, c.observacao].filter(Boolean).join(" · ") || "Sem observação." }),
         acoesItem(
           c.ativo ? botao("Marcar horário", () => { marcarParaCliente = { id: c.id, nome: c.nome, telefone: c.telefone, bloqueado: c.bloqueado, notaVencida: c.notaVencidaCentavos ? { totalCentavos: c.notaVencidaCentavos } : null }; estadoAgenda.visao = "dia"; location.hash = "#/agenda"; }, "pequeno principal") : null,
-          c.telefone ? el("a", { class: "botao pequeno whats", href: `https://wa.me/55${c.telefone}`, target: "_blank", rel: "noopener", text: "WhatsApp" }) : null,
+          // Com telefone: abre a conversa do cliente. Sem telefone: abre o WhatsApp com "Olá, Nome!" para escolher o contato.
+          el("a", { class: "botao pequeno whats", "data-whats-cliente": c.telefone ? "numero" : "escolher", href: c.telefone ? `https://wa.me/55${c.telefone}?text=${encodeURIComponent(`Olá, ${c.nome.split(" ")[0]}!`)}` : `https://wa.me/?text=${encodeURIComponent(`Olá, ${c.nome.split(" ")[0]}!`)}`,
+            target: "_blank", rel: "noopener", text: c.telefone ? "WhatsApp" : "WhatsApp (escolher contato)" }),
           botao("Editar", () => editarEmJanela(`Editar ${c.nome}`, def, c), "pequeno"),
           c.ativo && veTodas() ? botao(c.bloqueado ? "Desbloquear" : "Bloquear", () => janelaBloquearCliente(c, recarregar), "pequeno") : null,
           ehCaixa() ? null : botaoDesativar("clientes", c, recarregar),
@@ -4572,7 +4591,7 @@ const MENSAGENS_PRONTAS = {
   aviso: ["Aviso (feriado ou horário)", "Olá, {cliente}! Aviso da {barbearia}: (escreva aqui o aviso, por exemplo: no feriado estaremos fechados)."],
   obrigado: ["Agradecimento", "Olá, {cliente}! Obrigado pela preferência na {barbearia}. Esperamos você na próxima!"]
 };
-let origemEnvio = "dia";   // "dia" = clientes com horário no dia; "cadastrados" = qualquer cliente com telefone
+let origemEnvio = "dia";   // "dia" = clientes com horário no dia; "cadastrados" = qualquer cliente (sem telefone: escolhe o contato no WhatsApp)
 async function blocoEnviarMensagem(modelos, campos) {
   dataEnvioMensagem ||= hojeLocal();
   const doDia = origemEnvio === "dia";
@@ -4580,8 +4599,8 @@ async function blocoEnviarMensagem(modelos, campos) {
   // Itens da lista: { id, titulo, detalhe, pode }
   const itens = doDia
     ? dados.clientes.map(c => ({ id: c.agendamentoId, nome: c.cliente, titulo: `${c.hora} · ${c.cliente}`, pode: c.podeReceber, hora: c.hora, barbeiro: c.barbeiro, servico: c.servicos || "",
-      detalhe: c.podeReceber ? `${fone(c.telefone)} · ${c.barbeiro}${c.servicos ? ` · ${c.servicos}` : ""}` : "Sem telefone cadastrado" }))
-    : dados.contatos.map(c => ({ id: c.clienteId, nome: c.nome, titulo: c.nome, pode: true, detalhe: fone(c.telefone) }));
+      detalhe: c.podeReceber ? `${c.telefone ? fone(c.telefone) : "Sem telefone (escolhe o contato no WhatsApp)"} · ${c.barbeiro}${c.servicos ? ` · ${c.servicos}` : ""}` : "Cliente desativado" }))
+    : dados.contatos.map(c => ({ id: c.clienteId, nome: c.nome, titulo: c.nome, pode: true, detalhe: c.telefone ? fone(c.telefone) : "Sem telefone (escolhe o contato no WhatsApp)" }));
   const origem = el("div", { class: "alterna largo", role: "tablist", "aria-label": "Para quem" },
     [["dia", "Com horário marcado"], ["cadastrados", "Clientes cadastrados"]].map(([k, t]) =>
       botao(t, () => { origemEnvio = k; comCarga(telaMensagens).catch(e => avisar(e.message, "erro")); }, `pequeno ${origemEnvio === k ? "ativo" : ""}`)));
@@ -4727,7 +4746,7 @@ function mostrarFilaEnvio(fila, envio) {
       const m = { d, estado, feito: false };
       marcadores.push(m);
       const link = el("a", {
-        class: "botao pequeno whats", href: d.link, target: "_blank", rel: "noopener", "data-enviar": d.cliente, text: `Enviar para ${d.cliente.split(" ")[0]}`,
+        class: "botao pequeno whats", href: d.link, target: "_blank", rel: "noopener", "data-enviar": d.cliente, "data-com-numero": d.comNumero ? "sim" : "nao", text: d.comNumero === false ? `Enviar para ${d.cliente.split(" ")[0]} (escolher contato)` : `Enviar para ${d.cliente.split(" ")[0]}`,
         onclick: () => { marcar(m); setTimeout(atualizar); }
       });
       return el("li", { class: "destino" }, el("div", {}, el("strong", { text: [d.hora, d.cliente].filter(Boolean).join(" · ") })), estado, link);
@@ -4891,7 +4910,9 @@ async function telaVisaoDia() {
     el("div", { class: "secao-titulo" }, el("h3", {}, titulo, qtd !== null ? el("span", { class: `contagem ${qtd ? "tem" : ""}`, text: String(qtd) }) : null), acaoTopo),
     conteudo);
   const lista = (itens, vazio) => itens.length ? el("ul", { class: "lista-x" }, itens) : el("p", { class: "suave", text: vazio });
-  const whats = (link, texto) => link ? el("a", { class: "botao pequeno whats", href: link, target: "_blank", rel: "noopener", text: texto }) : null;
+  // Sem telefone no cadastro: o link abre o WhatsApp com a mensagem pronta para escolher o contato.
+  const whats = (link, texto, comNumero = true) => link ? el("a", { class: "botao pequeno whats", href: link, target: "_blank", rel: "noopener",
+    "data-com-numero": comNumero ? "sim" : "nao", text: comNumero ? texto : `${texto} (escolher contato)` }) : null;
 
   const naoFechados = secao("Sem fechar", v.naoFechados.length, "nao-fechados", lista(v.naoFechados.map(a => el("li", { class: "item-x linha-simples", "data-nao-fechado": a.cliente },
     el("div", { class: "item-x-resumo estatico" }, el("span", { class: "item-x-txt" }, el("strong", { text: a.cliente }), el("small", { text: `${dataBR(a.data)} às ${a.hora} · ${a.barbeiro}` })),
@@ -4902,8 +4923,16 @@ async function telaVisaoDia() {
     titulo: n.cliente, sub: `${n.qtd} nota(s) · desde ${dataBR(n.desde)} (${n.dias} dias)`,
     direita: [el("span", { class: "preco", text: reais(n.totalCentavos) }), n.bloqueado ? el("span", { class: "etiqueta vermelha", text: "Bloqueado" }) : null],
     detalhes: () => acoesItem(
-      whats(n.whatsapp, "Cobrar no WhatsApp"),
-      el("a", { class: "botao pequeno principal", href: "#/notas", text: "Receber" }),
+      whats(n.whatsapp, "Cobrar no WhatsApp", n.comNumero),
+      // Recebe aqui mesmo (mesma janela da tela Notas); o valor entra no caixa de hoje.
+      botao("Receber", async () => {
+        try {
+          const { clientes } = await api("/promissorias");
+          const c = clientes.find(x => x.clienteId === n.clienteId);
+          if (!c) { avisar("Esse cliente não tem mais nota em aberto."); return recarregar(); }
+          janelaReceberNota(c, recarregar);
+        } catch (e) { avisar(e.message, "erro"); }
+      }, "pequeno principal"),
       botao(n.bloqueado ? "Desbloquear" : "Bloquear", () => janelaBloquearCliente({ clienteId: n.clienteId, nome: n.cliente, cliente: n.cliente, bloqueado: n.bloqueado ? { motivo: "nota vencida" } : null }, recarregar), "pequeno texto-perigo"))
   })), "Nenhuma nota vencida. ✔"));
 
@@ -4914,7 +4943,7 @@ async function telaVisaoDia() {
     titulo: [el("span", { class: "hora-lista", text: a.hora }), a.cliente], sub: a.barbeiro,
     direita: [seloCliente(a), el("span", { class: `etiqueta ${COR[a.situacao]}`, text: NOME[a.situacao] })],
     detalhes: () => [avisoCliente(a), acoesItem(
-      a.situacao === "agendado" ? whats(a.whatsapp, "Lembrar no WhatsApp") : null,
+      a.situacao === "agendado" ? whats(a.whatsapp, "Lembrar no WhatsApp", a.comNumero) : null,
       a.situacao === "agendado" ? el("a", { class: "botao pequeno principal", href: "#/caixa", text: "Cobrar no caixa" }) : null,
       el("a", { class: "botao pequeno", href: "#/agenda", text: "Ver na agenda", onclick: () => { estadoAgenda.data = v.hoje; estadoAgenda.visao = "dia"; } }))]
   })), "Ninguém marcado hoje."), el("a", { class: "botao pequeno", href: "#/mensagens", text: "Enviar mensagens" }));
@@ -4924,7 +4953,7 @@ async function telaVisaoDia() {
     titulo: f.cliente, sub: `${dataBR(f.data)} às ${f.hora} · ${f.barbeiro}`,
     direita: f.bloqueado ? el("span", { class: "etiqueta vermelha", text: "Bloqueado" }) : null,
     detalhes: () => acoesItem(
-      whats(f.whatsapp, "Chamar para remarcar"),
+      whats(f.whatsapp, "Chamar para remarcar", f.comNumero),
       f.bloqueado ? null : botao("Bloquear", () => janelaBloquearCliente({ clienteId: f.clienteId, nome: f.cliente, cliente: f.cliente }, recarregar), "pequeno texto-perigo"))
   })), "Nenhuma falta. ✔"));
 
@@ -4977,7 +5006,7 @@ async function telaNotas() {
               }, "Cancelar nota") }) : null))),
           acoesItem(
             botao("Receber", () => janelaReceberNota(c), "pequeno principal"),
-            c.whatsapp ? el("a", { class: "botao pequeno whats", href: c.whatsapp, target: "_blank", rel: "noopener", text: "Lembrar no WhatsApp" }) : null)
+            c.whatsapp ? el("a", { class: "botao pequeno whats", href: c.whatsapp, target: "_blank", rel: "noopener", "data-com-numero": c.comNumero ? "sim" : "nao", text: c.comNumero ? "Lembrar no WhatsApp" : "Lembrar no WhatsApp (escolher contato)" }) : null)
         ]
       }));
     } else if (aba === "pagas") {
@@ -5027,7 +5056,7 @@ async function telaNotas() {
     topo: resumoEl, barra, lista: ul });
 }
 
-function janelaReceberNota(c) {
+function janelaReceberNota(c, depois = null) {
   const linhas = c.notas.map(n => ({ n, chk: el("input", { type: "checkbox", name: "nota", value: n.id, id: `nota-${n.id}`, checked: true }) }));
   const totalEl = el("p", { class: "total-final", "data-teste": "total" });
   const total = () => linhas.filter(l => l.chk.checked).reduce((t, l) => t + l.n.valorCentavos, 0);
@@ -5046,7 +5075,7 @@ function janelaReceberNota(c) {
       await api("/promissorias/receber", { metodo: "POST", corpo: { clienteId: c.clienteId, promissoriaIds: ids, pagamentos: pag.ler(f) } });
       avisar(`Nota recebida: ${reais(total())}.`);
       estadoNotas.aba = "abertas";
-      telaNotas();
+      (depois || telaNotas)();
     }
   });
   const atualizar = () => { totalEl.textContent = `Total: ${reais(total())}`; pag.atualizar(); };

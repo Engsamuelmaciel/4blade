@@ -78,8 +78,9 @@ async function rodar(tela) {
     await entrar("caixa.semana");
     await page.waitForSelector("#btn-notif .sino-num:not([hidden])");
     assert.ok(Number(await page.textContent("#btn-notif .sino-num")) >= 1, "pelo menos a nota vencida");
-    await ir(page, "Visão do dia");
+    // o caixa já entra na Visão do dia (tela inicial dele)
     await page.waitForSelector("[data-teste=visao-resumo]");
+    assert.match(await page.textContent("h2"), /Visão do dia/);
     assert.equal(await page.locator("[data-teste=visao-semana] [data-dia]").count(), 7);
     await page.waitForSelector(`[data-nota-vencida="${CLIENTE}"]`);
     assert.match(await page.textContent(`[data-nota-vencida="${CLIENTE}"]`), /R\$\s?40,00/);
@@ -166,6 +167,36 @@ async function rodar(tela) {
     await page.click(".chips-filtro [data-filtro=pendencia]");
     await page.waitForSelector(`[data-cliente="${CLIENTE}"] [data-selo=nota-vencida]`);
     await print("gerente-clientes-pendencia");
+    await sair();
+
+    passo("caixa recebe a nota direto na Visão do dia; cliente sem telefone: WhatsApp abre para escolher o contato, com a mensagem pronta");
+    await entrar("caixa.semana");
+    const tCx = await page.evaluate(() => localStorage.getItem("4blade.token"));
+    const api = async (caminho, corpo) => (await fetch(`${base}/api${caminho}`, { method: corpo ? "POST" : "GET", headers: { Authorization: `Bearer ${tCx}`, ...(corpo ? { "Content-Type": "application/json" } : {}) }, body: corpo ? JSON.stringify(corpo) : undefined })).json();
+    const ag = await api(`/agenda?data=${hojeBrasil()}`);
+    const serv = (await api("/servicos")).servicos[0];
+    const ana = ag.profissionais.find(p => p.nome === "Ana Barbeira");
+    const livre = (await api(`/agenda/disponibilidade?data=${hojeBrasil()}&barbeiroId=${ana.id}&duracao=30`));
+    const hora = livre.profissionais?.[0]?.livres?.at(-1);
+    if (hora) {
+      const m = await api("/agenda", { barbeiroId: ana.id, data: hojeBrasil(), hora, servicoIds: [serv.id], cliente: { nome: "Sem Fone Fictício" } });
+      assert.ok(m.agendamento, JSON.stringify(m));
+      await page.reload(); await pronto();
+      await abrirItem(page, '[data-hoje="Sem Fone Fictício"]');
+      const lk = page.locator('[data-hoje="Sem Fone Fictício"] a[data-com-numero=nao]');
+      assert.match(await lk.textContent(), /escolher contato/);
+      assert.match(await lk.getAttribute("href"), /^https:\/\/wa\.me\/\?text=Ol%C3%A1%2C%20Sem!/);
+      await print("caixa-whats-sem-telefone", { inteira: false });
+    }
+    await abrirItem(page, `[data-nota-vencida="${CLIENTE}"]`);
+    await page.click(`[data-nota-vencida="${CLIENTE}"] button:has-text("Receber")`);
+    await page.waitForSelector("dialog[open] [data-teste=total]");
+    await page.selectOption("dialog[open] #c-forma1", "pix");
+    await print("caixa-receber-na-visao", { inteira: false });
+    await ok();
+    await page.waitForSelector("text=Nota recebida");
+    await page.waitForSelector(`[data-nota-vencida="${CLIENTE}"]`, { state: "detached" });
+    await page.waitForSelector("[data-teste=visao-resumo]");
     await sair();
 
     passo("barbeiro: sino e notificações só dos atendimentos dele; sem Visão do dia");

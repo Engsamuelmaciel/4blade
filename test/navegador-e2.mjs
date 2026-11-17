@@ -148,6 +148,7 @@ async function rodar(tela) {
     // ---------- CAIXA: abre o caixa ----------
     passo("caixa abre o caixa do dia");
     await entrar("camila.navalha", "Senha-Camila-2026");
+    await ir(page, "Caixa");
     await page.waitForSelector("text=Abrir o caixa de hoje");
     await page.fill("#c-troco", "100,00");
     await print("caixa-abrir");
@@ -247,6 +248,7 @@ async function rodar(tela) {
     // ---------- CAIXA: vê o valor bruto, sem comissão ----------
     passo("caixa vê a entrada com valor bruto e sem comissão");
     await entrar("camila.navalha", "Senha-Camila-2026");
+    await ir(page, "Caixa");
     await page.waitForSelector('[data-cobrar="Diego Cliente Fictício"] >> text=Pago');   // aba Cobrar: já pago
     await page.click(".pdv-barra .alterna button:has-text('Lançamentos')");
     await page.waitForSelector('[data-lancamento="Diego Cliente Fictício"]');
@@ -307,6 +309,7 @@ async function rodar(tela) {
     const horaLivre = (await livre.getAttribute("data-livre-grade")).split("|")[1];
     await livre.click();
     await page.waitForSelector("dialog[open] #c-hora");
+    await page.waitForFunction(h => document.querySelector("dialog[open] #c-hora")?.value === h, horaLivre, { timeout: 5000 }).catch(() => {});
     assert.equal(await page.inputValue("dialog[open] #c-hora"), horaLivre, "tocar no livre já preenche a hora");
     await page.keyboard.press("Escape");
     await page.click('[data-evento="Elias Cliente Fictício"]');

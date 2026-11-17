@@ -141,6 +141,7 @@ async function rodar(tela) {
     // ---------- CAIXA ----------
     passo("caixa abre, recebe atendimentos, vende, faz sangria/suprimento e corrige forma");
     await entrar("camila.navalha", "Senha-Camila-2026");
+    await ir(page, "Caixa");
     await page.fill("#c-troco", "100,00");
     await page.click("button:has-text('Abrir caixa')");
     await page.waitForSelector(".pdv-topo");

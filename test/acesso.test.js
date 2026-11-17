@@ -122,7 +122,7 @@ describe("login e troca de senha", () => {
     const ger = await criarUsuario(a.prop, "ger.alfa", "gerente");
     const cx = await criarUsuario(ger.token, "caixa.alfa", "caixa");
     const me = await get("/api/auth/me", cx.token);
-    assert.equal(me.dados.usuario.telaInicial, "caixa");
+    assert.equal(me.dados.usuario.telaInicial, "visao-dia");
     assert.equal(me.dados.usuario.barbearia.nome, "Barbearia Teste alfa");
     assert.equal((await get("/api/auth/me", p)).dados.usuario.telaInicial, "plataforma");
     assert.equal((await get("/api/auth/me", a.prop)).dados.usuario.telaInicial, "inicio");
