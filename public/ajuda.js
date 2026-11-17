@@ -161,7 +161,7 @@ window.AJUDA = {
       dica: "Toque nos avisos para ir direto à tela certa." },
     { id: "financeiro", titulo: "Relatório financeiro: entradas e saídas", perfis: ["proprietario", "gerente"], rotas: ["financeiro"],
       onde: "Menu → Financeiro → Relatório financeiro.",
-      passos: ["Escolha Dia, Semana, Mês ou Ano e use ‹ › para ir a outro período.", "Os cartões mostram entradas, saídas, saldo, resultado (lucro) e a comparação com o período anterior.", "Toque numa barra do gráfico para ver os valores daquele dia (ou mês) e abrir o detalhe dele.", "Mais abaixo: de onde veio o dinheiro (Pix, dinheiro, cartão), para onde foi (contas, compras, vales, comissões), o resultado, os profissionais, o que mais vendeu e a lista de movimentos."],
+      passos: ["Escolha Dia, Semana, Mês ou Ano e use ‹ › para ir a outro período.", "Os cartões mostram entradas, saídas, saldo, resultado (lucro) e a comparação com o período anterior.", "Toque numa barra do gráfico para ver os valores daquele dia (ou mês) e abrir o detalhe dele.", "Mais abaixo: de onde veio o dinheiro (Pix, dinheiro, cartão), para onde foi (contas, compras, vales, comissões), o resultado, os profissionais, o que mais vendeu e a lista de movimentos.", "No fim, \"Extrato do profissional\": escolha a pessoa e o mês e baixe o PDF e a planilha (atendimentos, comissões e vales) para entregar a ela."],
       exemplo: "Novembro: entradas R$ 9.800 − saídas R$ 4.300 = saldo R$ 5.500 · ▲ 12% em relação ao mês anterior.",
       dica: "Saldo é o dinheiro que sobrou no caixa; resultado é o lucro (já descontadas as comissões e o custo dos produtos)." },
     { id: "contador", titulo: "Enviar ao contador e baixar os dados", perfis: ["proprietario", "gerente"], rotas: ["contador"],

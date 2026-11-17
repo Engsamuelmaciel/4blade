@@ -3721,10 +3721,41 @@ async function telaFinanceiro() {
     el("div", { class: "duas-colunas iguais" },
       secao("Serviços que mais faturaram", f.maisVendidos.servicos[0]?.nome || "", "servicos", top(f.maisVendidos.servicos, "vez(es)")),
       secao("Produtos mais vendidos", f.maisVendidos.produtos[0]?.nome || "", "produtos", top(f.maisVendidos.produtos, "un."))),
-    secao("Movimentos do período", `${f.movimentosTotal ?? f.movimentos.length} lançamento(s)`, "movimentos", listaMov));
+    secao("Movimentos do período", `${f.movimentosTotal ?? f.movimentos.length} lançamento(s)`, "movimentos", listaMov),
+    blocoExtratoProfissional());
 }
 
-// ---------- DESEMPENHO DO BARBEIRO (só dele) + EXTRATO ----------
+// Extrato do profissional (antes ficava em "Meu desempenho"; 17/11/2026 veio para o Relatório financeiro, só gestão):
+// atendimentos, comissões, vales e comissões pagas do mês, em PDF e planilha (útil para quem é MEI).
+function blocoExtratoProfissional() {
+  const sel = el("select", { id: "extrato-pessoa", name: "extratoPessoa", required: true }, el("option", { value: "", text: "Carregando…" }));
+  const mesInput = el("input", { type: "month", id: "mes-extrato", name: "mesExtrato", value: hojeLocal().slice(0, 7), max: hojeLocal().slice(0, 7), required: true });
+  const form = el("form", { class: "form-extrato" },
+    el("p", { class: "suave", text: "Atendimentos, comissões e vales do mês de quem atende, em PDF e planilha — para entregar ao profissional (útil para quem é MEI)." }),
+    el("div", { class: "lado-a-lado" },
+      el("div", { class: "campo" }, el("label", { for: "extrato-pessoa", text: "Profissional" }), sel),
+      el("div", { class: "campo" }, el("label", { for: "mes-extrato", text: "Mês" }), mesInput)),
+    el("button", { type: "submit", class: "botao principal", text: "Baixar extrato" }));
+  api("/usuarios").then(({ usuarios: us }) => {
+    const lista = us.filter(u => u.ativo !== false && atendePerfil(u.perfil));
+    sel.replaceChildren(...(lista.length ? lista.map(u => el("option", { value: u.id, text: u.nome })) : [el("option", { value: "", text: "Ninguém atende ainda" })]));
+  }).catch(() => sel.replaceChildren(el("option", { value: "", text: "Não foi possível carregar a equipe" })));
+  form.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(form, async () => {
+      if (!sel.value) throw new Error("Escolha o profissional.");
+      const e = await api(`/extrato?mes=${mesInput.value}&barbeiroId=${encodeURIComponent(sel.value)}`);
+      const r = await compartilharOuBaixar([
+        [`${e.arquivos.nomeBase}.pdf`, blobDeBase64(e.arquivos.pdfBase64, "application/pdf")],
+        [`${e.arquivos.nomeBase}.csv`, new Blob([e.arquivos.csv], { type: "text/csv" })]
+      ], "Extrato 4blade");
+      if (r !== "cancelado") avisar(r === "compartilhado" ? "Extrato compartilhado." : "Extrato baixado (PDF e planilha).");
+    });
+  });
+  return el("details", { class: "cartao fin-secao", "data-secao-fin": "extrato", "data-teste": "extrato-profissional" },
+    el("summary", {}, el("span", { class: "fin-secao-tit", text: "Extrato do profissional" }), el("span", { class: "fin-secao-res", text: "PDF e planilha" })),
+    form);
+}
 
 // ---------- PAGAMENTO DA EQUIPE (17/11/2026) ----------
 // Por mês: o que cada pessoa produziu, comissão, salário fixo, vales e quanto falta pagar. "Pagar" registra tudo de uma vez.

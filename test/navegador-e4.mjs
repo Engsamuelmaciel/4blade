@@ -266,6 +266,19 @@ async function rodar(tela) {
     const planilha = await baixados(() => page.click(".botoes-planilha button:has-text('Clientes')"), 1);
     assert.match(planilha[0][0], /^4blade-clientes-\d{4}-\d{2}-\d{2}\.csv$/);
     assert.match(planilha[0][1].toString("utf8"), /^﻿Nome;Telefone/);
+
+    passo("gerente baixa o extrato da Ana no Relatório financeiro (antes ficava em Meu desempenho)");
+    await ir(page, "Relatório financeiro");
+    await page.waitForSelector("[data-teste=extrato-profissional]");
+    await page.click("[data-teste=extrato-profissional] > summary");
+    await page.waitForSelector("#extrato-pessoa option:has-text('Ana Barbeira')", { state: "attached" });
+    await page.selectOption("#extrato-pessoa", { label: "Ana Barbeira" });
+    await page.fill("#mes-extrato", dia(4).slice(0, 7));
+    await print("gerente-financeiro-extrato", { inteira: false });
+    const ext = await baixados(() => page.click("[data-teste=extrato-profissional] button:has-text('Baixar extrato')"), 2);
+    assert.ok(ext.some(([nome, b]) => /^extrato-ana-\d{4}-\d{2}\.pdf$/.test(nome) && b.subarray(0, 5).toString() === "%PDF-"), ext.map(x => x[0]).join(","));
+    assert.ok(ext.some(([nome, b]) => nome.endsWith(".csv") && /Atendimento/.test(b.toString("utf8"))));
+    await page.waitForSelector("text=Extrato baixado");
     await sair();
 
     // ---------- BARBEIRA ----------
