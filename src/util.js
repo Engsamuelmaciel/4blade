@@ -15,9 +15,10 @@ export const json = (body, status = 200) =>
 export const fail = (message, status = 400) => json({ erro: message }, status);
 
 export class HttpError extends Error {
-  constructor(message, status = 400) {
+  constructor(message, status = 400, extra = null) {
     super(message);
     this.status = status;
+    this.extra = extra;   // dados a mais na resposta (ex.: { codigo: "nota_vencida", nota })
   }
 }
 

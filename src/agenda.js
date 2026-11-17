@@ -7,6 +7,7 @@ import {
 } from "./util.js";
 import { isGestao, atende, veTodasAgendas } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
+import { conferirClienteParaMarcar, sinaisClientes } from "./notificacoes.js";
 import {
   horaParaMin, exigirData, exigirMomento, somarDias, regrasDoDia, conferirHorario, momento, carregarRegras, diaSemana, janelaDoDia, livreNaJanela,
   carregarModelos, linksWhatsapp, lerPagamentos, formaEfetiva, FORMAS,
@@ -109,6 +110,7 @@ async function listarAgenda(ctx) {
     carregarModelos(db, ctx.barbeariaId),
     caixaDeHoje(ctx)
   ]);
+  const sinais = await sinaisClientes(db, ctx.barbeariaId);
 
   const agrupar = (lista, chave) => lista.reduce((m, x) => ((m[x[chave]] ||= []).push(x), m), {});
   const servPor = agrupar(servs.results, "agendamento_id");
@@ -128,7 +130,7 @@ async function listarAgenda(ctx) {
       inicio: a.inicio.slice(11), fim: a.fim.slice(11), situacao: a.situacao, motivo: a.motivo || null,
       observacao: a.observacao || null,
       serie: a.serie_id ? { id: a.serie_id, intervaloSemanas: a.intervalo_semanas } : null,
-      cliente: { id: a.cliente_id, nome: a.cliente_nome, telefone: telefoneReal(a.cliente_telefone) },
+      cliente: { id: a.cliente_id, nome: a.cliente_nome, telefone: telefoneReal(a.cliente_telefone), ...(sinais.get(a.cliente_id) || {}) },
       servicos: (servPor[a.id] || []).map(s => ({ id: s.servico_id, nome: s.nome, duracaoMin: s.duracao_min })),
       whatsapp: linksWhatsapp(a, modelos, user.barbearia_nome, { semNumero: true }),
       whatsappComNumero: Boolean(telefoneReal(a.cliente_telefone)),
@@ -283,6 +285,9 @@ async function marcar(ctx) {
 
   const comandos = [];
   const cliente = await clienteDaMarcacao(ctx, input.cliente, comandos);
+  // Cliente bloqueado não marca; nota vencida (30 dias) exige o aceite de quem marca (pop-up na tela), que fica auditado.
+  const notaVencida = cliente.novo ? null : await conferirClienteParaMarcar(ctx, cliente.id, input.aceiteNotaVencida);
+  if (notaVencida) comandos.push(auditoria(ctx, "marcou_com_nota_vencida", cliente.id, { totalCentavos: notaVencida.totalCentavos, desde: notaVencida.desde, data, hora: input.hora }));
   const serieId = rep ? crypto.randomUUID() : null;
   if (rep) {
     comandos.push(
@@ -709,7 +714,8 @@ async function buscarClientes(ctx) {
       WHERE c.barbearia_id = ? AND c.ativo = 1
       AND (c.nome LIKE ? OR ap.apelido LIKE ? ${digitos.length >= 3 ? "OR (c.telefone LIKE ? AND c.telefone NOT LIKE 'sem:%')" : ""}) ORDER BY c.nome LIMIT 8`)
     .bind(ctx.barbeariaId, nome, nome, ...(digitos.length >= 3 ? [`%${digitos}%`] : [])).all();
-  return json({ clientes: r.results.map(c => ({ id: c.id, nome: c.nome, apelido: c.apelido || null, telefone: telefoneReal(c.telefone) })) });
+  const sinais = r.results.length ? await sinaisClientes(ctx.db, ctx.barbeariaId) : new Map();
+  return json({ clientes: r.results.map(c => ({ id: c.id, nome: c.nome, apelido: c.apelido || null, telefone: telefoneReal(c.telefone), ...(sinais.get(c.id) || {}) })) });
 }
 
 // ---------- DISPONIBILIDADE DE UM DIA (para quem vai marcar): situação de cada profissional, ocupados e horários livres ----------

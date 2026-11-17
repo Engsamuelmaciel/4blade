@@ -106,12 +106,18 @@ const CADASTROS = {
     unico: { col: "telefone", msg: "Já existe um cliente com esse telefone." },
     ordem: "ativo DESC, nome",
     // Apelido fica em clientes_apelidos (migração 0016); a lista já traz junto.
-    selectLista: "SELECT clientes.*, (SELECT ap.apelido FROM clientes_apelidos ap WHERE ap.cliente_id = clientes.id) AS apelido FROM clientes WHERE barbearia_id = ?",
+    // Também: bloqueio ativo (migração 0018) e nota vencida = promissória aberta feita há 30 dias ou mais (pedido de 17/11/2026).
+    selectLista: `SELECT clientes.*, (SELECT ap.apelido FROM clientes_apelidos ap WHERE ap.cliente_id = clientes.id) AS apelido,
+      (SELECT k.motivo FROM clientes_bloqueios k WHERE k.cliente_id = clientes.id AND k.ativo = 1) AS bloqueio_motivo,
+      (SELECT SUM(pr.valor_centavos) FROM promissorias pr JOIN caixas cx ON cx.id = pr.caixa_id WHERE pr.cliente_id = clientes.id AND pr.situacao = 'aberta'
+        AND cx.data <= date('now', '-3 hours', '-30 days')) AS nota_vencida
+      FROM clientes WHERE barbearia_id = ?`,
     ativoCol: "ativo",
     publico: r => ({
       id: r.id, nome: r.nome, apelido: r.apelido || null, telefone: telefoneReal(r.telefone), observacao: r.observacao || null,
       aceiteLgpd: Boolean(r.aceite_lgpd), aceiteLgpdEm: r.aceite_lgpd_em || null,
-      ativo: Boolean(r.ativo), motivoDesativacao: r.motivo_desativacao || null, criadoEm: r.criado_em
+      ativo: Boolean(r.ativo), motivoDesativacao: r.motivo_desativacao || null, criadoEm: r.criado_em,
+      bloqueado: r.bloqueio_motivo ? { motivo: r.bloqueio_motivo } : null, notaVencidaCentavos: Number(r.nota_vencida || 0)
     }),
     leituraRestrita: false,
     validarNovo: v => {

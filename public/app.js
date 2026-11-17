@@ -130,6 +130,7 @@ async function api(caminho, { metodo = "GET", corpo } = {}) {
   if (!resp.ok) {
     const e = new Error(dados.erro || "Algo deu errado. Tente de novo.");
     e.status = resp.status;
+    e.dados = dados;
     throw e;
   }
   return dados;
@@ -1151,6 +1152,7 @@ function atualizarTopo() {
     fecharMenu();
   }
   acoes.hidden = !logado;
+  document.getElementById("btn-notif").hidden = !(logado && usuario.barbearia && usuario.perfil !== "plataforma");
   atualizarFaixa();
   document.getElementById("btn-menu").hidden = !logado;
   document.body.classList.toggle("com-menu", logado);
@@ -1923,7 +1925,7 @@ function cartaoAgendamento(a, mostrarNome, { recolhivel = false } = {}) {
       a.serie ? el("span", { class: "etiqueta fixo", text: a.serie.intervaloSemanas === 1 ? "Fixo semanal" : `Fixo a cada ${a.serie.intervaloSemanas} sem.` }) : null,
       destaque ? el("span", { class: "etiqueta laranja", text: "Valor alterado" }) : null,
       recolhivel ? el("span", { class: "slot-seta", "aria-hidden": "true" }) : null),
-    el("p", { class: "slot-cliente" }, el("strong", { text: a.cliente.nome }), a.cliente.telefone ? ` · ${fone(a.cliente.telefone)}` : " · sem telefone"),
+    el("p", { class: "slot-cliente" }, el("strong", { text: a.cliente.nome }), a.cliente.telefone ? ` · ${fone(a.cliente.telefone)}` : " · sem telefone", " ", seloCliente(a.cliente)),
     el("p", { class: "suave", text: [mostrarNome ? a.barbeiroNome : null, a.servicos.map(s => s.nome).join(" + ")].filter(Boolean).join(" · ") })
   ];
   const detalhes = el("div", { class: "slot-detalhes", hidden: aberto ? null : true },
@@ -2067,7 +2069,7 @@ function seletorCliente({ id, preSelecionado = null, aoMudar = () => {} }) {
     if (escolhido) {
       escolhidoEl.replaceChildren(
         el("span", { class: "conta-avatar pequeno", text: escolhido.nome.trim().charAt(0).toUpperCase() }),
-        el("div", {}, el("strong", { text: escolhido.nome }), el("span", { class: "suave", text: escolhido.telefone ? fone(escolhido.telefone) : "sem telefone" })),
+        el("div", {}, el("strong", { text: escolhido.nome }), el("span", { class: "suave", text: escolhido.telefone ? fone(escolhido.telefone) : "sem telefone" }), avisoCliente(escolhido)),
         botao("Trocar", () => { escolhido = null; busca.value = ""; resultados.replaceChildren(); desenhar(); busca.focus(); }, "pequeno"));
     }
     aoMudar(escolhido);
@@ -2081,7 +2083,7 @@ function seletorCliente({ id, preSelecionado = null, aoMudar = () => {} }) {
         const { clientes } = await api(`/agenda/clientes?busca=${encodeURIComponent(termo)}`);
         resultados.replaceChildren(...(clientes.length ? clientes.map(c => el("li", {},
           el("button", { type: "button", class: "resultado-cliente", "data-cliente-opcao": c.nome, onclick: () => { escolhido = c; desenhar(); } },
-            el("strong", { text: c.nome }), el("span", { class: "suave", text: c.telefone ? fone(c.telefone) : "sem telefone" }))))
+            el("strong", { text: c.nome }), el("span", { class: "suave", text: c.telefone ? fone(c.telefone) : "sem telefone" }), seloCliente(c))))
           : [el("li", { class: "suave sem-resultado", text: "Nenhum cliente com esse nome ou telefone. Preencha abaixo como cliente novo." })]));
       } catch (e) { resultados.replaceChildren(el("li", { class: "erro", text: e.message })); }
     }, 250);
@@ -2195,15 +2197,15 @@ function janelaMarcar(ag, pre = {}) {
       const servicoIds = [...f.querySelectorAll("input[name=serv]:checked")].map(i => i.value);
       if (!servicoIds.length) throw new Error("Escolha pelo menos um serviço.");
       const daBase = seletor.escolhido();
-      const r = await api("/agenda", {
+      const r = await comAceiteNota(extra => api("/agenda", {
         metodo: "POST",
-        corpo: {
+        corpo: { ...extra,
           barbeiroId: f.prof?.value, data: f.data.value, hora: f.hora.value, servicoIds,
           observacao: f.obs.value || null,
           cliente: daBase ? { id: daBase.id } : { telefone: f.cliTel.value, nome: f.cliNome.value || undefined, aceiteLgpd: f.cliLgpd.checked },
           ...(f.repetir.value ? { repetir: { intervaloSemanas: Number(f.repetir.value), ate: f.repAte.value } } : {})
         }
-      });
+      }));
       estadoAgenda.data = f.data.value;
       telaAgenda();
       // Confirmação pelo WhatsApp (cliente com telefone): o link já vem com a mensagem do modelo "Confirmação".
@@ -4460,6 +4462,7 @@ async function telaClientes(busca = null) {
     montarCorpo: f => ({ nome: f.nome.value, apelido: f.apelido.value.trim(), telefone: f.telefone.value, observacao: f.obs.value || null, aceiteLgpd: f.lgpd.checked })
   };
   const filtros = [["todos", "Todos", c => c.ativo], ["whats", "Com WhatsApp", c => c.ativo && c.telefone], ["semfone", "Sem telefone", c => c.ativo && !c.telefone],
+    ["pendencia", "Nota vencida ou bloqueado", c => c.ativo && (c.bloqueado || c.notaVencidaCentavos)],
     ...(gestao() ? [["desativados", "Desativados", c => !c.ativo]] : [])];
   const ul = el("ul", { class: "lista-x" });
   const contador = el("p", { class: "suave contador-lista" });
@@ -4472,13 +4475,15 @@ async function telaClientes(busca = null) {
       chave: `c:${c.id}`, attrs: { "data-cliente": c.nome }, classe: c.ativo ? "" : "inativo", avatar: iniciais(c.nome),
       titulo: [c.nome, c.apelido ? el("span", { class: "apelido", text: `“${c.apelido}”` }) : null],
       sub: c.telefone ? fone(c.telefone) : "sem telefone",
-      direita: c.ativo ? null : el("span", { class: "etiqueta vermelha", text: "Desativado" }),
+      direita: c.ativo ? seloCliente(c) : el("span", { class: "etiqueta vermelha", text: "Desativado" }),
       detalhes: () => [
+        avisoCliente(c),
         el("p", { class: "suave", text: [c.telefone ? (c.aceiteLgpd ? "Aceitou o uso do telefone (LGPD)" : "Sem aceite LGPD") : null, c.observacao].filter(Boolean).join(" · ") || "Sem observação." }),
         acoesItem(
-          c.ativo ? botao("Marcar horário", () => { marcarParaCliente = { id: c.id, nome: c.nome, telefone: c.telefone }; estadoAgenda.visao = "dia"; location.hash = "#/agenda"; }, "pequeno principal") : null,
+          c.ativo ? botao("Marcar horário", () => { marcarParaCliente = { id: c.id, nome: c.nome, telefone: c.telefone, bloqueado: c.bloqueado, notaVencida: c.notaVencidaCentavos ? { totalCentavos: c.notaVencidaCentavos } : null }; estadoAgenda.visao = "dia"; location.hash = "#/agenda"; }, "pequeno principal") : null,
           c.telefone ? el("a", { class: "botao pequeno whats", href: `https://wa.me/55${c.telefone}`, target: "_blank", rel: "noopener", text: "WhatsApp" }) : null,
           botao("Editar", () => editarEmJanela(`Editar ${c.nome}`, def, c), "pequeno"),
+          c.ativo && veTodas() ? botao(c.bloqueado ? "Desbloquear" : "Bloquear", () => janelaBloquearCliente(c, recarregar), "pequeno") : null,
           ehCaixa() ? null : botaoDesativar("clientes", c, recarregar),
           botao("Excluir", () => pedirMotivo(`Excluir ${c.nome}`,
             "O cliente sai da lista, da busca e da agenda, e o telefone fica livre para outro cadastro. O histórico (atendimentos, vendas e notas) continua guardado.",
@@ -4733,6 +4738,213 @@ function mostrarFilaEnvio(fila, envio) {
 
 
 // ---------- MENU LATERAL (categorias com sub-opções; ícones em SVG) ----------
+
+// ---------- NOTA VENCIDA E BLOQUEIO (17/11/2026) ----------
+// Selo curto na lista (busca, agenda, clientes) e aviso maior quando o cliente é escolhido.
+function seloCliente(c) {
+  if (!c) return null;
+  if (c.bloqueado) return el("span", { class: "etiqueta vermelha selo-cliente", "data-selo": "bloqueado", text: "Bloqueado" });
+  const v = c.notaVencida?.totalCentavos || c.notaVencidaCentavos;
+  return v ? el("span", { class: "etiqueta vermelha selo-cliente", "data-selo": "nota-vencida", text: `Nota vencida ${reais(v)}` }) : null;
+}
+function avisoCliente(c) {
+  if (c?.bloqueado) return el("p", { class: "erro aviso-cliente", "data-teste": "aviso-bloqueado", text: `Cliente bloqueado: ${c.bloqueado.motivo}. Desbloqueie em Clientes para marcar.` });
+  if (c?.notaVencida) return el("p", { class: "aviso-cliente alerta-nota", "data-teste": "aviso-nota-vencida",
+    text: `⚠ Nota vencida: ${reais(c.notaVencida.totalCentavos)}${c.notaVencida.desde ? ` desde ${dataBR(c.notaVencida.desde)} (${c.notaVencida.dias} dias)` : " (há 30 dias ou mais)"}.` });
+  if (c?.notaVencidaCentavos) return el("p", { class: "aviso-cliente alerta-nota", "data-teste": "aviso-nota-vencida", text: `⚠ Nota vencida: ${reais(c.notaVencidaCentavos)} em aberto há 30 dias ou mais.` });
+  return null;
+}
+// Pop-up por cima da janela aberta (2ª camada), com "aceite". Devolve true/false.
+function alertaAceite({ titulo, texto, detalhe = null, ok = "Aceito e quero continuar", cancelar = "Não marcar" }) {
+  return new Promise(resolve => {
+    const d = el("dialog", { class: "janela alerta-aceite", "data-teste": "alerta-aceite", role: "alertdialog" });
+    const fechar = v => { d.close(); d.remove(); resolve(v); };
+    d.append(el("div", { class: "janela-form" },
+      el("div", { class: "alerta-icone", "aria-hidden": "true", text: "!" }),
+      el("h3", { text: titulo }), el("p", { text: texto }), detalhe ? el("p", { class: "suave", text: detalhe }) : null,
+      el("div", { class: "janela-botoes" },
+        el("button", { type: "button", class: "botao", text: cancelar, onclick: () => fechar(false) }),
+        el("button", { type: "button", class: "botao perigo-cheio", "data-teste": "aceitar", text: ok, onclick: () => fechar(true) }))));
+    d.addEventListener("cancel", ev => { ev.preventDefault(); fechar(false); });
+    document.body.append(d);
+    d.showModal();
+  });
+}
+// Marca (ou repete) pedindo o aceite quando o servidor avisa nota vencida.
+async function comAceiteNota(chamar) {
+  try {
+    return await chamar({});
+  } catch (e) {
+    if (e.dados?.codigo !== "nota_vencida") throw e;
+    const n = e.dados.nota;
+    const sim = await alertaAceite({
+      titulo: "Cliente com nota vencida",
+      texto: `${n.cliente} deve ${reais(n.totalCentavos)} desde ${dataBR(n.desde)} (${n.dias} dias).`,
+      detalhe: "Para marcar mesmo assim, confirme que está ciente. Fica registrado quem aceitou. Aproveite para combinar o pagamento com o cliente.",
+      ok: "Estou ciente, marcar"
+    });
+    if (!sim) throw new Error("Horário não marcado (nota vencida).");
+    return chamar({ aceiteNotaVencida: true });
+  }
+}
+function janelaBloquearCliente(c, recarregar) {
+  return c.bloqueado
+    ? pedirMotivo(`Desbloquear ${c.nome}`, `Bloqueado por: ${c.bloqueado.motivo}. Depois de desbloquear, ele volta a poder marcar horário.`, async motivo => {
+      const r = await api("/clientes/desbloquear", { metodo: "POST", corpo: { clienteId: c.id || c.clienteId, motivo } });
+      avisar(r.mensagem); recarregar();
+    }, "Desbloquear")
+    : pedirMotivo(`Bloquear ${c.nome || c.cliente}`, "Cliente bloqueado não consegue marcar horário novo (os já marcados continuam). Dá para desbloquear depois.", async motivo => {
+      const r = await api("/clientes/bloquear", { metodo: "POST", corpo: { clienteId: c.id || c.clienteId, motivo } });
+      avisar(r.mensagem); recarregar();
+    }, "Bloquear cliente");
+}
+
+// ---------- NOTIFICAÇÕES (17/11/2026) ----------
+// Calculadas no servidor; aqui só guardamos neste aparelho quais já foram vistas (para o número no sino).
+const CHAVE_VISTAS = "4blade.notificacoesVistas";
+let ultimasNotificacoes = { em: 0, itens: [] };
+const vistas = () => { try { return new Set(JSON.parse(localStorage.getItem(CHAVE_VISTAS) || "[]")); } catch { return new Set(); } };
+function marcarVistas(itens) {
+  const v = vistas();
+  for (const i of itens) v.add(i.id);
+  localStorage.setItem(CHAVE_VISTAS, JSON.stringify([...v].slice(-500)));
+  atualizarSino();
+}
+function atualizarSino() {
+  const b = document.getElementById("btn-notif");
+  if (!b) return;
+  const v = vistas();
+  const n = ultimasNotificacoes.itens.filter(i => !v.has(i.id)).length;
+  const bolha = b.querySelector(".sino-num");
+  bolha.textContent = n > 99 ? "99+" : String(n);
+  bolha.hidden = !n;
+  b.setAttribute("aria-label", n ? `Notificações: ${n} nova(s)` : "Notificações");
+}
+async function buscarNotificacoes(forcar = false) {
+  if (!usuario?.barbearia || usuario.perfil === "plataforma") return ultimasNotificacoes;
+  if (!forcar && Date.now() - ultimasNotificacoes.em < 60000) { atualizarSino(); return ultimasNotificacoes; }
+  try {
+    const r = await api("/notificacoes");
+    ultimasNotificacoes = { em: Date.now(), itens: r.itens };
+  } catch { /* sem conexão: mantém o que tinha */ }
+  atualizarSino();
+  return ultimasNotificacoes;
+}
+const NIVEL_NOTIF = { alerta: ["Importante", "vermelha"], aviso: ["Atenção", "amarela"], info: ["Para saber", ""] };
+const ICONE_NOTIF = { nota: "contas", atendimento: "agenda", produto: "estoque", valor: "dinheiro", despesa: "contas", caixa: "caixa", comissao: "comissao" };
+const estadoNotif = { filtro: "todas" };
+async function telaNotificacoes() {
+  const { itens } = await buscarNotificacoes(true);
+  const v = vistas();
+  const tipos = [...new Set(itens.map(i => i.tipo))];
+  const NOME_TIPO = { nota: "Notas", atendimento: "Atendimentos", produto: "Produtos", valor: "Valores", despesa: "Despesas", caixa: "Caixa", comissao: "Comissões" };
+  if (estadoNotif.filtro !== "todas" && !tipos.includes(estadoNotif.filtro)) estadoNotif.filtro = "todas";
+  const ul = el("ul", { class: "lista-notif" });
+  const desenhar = () => {
+    const vis = itens.filter(i => estadoNotif.filtro === "todas" || i.tipo === estadoNotif.filtro);
+    ul.replaceChildren(...(vis.length ? vis.map(i => el("li", { class: `notif nivel-${i.nivel} ${v.has(i.id) ? "vista" : "nova"}`, "data-notif": i.tipo },
+      el("a", { href: `#/${i.rota}`, class: "notif-link" },
+        el("span", { class: "notif-icone", "aria-hidden": "true" }, icone(ICONE_NOTIF[i.tipo] || "ajuda")),
+        el("span", { class: "notif-txt" }, el("strong", { text: i.titulo }), el("small", { text: i.texto })),
+        el("span", { class: `etiqueta ${NIVEL_NOTIF[i.nivel][1]}`, text: NIVEL_NOTIF[i.nivel][0] }))))
+      : [el("li", { class: "vazio", text: "Tudo em dia por aqui. ✔" })]));
+  };
+  desenhar();
+  const chips = el("div", { class: "chips-filtro chips-quebra", role: "group", "aria-label": "Filtrar" },
+    [["todas", `Todas (${itens.length})`], ...tipos.map(t => [t, `${NOME_TIPO[t] || t} (${itens.filter(i => i.tipo === t).length})`])].map(([id, t]) =>
+      el("button", { type: "button", class: `chip-filtro ${estadoNotif.filtro === id ? "ativo" : ""}`, "data-filtro": id, text: t,
+        onclick: ev => { estadoNotif.filtro = id; chips.querySelectorAll(".chip-filtro").forEach(b => b.classList.toggle("ativo", b === ev.currentTarget)); desenhar(); } })));
+  const novas = itens.filter(i => !v.has(i.id)).length;
+  mostrar(cabecalho("Notificações", "O que precisa da sua atenção. Toque num aviso para ir direto à tela certa. Some sozinho quando for resolvido."),
+    el("div", { class: "notif-topo" },
+      el("p", { class: "suave", "data-teste": "notif-novas", text: novas ? `${novas} nova(s) desde a última visita.` : "Nenhuma nova." }),
+      novas ? botao("Marcar todas como vistas", () => { marcarVistas(itens); telaNotificacoes(); }, "pequeno") : null),
+    chips, ul);
+}
+
+
+// ---------- VISÃO DO DIA (caixa e gestão, 17/11/2026): o dia e a semana num lugar só, com as ações mais usadas ----------
+const NOME_DIA_CURTO = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+async function telaVisaoDia() {
+  const v = await api("/visao-dia");
+  const recarregar = () => telaVisaoDia();
+  const r = v.resumo;
+  const NOME_CAIXA = { aberto: "Caixa aberto", fechado: "Caixa fechado", nao_aberto: "Caixa ainda não aberto" };
+  const resumo = el("div", { class: "resumo-despesas quatro", "data-teste": "visao-resumo" },
+    el("div", { class: "resumo-item" }, el("small", { text: "Marcados hoje" }), el("strong", { text: String(r.marcados) }), el("span", { text: `${r.faltas} falta(s)` })),
+    el("div", { class: "resumo-item ok" }, el("small", { text: "Atendidos" }), el("strong", { text: String(r.finalizados) }), el("span", { text: `${r.aguardando} aguardando` })),
+    el("div", { class: `resumo-item ${v.naoFechados.length ? "alerta" : ""}` }, el("small", { text: "Sem fechar" }), el("strong", { text: String(v.naoFechados.length) }), el("span", { text: "atendimento(s)" })),
+    el("div", { class: "resumo-item" }, el("small", { text: "Recebido hoje" }), el("strong", { text: reais(r.recebidoCentavos) }), el("span", { "data-teste": "situacao-caixa", text: NOME_CAIXA[r.caixa] })));
+  const maior = Math.max(1, ...v.semana.map(d => d.marcados));
+  const semana = el("div", { class: "semana-mini", "data-teste": "visao-semana", role: "list" }, v.semana.map((d, i) => {
+    const dt = new Date(`${d.data}T12:00:00`);
+    const barra = el("span", { class: "semana-mini-barra" });
+    barra.style.height = `${Math.round((d.marcados / maior) * 100)}%`;
+    return el("button", { type: "button", class: `semana-mini-dia ${i === 0 ? "hoje" : ""}`, role: "listitem", "data-dia": d.data,
+      "aria-label": `${NOME_DIA_CURTO[dt.getDay()]} ${dataBR(d.data).slice(0, 5)}: ${d.marcados} marcado(s)`,
+      onclick: () => { estadoAgenda.data = d.data; estadoAgenda.visao = "dia"; location.hash = "#/agenda"; } },
+      el("small", { text: i === 0 ? "Hoje" : NOME_DIA_CURTO[dt.getDay()] }),
+      el("span", { class: "semana-mini-trilho" }, barra),
+      el("strong", { text: String(d.marcados) }), el("small", { text: dataBR(d.data).slice(0, 5) }));
+  }));
+  const secao = (titulo, qtd, teste, conteudo, acaoTopo = null) => el("section", { class: "cartao visao-secao", "data-secao": teste },
+    el("div", { class: "secao-titulo" }, el("h3", {}, titulo, qtd !== null ? el("span", { class: `contagem ${qtd ? "tem" : ""}`, text: String(qtd) }) : null), acaoTopo),
+    conteudo);
+  const lista = (itens, vazio) => itens.length ? el("ul", { class: "lista-x" }, itens) : el("p", { class: "suave", text: vazio });
+  const whats = (link, texto) => link ? el("a", { class: "botao pequeno whats", href: link, target: "_blank", rel: "noopener", text: texto }) : null;
+
+  const naoFechados = secao("Sem fechar", v.naoFechados.length, "nao-fechados", lista(v.naoFechados.map(a => el("li", { class: "item-x linha-simples", "data-nao-fechado": a.cliente },
+    el("div", { class: "item-x-resumo estatico" }, el("span", { class: "item-x-txt" }, el("strong", { text: a.cliente }), el("small", { text: `${dataBR(a.data)} às ${a.hora} · ${a.barbeiro}` })),
+      el("a", { class: "botao pequeno principal", href: "#/caixa", text: "Cobrar" })))), "Tudo fechado. ✔"));
+
+  const notas = secao("Notas vencidas (30 dias ou mais)", v.notasVencidas.length, "notas-vencidas", lista(v.notasVencidas.map(n => itemExpansivel({
+    chave: `vd-nota:${n.clienteId}`, attrs: { "data-nota-vencida": n.cliente }, avatar: iniciais(n.cliente),
+    titulo: n.cliente, sub: `${n.qtd} nota(s) · desde ${dataBR(n.desde)} (${n.dias} dias)`,
+    direita: [el("span", { class: "preco", text: reais(n.totalCentavos) }), n.bloqueado ? el("span", { class: "etiqueta vermelha", text: "Bloqueado" }) : null],
+    detalhes: () => acoesItem(
+      whats(n.whatsapp, "Cobrar no WhatsApp"),
+      el("a", { class: "botao pequeno principal", href: "#/notas", text: "Receber" }),
+      botao(n.bloqueado ? "Desbloquear" : "Bloquear", () => janelaBloquearCliente({ clienteId: n.clienteId, nome: n.cliente, cliente: n.cliente, bloqueado: n.bloqueado ? { motivo: "nota vencida" } : null }, recarregar), "pequeno texto-perigo"))
+  })), "Nenhuma nota vencida. ✔"));
+
+  const COR = { agendado: "", finalizado: "verde", faltou: "vermelha" };
+  const NOME = { agendado: "Marcado", finalizado: "Atendido", faltou: "Faltou" };
+  const agenda = secao("Hoje na agenda", v.agenda.length, "agenda-hoje", lista(v.agenda.map(a => itemExpansivel({
+    chave: `vd-ag:${a.id}`, attrs: { "data-hoje": a.cliente },
+    titulo: [el("span", { class: "hora-lista", text: a.hora }), a.cliente], sub: a.barbeiro,
+    direita: [seloCliente(a), el("span", { class: `etiqueta ${COR[a.situacao]}`, text: NOME[a.situacao] })],
+    detalhes: () => [avisoCliente(a), acoesItem(
+      a.situacao === "agendado" ? whats(a.whatsapp, "Lembrar no WhatsApp") : null,
+      a.situacao === "agendado" ? el("a", { class: "botao pequeno principal", href: "#/caixa", text: "Cobrar no caixa" }) : null,
+      el("a", { class: "botao pequeno", href: "#/agenda", text: "Ver na agenda", onclick: () => { estadoAgenda.data = v.hoje; estadoAgenda.visao = "dia"; } }))]
+  })), "Ninguém marcado hoje."), el("a", { class: "botao pequeno", href: "#/mensagens", text: "Enviar mensagens" }));
+
+  const faltas = secao("Faltaram (últimos 7 dias)", v.faltas.length, "faltas", lista(v.faltas.map(f => itemExpansivel({
+    chave: `vd-falta:${f.id}`, attrs: { "data-falta": f.cliente }, avatar: iniciais(f.cliente),
+    titulo: f.cliente, sub: `${dataBR(f.data)} às ${f.hora} · ${f.barbeiro}`,
+    direita: f.bloqueado ? el("span", { class: "etiqueta vermelha", text: "Bloqueado" }) : null,
+    detalhes: () => acoesItem(
+      whats(f.whatsapp, "Chamar para remarcar"),
+      f.bloqueado ? null : botao("Bloquear", () => janelaBloquearCliente({ clienteId: f.clienteId, nome: f.cliente, cliente: f.cliente }, recarregar), "pequeno texto-perigo"))
+  })), "Nenhuma falta. ✔"));
+
+  const produtos = secao("Produtos a vencer (60 dias)", v.produtosAVencer.length, "produtos-vencer", lista(v.produtosAVencer.map(p => el("li", { class: "item-x linha-simples", "data-produto-vencer": p.nome },
+    el("div", { class: "item-x-resumo estatico" }, el("span", { class: "item-x-txt" }, el("strong", { text: p.nome }), el("small", { text: `${p.saldo} un. no estoque` })),
+      el("span", { class: `etiqueta ${p.vencido ? "vermelha" : "amarela"}`, text: `${p.vencido ? "Venceu" : "Vence"} ${dataBR(p.validade)}` })))), "Nenhum produto perto de vencer. ✔"));
+
+  const bloqueados = v.bloqueados.length ? secao("Clientes bloqueados", v.bloqueados.length, "bloqueados", lista(v.bloqueados.map(b => el("li", { class: "item-x linha-simples", "data-bloqueado": b.cliente },
+    el("div", { class: "item-x-resumo estatico" }, el("span", { class: "item-x-txt" }, el("strong", { text: b.cliente }), el("small", { text: `${b.motivo} · desde ${dataBR(b.desde)}` })),
+      botao("Desbloquear", () => janelaBloquearCliente({ id: b.clienteId, nome: b.cliente, bloqueado: { motivo: b.motivo } }, recarregar), "pequeno")))), "")) : null;
+
+  const d = new Date(`${v.hoje}T12:00:00`);
+  mostrar(cabecalho("Visão do dia", `${["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][d.getDay()]}, ${dataBR(v.hoje)} — tudo que importa hoje e na semana.`),
+    resumo,
+    el("section", { class: "cartao" }, el("div", { class: "secao-titulo" }, el("h3", { text: "Próximos 7 dias" }), el("small", { class: "suave", text: "Toque no dia para abrir a agenda" })), semana),
+    el("div", { class: "duas-colunas visao-colunas" },
+      el("div", {}, naoFechados, agenda, faltas),
+      el("div", {}, notas, produtos, bloqueados)));
+}
+
 // ---------- NOTAS EM ABERTO (promissória) ----------
 // Quem levou serviço/produto para pagar depois. "Receber" só quando o cliente quita: o valor entra no caixa de hoje.
 // Nota paga continua registrada (aba Pagas). Cancelar nota em aberto: só gerente/proprietário, com motivo.
@@ -4868,6 +5080,7 @@ const ICONES = {
   setaBaixo: "M12 4v14M6 12l6 6 6-6",
   setaCima: "M12 20V6M6 12l6-6 6 6",
   cadeado: "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3",
+  sino: "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0",
   lixeira: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
   estoque: "M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8",
   produtos: "M6 2h12l2 6H4zM4 8v13h16V8M9 12h6",
@@ -4896,15 +5109,15 @@ function gruposDoMenu() {
 }
 function gruposDoPerfil(p) {
   if (p === "caixa") return [
-    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["notas", "Notas em aberto", "contas"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
+    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["visao-dia", "Visão do dia", "painel"], ["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["notas", "Notas em aberto", "contas"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"], ["notificacoes", "Notificações", "sino"]] },
     { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
   ];
   if (p === "barbeiro") return [
-    { id: "atendimento", titulo: "Meu trabalho", icone: "agenda", itens: [["agenda", "Minha agenda", "agenda"], ["desempenho", "Meu desempenho", "grafico"]] },
+    { id: "atendimento", titulo: "Meu trabalho", icone: "agenda", itens: [["agenda", "Minha agenda", "agenda"], ["desempenho", "Meu desempenho", "grafico"], ["notificacoes", "Notificações", "sino"]] },
     { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
   ];
   return [
-    { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ...(p === "gerente" || p === "proprietario" ? [["desempenho", "Meu desempenho", "grafico"]] : [])] },
+    { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ["visao-dia", "Visão do dia", "lista"], ["notificacoes", "Notificações", "sino"], ...(p === "gerente" || p === "proprietario" ? [["desempenho", "Meu desempenho", "grafico"]] : [])] },
     { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
     { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["comissoes", "Comissões e vales", "comissao"], ["notas", "Notas em aberto", "contas"], ["contas", "Despesas", "contas"], ["contador", "Contador e dados", "contador"]] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"], ["estoque", "Estoque", "estoque"]] },
@@ -4981,6 +5194,8 @@ const ROTAS = {
   mensagens: { perfis: ["proprietario", "gerente", "caixa"], tela: telaMensagens },
   agenda: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgenda },
   notas: { perfis: ["proprietario", "gerente", "caixa"], tela: telaNotas },
+  notificacoes: { perfis: ["proprietario", "gerente", "caixa", "barbeiro"], tela: telaNotificacoes },
+  "visao-dia": { perfis: ["proprietario", "gerente", "caixa"], tela: telaVisaoDia },
   assinatura: { perfis: ["proprietario", "gerente"], tela: telaAssinatura },
   duvidas: { perfis: ["plataforma", "proprietario", "gerente", "barbeiro", "caixa"], tela: telaDuvidas },
   tutoriais: { perfis: ["plataforma", "proprietario", "gerente", "barbeiro", "caixa"], tela: telaTutoriais },
@@ -5034,6 +5249,7 @@ async function rotear() {
     return mostrar(el("p", { class: "erro", text: "Tela não disponível para o seu perfil." }));
   }
   if (!["suporte", "duvidas", "tutoriais"].includes(nome)) telaAnterior = nome;
+  if (nome !== "notificacoes") buscarNotificacoes().catch(() => {});   // número do sino (no máximo 1 busca por minuto)
   return montarTela(rota.tela, parametro);
 }
 let telaAnterior = null;   // última tela de trabalho (vai junto no chamado de suporte)
@@ -5046,6 +5262,7 @@ async function sairDoSistema() {
   usuario = null;
   document.getElementById("aviso").hidden = true;   // aviso de quem saiu não aparece para o próximo
   estadoCaixa.aba = "cobrar"; estadoCaixa.carrinho.clear();
+  ultimasNotificacoes = { em: 0, itens: [] };
   Object.assign(estadoAgenda, { data: null, visao: "dia", barbeiroId: "" });
   clearTimeout(timerCaixa);
   dataEnvioMensagem = null;
@@ -5098,8 +5315,12 @@ function blocoAparencia() {
 
 async function iniciar() {
   const btnConta = document.getElementById("btn-conta");
-  btnConta.prepend(icone("usuario"));
+  btnConta.replaceChildren(icone("usuario"), el("span", { class: "topo-conta-txt", text: "Minha conta" }));
+  btnConta.setAttribute("aria-label", "Minha conta");
   btnConta.addEventListener("click", janelaConta);
+  const btnNotif = document.getElementById("btn-notif");
+  btnNotif.append(icone("sino"), el("span", { class: "sino-num", hidden: true }));
+  btnNotif.addEventListener("click", () => { if (location.hash === "#/notificacoes") rotear(); else location.hash = "#/notificacoes"; });
   const btnAjuda = document.getElementById("btn-ajuda");
   btnAjuda.append(icone("ajuda"));
   btnAjuda.addEventListener("click", ajudaDaTela);

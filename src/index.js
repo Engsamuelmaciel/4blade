@@ -19,6 +19,7 @@ import { rotasFuncionamento } from "./funcionamento.js";
 import { rotasAgenda } from "./agenda.js";
 import { rotasMensagens } from "./mensagens.js";
 import { rotasPromissorias } from "./promissorias.js";
+import { rotasNotificacoes } from "./notificacoes.js";
 import { rotasCaixa } from "./caixa.js";
 import { rotasEstoque, rotasVendas } from "./estoque.js";
 import { rotasGestao } from "./gestao.js";
@@ -297,14 +298,14 @@ export default {
       // ---------- DADOS DA BARBEARIA: exige usuário de barbearia ----------
       const r = (await rotasFuncionamento(ctx, path, method)) || (await rotasAgenda(ctx, path, method)) ||
         (await rotasCaixa(ctx, path, method)) || (await rotasEstoque(ctx, path, method)) || (await rotasVendas(ctx, path, method)) ||
-        (await rotasGestao(ctx, path, method)) || (await rotasFinanceiro(ctx, path, method)) || (await rotasContador(ctx, path, method)) || (await rotasMensagens(ctx, path, method)) || (await rotasPromissorias(ctx, path, method)) || (await rotasAssinatura(ctx, path, method)) || (await rotasSuporte(ctx, path, method)) || (await rotasUsuarios(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
+        (await rotasGestao(ctx, path, method)) || (await rotasFinanceiro(ctx, path, method)) || (await rotasContador(ctx, path, method)) || (await rotasMensagens(ctx, path, method)) || (await rotasPromissorias(ctx, path, method)) || (await rotasNotificacoes(ctx, path, method)) || (await rotasAssinatura(ctx, path, method)) || (await rotasSuporte(ctx, path, method)) || (await rotasUsuarios(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
       if (r) {
         return r;
       }
 
       return fail("Rota não encontrada", 404);
     } catch (error) {
-      if (error instanceof HttpError) return fail(error.message, error.status);
+      if (error instanceof HttpError) return error.extra ? json({ erro: error.message, ...error.extra }, error.status) : fail(error.message, error.status);
       console.error("Erro interno:", error?.message || error);
       return fail("Erro interno ou operação não permitida", 500);
     }

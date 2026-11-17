@@ -130,7 +130,7 @@ async function rodar(tela) {
     await ir(page, "Tutoriais");
     await page.waitForSelector("[data-tutorial]");
     assert.ok(await page.locator('[data-tutorial="meu-plano"]').count() === 1 && await page.locator('[data-tutorial="assinatura"]').count() === 0);
-    assert.equal(await page.locator("[data-tutorial]").count(), 25, "gerente vê todos os tutoriais");
+    assert.equal(await page.locator("[data-tutorial]").count(), 27, "gerente vê todos os tutoriais");
     await page.waitForFunction(() => [...document.querySelectorAll(".tutorial-cartao img")].slice(0, 4).every(i => i.complete && i.naturalWidth > 0));
     await print("tutoriais-lista");
     await page.click('[data-tutorial="marcar-horario"]');

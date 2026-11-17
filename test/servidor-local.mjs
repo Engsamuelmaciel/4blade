@@ -51,6 +51,18 @@ http.createServer(async (req, res) => {
     if (url.searchParams.get("on") === "1") amb.env.COBRANCA_ON_LINE = "sim"; else delete amb.env.COBRANCA_ON_LINE;
     res.writeHead(200); return res.end("ok");
   }
+  if (url.pathname === "/__teste/nota-antiga") {   // nota (promissória) em aberto feita há N dias para um cliente (pelo nome)
+    const u = await amb.env.DB.prepare("SELECT id, barbearia_id FROM usuarios WHERE login = ?").bind(url.searchParams.get("login")).first();
+    const c = await amb.env.DB.prepare("SELECT id FROM clientes WHERE barbearia_id = ? AND nome = ?").bind(u.barbearia_id, url.searchParams.get("cliente")).first();
+    const { hojeBrasil } = await import("../src/util.js");
+    const { somarDias } = await import("../src/agenda-util.js");
+    const data = somarDias(hojeBrasil(), -Number(url.searchParams.get("dias") || 35));
+    const cx = crypto.randomUUID();
+    await amb.env.DB.prepare("INSERT INTO caixas (id, barbearia_id, data, situacao, troco_centavos, aberto_por) VALUES (?, ?, ?, 'fechado', 0, ?)").bind(cx, u.barbearia_id, data, u.id).run();
+    await amb.env.DB.prepare(`INSERT INTO promissorias (id, barbearia_id, cliente_id, origem, caixa_id, valor_centavos, descricao, criado_por)
+                              VALUES (?, ?, ?, 'atendimento', ?, ?, 'Corte (fictício)', ?)`).bind(crypto.randomUUID(), u.barbearia_id, c.id, cx, Number(url.searchParams.get("valor") || 4000), u.id).run();
+    res.writeHead(200); return res.end("ok");
+  }
   if (url.pathname === "/__teste/pagar") {
     const u = await amb.env.DB.prepare("SELECT a.asaas_assinatura_id AS sub FROM usuarios x JOIN assinaturas a ON a.barbearia_id = x.barbearia_id WHERE x.login = ?").bind(url.searchParams.get("login")).first();
     const ev = amb.asaas.pagar(u.sub);

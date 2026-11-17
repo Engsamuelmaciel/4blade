@@ -174,6 +174,8 @@ try {
   await foto("fechar-caixa", { janela: true });
   await page.keyboard.press("Escape");
   await ir(page, "Notas em aberto"); await foto("notas");
+  await ir(page, "Visão do dia"); await foto("visao-dia");
+  await ir(page, "Notificações"); await foto("notificacoes");
 
   await entrar("gerente.semana", SEMANA);
   await ir(page, "Painel");

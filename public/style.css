@@ -1299,3 +1299,48 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
 .periodo-outro .botao { grid-column: 1 / -1; }
 .periodo-outro[hidden] { display: none; }
 .secao-titulo { flex-wrap: wrap; }
+
+/* ---------- NOTIFICAÇÕES, ALERTA DE NOTA VENCIDA E VISÃO DO DIA (17/11/2026) ---------- */
+.topo-sino { position: relative; }
+.sino-num { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--erro); color: #fff;
+  font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; box-shadow: 0 0 0 2px var(--primaria); }
+.sino-num[hidden] { display: none; }
+.notif-topo { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.lista-notif { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
+.notif { background: var(--cartao); border-radius: 12px; box-shadow: var(--sombra); border-left: 4px solid var(--borda); }
+.notif.nivel-alerta { border-left-color: var(--erro); }
+.notif.nivel-aviso { border-left-color: var(--amarelo); }
+.notif.nivel-info { border-left-color: var(--destaque); }
+.notif.vista { opacity: .78; }
+.notif-link { display: flex; align-items: center; gap: 12px; padding: 11px 12px; color: inherit; text-decoration: none; }
+.notif-icone { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--fundo); }
+.notif-icone .icone { width: 19px; height: 19px; }
+.notif-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.notif-txt small { color: var(--suave); font-size: 13.5px; }
+.notif.nova .notif-txt strong::after { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--erro); margin-left: 6px; vertical-align: middle; }
+.selo-cliente { margin-left: 4px; font-size: 11.5px; }
+.aviso-cliente { margin: 6px 0; font-size: 13.5px; }
+.alerta-nota { padding: 8px 10px; border-radius: 9px; background: var(--erro-fundo); color: var(--erro); font-weight: 700; }
+.alerta-aceite { max-width: 420px; }
+.alerta-aceite .janela-form { text-align: center; }
+.alerta-icone { width: 52px; height: 52px; margin: 4px auto 10px; border-radius: 50%; display: grid; place-items: center; background: var(--erro-fundo); color: var(--erro); font-size: 28px; font-weight: 900; }
+.resumo-despesas.quatro { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 700px) { .resumo-despesas.quatro { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.semana-mini { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.semana-mini-dia { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px; border: 1px solid var(--borda); border-radius: 10px; background: var(--cartao); color: var(--texto); cursor: pointer; font: inherit; }
+.semana-mini-dia.hoje { border-color: var(--dourado); box-shadow: inset 0 0 0 1px var(--dourado); }
+.semana-mini-dia small { font-size: 11.5px; color: var(--suave); }
+.semana-mini-trilho { width: 14px; height: 54px; border-radius: 7px; background: var(--fundo); display: flex; align-items: flex-end; overflow: hidden; }
+.semana-mini-barra { width: 100%; border-radius: 7px; background: var(--dourado); min-height: 2px; }
+.visao-secao h3 { display: flex; align-items: center; gap: 8px; }
+.contagem { min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px; background: var(--fundo); color: var(--suave); font-size: 13px; display: inline-grid; place-items: center; }
+.contagem.tem { background: var(--erro-fundo); color: var(--erro); }
+.item-x-resumo.estatico { cursor: default; }
+.linha-simples .item-x-resumo { gap: 10px; }
+.hora-lista { font-weight: 800; margin-right: 8px; color: var(--destaque); }
+.visao-colunas > div > .cartao { margin-bottom: 14px; }
+@media (max-width: 480px) {
+  .topo-conta { width: 40px; padding: 0; justify-content: center; }
+  .topo-conta-txt { display: none; }
+}
+.chips-quebra { flex-wrap: wrap; overflow: visible; }
