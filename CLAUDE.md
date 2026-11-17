@@ -142,6 +142,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - Publicado em 16/11/2026 (autorizado, só oficial) junto com editar/excluir horário e semana enxuta: migrações 0014–0015 aplicadas no 4blade-db (4 tabelas novas conferidas), versão b0898d1e (forblade.com.br: sw `4blade-v19`, `/api/estoque/material` 401 sem login).
 
 - 17/11/2026: **Agenda em grade**: `gradeAgenda(ag, d, profs, disp)` em app.js (linhas de 5 min, posição por CSSOM `style.gridRow/gridColumn` e `--cols/--linhas` — permitido pela CSP, conferido em `test/navegador-e2.mjs` com a CSP real aplicada); Dia: `estadoAgenda.modoDia` grade|lista (localStorage `4blade.agendaModo`); Semana: dias abertos buscam `/agenda/disponibilidade` e mostram a grade. Testes antigos rodam em "Lista" (init script em cada navegador-*.mjs). **Backup antes da mudança: ramificação `backup-agenda-antes-grade` (commit bb90dc3) e versão publicada b0898d1e** — para voltar: publicar a partir dela (ou `wrangler rollback`). Cache do sw `4blade-v20`.
+  - Publicado em 17/11/2026 (autorizado, só oficial, sem migração): versão 42bc2fd3 (forblade.com.br: app.js com `gradeAgenda`, sw `4blade-v20`). Voltar ao layout anterior: `npx wrangler rollback b0898d1e` ou publicar a partir de `backup-agenda-antes-grade`.
 
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
