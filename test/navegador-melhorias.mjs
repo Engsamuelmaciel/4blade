@@ -335,15 +335,18 @@ async function rodar(tela) {
     await page.click(".pdv-acoes a:has-text('Notas em aberto')");
     await page.waitForSelector('[data-nota-cliente="Fábio Fixo Fictício"]');
     await print("notas-em-aberto");
+    await abrirItem(page, '[data-nota-cliente="Fábio Fixo Fictício"]');
+    await print("notas-cliente-aberto");
     await page.click('[data-nota-cliente="Fábio Fixo Fictício"] button:has-text("Receber")');
     await page.selectOption("dialog[open] #c-forma1", "pix");
     await ok();
     await page.waitForSelector("text=Nota recebida");
     assert.equal(await page.locator('[data-nota-cliente="Fábio Fixo Fictício"]').count(), 0, "nota quitada sai da lista de abertas");
     assert.equal(await page.locator("[data-cancelar-nota]").count(), 0, "caixa não vê o botão de cancelar nota");
-    await page.click("[role=tablist] button:has-text('Pagas')");
-    await page.waitForSelector('[data-nota-historico="Fábio Fixo Fictício"] >> text=Paga em');
+    await page.click("[data-filtro=pagas]");
     await page.waitForSelector('[data-recebimento="Fábio Fixo Fictício"] >> text=Pago');
+    await abrirItem(page, '[data-recebimento="Fábio Fixo Fictício"]');
+    await page.waitForSelector('[data-recebimento="Fábio Fixo Fictício"] >> text=Pix');
     await print("nota-recebida");
 
     passo("caixa (recepção) vê a agenda de todos, marca para um barbeiro e acessa clientes, mensagens e catálogo");
@@ -502,7 +505,8 @@ async function rodar(tela) {
     await page.waitForSelector('[data-produto="Cera Fictícia"] >> text=Custo médio: R$ 18,00');
     await ir(page, "Estoque");
     await page.waitForSelector('[data-estoque="Cera Fictícia"] [data-teste=saldo]:has-text("10 un.")');
-    await ir(page, "Contas a pagar");
+    await ir(page, "Despesas");
+    await abrirItem(page, '[data-conta="Conta de luz"]');
     await page.click('[data-conta="Conta de luz"] button:has-text("Editar")');
     await page.fill("dialog[open] #c-eValor", "215,40");
     await print("editar-conta", false);

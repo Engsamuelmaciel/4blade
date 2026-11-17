@@ -50,5 +50,5 @@ export async function abrirItem(page, sel) {
 export async function abrirCadastro(page) {
   const p = page.locator("details.painel-novo").first();
   await p.waitFor();
-  if (await p.getAttribute("open") === null) await p.locator("summary").click();
+  if (await p.getAttribute("open") === null) await p.locator(":scope > summary").click();
 }

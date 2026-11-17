@@ -301,31 +301,40 @@ function statusConta(c, hoje) {
   if (c.vencimento <= somarDias(hoje, 7)) return "proxima";
   return "futura";
 }
+export const FORMAS_CONTA = { dinheiro: "Dinheiro", pix: "Pix", debito: "Cartão de débito", credito: "Cartão de crédito", boleto: "Boleto", transferencia: "Transferência" };
 const contaPublica = (c, hoje) => ({
   id: c.id, descricao: c.descricao, categoria: c.categoria, valorCentavos: c.valor_centavos, vencimento: c.vencimento,
   recorrente: Boolean(c.recorrente), situacao: c.situacao, status: statusConta(c, hoje), pagoEm: c.pago_em || null,
   pagoComCaixa: Boolean(c.caixa_movimento_id), motivoCancelamento: c.motivo_cancelamento || null,
-  estoque: c.est_produto ? { produto: c.est_produto, quantidade: c.est_qtd } : null
+  estoque: c.est_produto ? { produto: c.est_produto, quantidade: c.est_qtd } : null,
+  forma: c.det_forma || null, parcela: c.det_parcela || 1, parcelas: c.det_parcelas || 1, grupoId: c.det_grupo || null
 });
 // Conta com o material lançado no estoque (quando houver).
 const SELECT_CONTAS = `SELECT k.*, (SELECT p.nome FROM contas_estoque ce JOIN produtos p ON p.id = ce.produto_id WHERE ce.conta_id = k.id) AS est_produto,
-  (SELECT ce.quantidade FROM contas_estoque ce WHERE ce.conta_id = k.id) AS est_qtd FROM contas k`;
+  (SELECT ce.quantidade FROM contas_estoque ce WHERE ce.conta_id = k.id) AS est_qtd,
+  d.forma AS det_forma, d.parcela AS det_parcela, d.parcelas AS det_parcelas, d.grupo_id AS det_grupo
+  FROM contas k LEFT JOIN contas_detalhes d ON d.conta_id = k.id`;
+const formaValida = f => f === undefined || f === null || Object.hasOwn(FORMAS_CONTA, f);
+const upsertForma = (ctx, contaId, forma) => ctx.db.prepare(`INSERT INTO contas_detalhes (conta_id, barbearia_id, forma) VALUES (?, ?, ?)
+  ON CONFLICT(conta_id) DO UPDATE SET forma = excluded.forma`).bind(contaId, ctx.barbeariaId, forma);
 
 async function rotasContas(ctx, path, method) {
   const { db, user, request } = ctx;
   const hoje = hojeBrasil();
   if (path === "/contas" && method === "GET") {
     const todas = new URL(request.url).searchParams.get("todas") === "1";
-    const r = await db.prepare(`${SELECT_CONTAS} WHERE barbearia_id = ? ${todas ? "" : "AND (situacao = 'aberta' OR pago_em >= ?)"}
-                                ORDER BY CASE situacao WHEN 'aberta' THEN 0 ELSE 1 END, vencimento LIMIT 300`)
+    const r = await db.prepare(`${SELECT_CONTAS} WHERE k.barbearia_id = ? ${todas ? "" : "AND (k.situacao = 'aberta' OR k.pago_em >= ?)"}
+                                ORDER BY CASE k.situacao WHEN 'aberta' THEN 0 ELSE 1 END, k.vencimento LIMIT 300`)
       .bind(ctx.barbeariaId, ...(todas ? [] : [somarDias(hoje, -31)])).all();
-    return json({ contas: r.results.map(c => contaPublica(c, hoje)), categorias: CATEGORIAS });
+    return json({ contas: r.results.map(c => contaPublica(c, hoje)), categorias: CATEGORIAS, formas: FORMAS_CONTA });
   }
   if (path === "/contas" && method === "POST") {
     const input = await readJson(request);
-    const descricao = textoLimpo(input.descricao, 2, 100);
-    if (!descricao) erro("Informe a descrição (2 a 100 letras).");
     if (!Object.hasOwn(CATEGORIAS, input.categoria)) erro("Categoria inválida (aluguel, luz, água, fornecedor ou outros).");
+    // Descrição opcional (pedido de 17/11/2026): em branco vira o nome da categoria (ou "Compra: <produto>").
+    const semDescricao = input.descricao === undefined || input.descricao === null || String(input.descricao).trim() === "";
+    let descricao = semDescricao ? CATEGORIAS[input.categoria] : textoLimpo(input.descricao, 2, 100);
+    if (!descricao) erro("Descrição muito curta ou longa (2 a 100 letras). Pode deixar em branco.");
     if (!validCentavos(input.valorCentavos) || input.valorCentavos <= 0) erro("Valor inválido.");
     if (!validDate(input.vencimento)) erro("Vencimento inválido.");
     if (input.recorrente !== undefined && typeof input.recorrente !== "boolean") erro("Recorrente inválido.");
@@ -341,20 +350,56 @@ async function rotasContas(ctx, path, method) {
       const q = input.estoque.quantidade;
       if (!Number.isInteger(q) || q < 1 || q > 100000) erro("Quantidade para o estoque inválida.");
       est = { p, q, c: Math.round(input.valorCentavos / q), mov: crypto.randomUUID() };
+      if (semDescricao) descricao = `Compra: ${p.nome}`.slice(0, 100);
     }
-    const id = crypto.randomUUID();
-    await db.batch([
-      db.prepare("INSERT INTO contas (id, barbearia_id, descricao, categoria, valor_centavos, vencimento, recorrente, criado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(id, ctx.barbeariaId, descricao, input.categoria, input.valorCentavos, input.vencimento, input.recorrente ? 1 : 0, user.id),
-      auditoria(ctx, "conta_criada", id, { depois: { descricao, categoria: input.categoria, valor: input.valorCentavos, vencimento: input.vencimento, recorrente: Boolean(input.recorrente),
-        estoque: est ? { produto: est.p.nome, quantidade: est.q, custoUnit: est.c } : undefined } }),
-      ...(est ? [
+    // Forma de pagamento e parcelamento (pedido de 17/11/2026): cada parcela vira uma conta, vencendo de mês em mês.
+    if (!formaValida(input.forma)) erro("Forma de pagamento inválida.");
+    const forma = input.forma || null;
+    const parcelas = input.parcelas === undefined ? 1 : input.parcelas;
+    if (!Number.isInteger(parcelas) || parcelas < 1 || parcelas > 48) erro("Parcelas inválidas (1 a 48).");
+    if (parcelas > 1 && input.recorrente) erro("Conta parcelada não pode ser recorrente.");
+    if (parcelas > 1 && input.valorCentavos < parcelas) erro("Valor pequeno demais para tantas parcelas.");
+    if (input.jaPaga !== undefined && typeof input.jaPaga !== "boolean") erro("Pagamento inválido.");
+    // "Já paga" vale para a 1ª parcela (compra à vista no Pix, dinheiro, débito… ou a entrada).
+    const jaPaga = input.jaPaga === true;
+    const base = Math.floor(input.valorCentavos / parcelas);
+    const valores = Array.from({ length: parcelas }, (_, i) => base + (i === 0 ? input.valorCentavos - base * parcelas : 0));
+    const grupo = parcelas > 1 ? crypto.randomUUID() : null;
+    const ids = valores.map(() => crypto.randomUUID());
+    const id = ids[0];
+    const comandos = [];
+    let movCaixa = null;
+    if (jaPaga && input.comCaixa === true) {
+      const s = await sangriaAutomatica(ctx, valores[0], `Conta paga: ${descricao}${parcelas > 1 ? ` (1/${parcelas})` : ""}`);
+      movCaixa = s.id;
+      comandos.push(s.comando);
+    }
+    ids.forEach((cid, i) => {
+      const desc = parcelas > 1 ? `${descricao.slice(0, 92)} (${i + 1}/${parcelas})` : descricao;
+      const venc = i === 0 ? input.vencimento : somarMes(input.vencimento, i);
+      const paga = i === 0 && jaPaga;
+      comandos.push(
+        db.prepare(`INSERT INTO contas (id, barbearia_id, descricao, categoria, valor_centavos, vencimento, recorrente, situacao, pago_em, pago_por, caixa_movimento_id, criado_por)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .bind(cid, ctx.barbeariaId, desc, input.categoria, valores[i], venc, input.recorrente ? 1 : 0, paga ? "paga" : "aberta",
+            paga ? hoje : null, paga ? user.id : null, paga ? movCaixa : null, user.id));
+      if (forma || parcelas > 1) {
+        comandos.push(db.prepare("INSERT INTO contas_detalhes (conta_id, barbearia_id, forma, parcela, parcelas, grupo_id) VALUES (?, ?, ?, ?, ?, ?)")
+          .bind(cid, ctx.barbeariaId, forma, i + 1, parcelas, grupo));
+      }
+    });
+    comandos.push(auditoria(ctx, "conta_criada", id, { depois: { descricao, categoria: input.categoria, valor: input.valorCentavos, vencimento: input.vencimento, recorrente: Boolean(input.recorrente),
+      forma, parcelas, jaPaga, contas: parcelas > 1 ? ids : undefined,
+      estoque: est ? { produto: est.p.nome, quantidade: est.q, custoUnit: est.c } : undefined } }));
+    // O material entra no estoque pelo valor TOTAL da compra, ligado à 1ª parcela.
+    if (est) {
+      comandos.push(
         ...comandosEntrada(ctx, est.p, { q: est.q, c: est.c, fornecedor: textoLimpo(descricao, 2, 80) || null, id: est.mov }),
         db.prepare(`INSERT INTO contas_estoque (id, barbearia_id, conta_id, produto_id, quantidade, custo_unit_centavos, movimento_id) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-          .bind(crypto.randomUUID(), ctx.barbeariaId, id, est.p.id, est.q, est.c, est.mov)
-      ] : [])
-    ]);
-    return json({ conta: contaPublica(await db.prepare(`${SELECT_CONTAS} WHERE k.id = ?`).bind(id).first(), hoje) }, 201);
+          .bind(crypto.randomUUID(), ctx.barbeariaId, id, est.p.id, est.q, est.c, est.mov));
+    }
+    await db.batch(comandos);
+    return json({ conta: contaPublica(await db.prepare(`${SELECT_CONTAS} WHERE k.id = ?`).bind(id).first(), hoje), contasCriadas: parcelas }, 201);
   }
   if (path === "/contas/pagar" && method === "POST") {
     const input = await readJson(request);
@@ -362,8 +407,10 @@ async function rotasContas(ctx, path, method) {
     const c = await db.prepare("SELECT * FROM contas WHERE id = ? AND barbearia_id = ?").bind(input.id, ctx.barbeariaId).first();
     if (!c) erro("Conta não encontrada.", 404);
     if (c.situacao !== "aberta") erro("Essa conta não está em aberto.", 409);
+    if (!formaValida(input.forma)) erro("Forma de pagamento inválida.");
     const comandos = [];
     let movId = null;
+    if (input.forma) comandos.push(upsertForma(ctx, c.id, input.forma));
     // "Pago com dinheiro do caixa" → vira sangria do caixa aberto.
     if (input.comCaixa === true) {
       const s = await sangriaAutomatica(ctx, c.valor_centavos, `Conta paga: ${c.descricao}`);
@@ -393,8 +440,12 @@ async function rotasContas(ctx, path, method) {
     if (c.situacao === "cancelada") erro("Conta cancelada não pode ser editada.", 409);
     const antes = { descricao: c.descricao, categoria: c.categoria, valor_centavos: c.valor_centavos, vencimento: c.vencimento, recorrente: c.recorrente };
     const novo = { ...antes };
-    if (input.descricao !== undefined) { novo.descricao = textoLimpo(input.descricao, 2, 100); if (!novo.descricao) erro("Informe a descrição (2 a 100 letras)."); }
     if (input.categoria !== undefined) { if (!Object.hasOwn(CATEGORIAS, input.categoria)) erro("Categoria inválida."); novo.categoria = input.categoria; }
+    if (input.descricao !== undefined) {
+      const vazia = input.descricao === null || String(input.descricao).trim() === "";
+      novo.descricao = vazia ? CATEGORIAS[novo.categoria] : textoLimpo(input.descricao, 2, 100);
+      if (!novo.descricao) erro("Descrição muito curta ou longa (2 a 100 letras). Pode deixar em branco.");
+    }
     const mudaValores = ["valorCentavos", "vencimento", "recorrente"].some(k => input[k] !== undefined
       && input[k] !== { valorCentavos: c.valor_centavos, vencimento: c.vencimento, recorrente: Boolean(c.recorrente) }[k]);
     if (mudaValores && c.situacao !== "aberta") erro("Conta já paga: só dá para mudar a descrição e a categoria.", 409);
@@ -406,43 +457,60 @@ async function rotasContas(ctx, path, method) {
     if (input.vencimento !== undefined) { if (!validDate(input.vencimento)) erro("Vencimento inválido."); novo.vencimento = input.vencimento; }
     if (input.recorrente !== undefined) { if (typeof input.recorrente !== "boolean") erro("Recorrente inválido."); novo.recorrente = input.recorrente ? 1 : 0; }
     const mudou = Object.keys(novo).filter(k => novo[k] !== antes[k]);
-    if (!mudou.length) erro("Nada foi alterado.");
+    if (!formaValida(input.forma)) erro("Forma de pagamento inválida.");
+    const formaAntes = (await db.prepare("SELECT forma FROM contas_detalhes WHERE conta_id = ?").bind(c.id).first())?.forma || null;
+    const mudaForma = input.forma !== undefined && (input.forma || null) !== formaAntes;
+    if (!mudou.length && !mudaForma) erro("Nada foi alterado.");
+    if (mudaForma) { mudou.push("forma"); antes.forma = formaAntes; novo.forma = input.forma || null; }
     await db.batch([
+      ...(mudaForma ? [upsertForma(ctx, c.id, input.forma || null)] : []),
       db.prepare(`UPDATE contas SET descricao = ?, categoria = ?, valor_centavos = ?, vencimento = ?, recorrente = ?
                   WHERE id = ? AND barbearia_id = ? AND situacao = ?`)
         .bind(novo.descricao, novo.categoria, novo.valor_centavos, novo.vencimento, novo.recorrente, c.id, ctx.barbeariaId, c.situacao),
       auditoria(ctx, "conta_alterada", c.id, { antes: Object.fromEntries(mudou.map(k => [k, antes[k]])), depois: Object.fromEntries(mudou.map(k => [k, novo[k]])) })
     ]);
-    return json({ conta: contaPublica(await db.prepare("SELECT * FROM contas WHERE id = ?").bind(c.id).first(), hoje) });
+    return json({ conta: contaPublica(await db.prepare(`${SELECT_CONTAS} WHERE k.id = ?`).bind(c.id).first(), hoje) });
   }
   if (path === "/contas/cancelar" && method === "POST") {
     const input = await readJson(request);
     if (!validId(input.id)) erro("Conta inválida.");
     const motivo = exigirMotivo(input.motivo);
-    const c = await db.prepare("SELECT * FROM contas WHERE id = ? AND barbearia_id = ?").bind(input.id, ctx.barbeariaId).first();
+    const c = await db.prepare("SELECT k.*, d.grupo_id FROM contas k LEFT JOIN contas_detalhes d ON d.conta_id = k.id WHERE k.id = ? AND k.barbearia_id = ?")
+      .bind(input.id, ctx.barbeariaId).first();
     if (!c) erro("Conta não encontrada.", 404);
     if (c.situacao !== "aberta") erro("Só conta em aberto pode ser cancelada.", 409);
-    // Material que entrou no estoque por esta conta sai de novo (ajuste "Correção"), se ainda houver saldo.
-    const ce = await db.prepare(`SELECT ce.*, p.nome, COALESCE(e.saldo, 0) AS saldo, p.custo_medio_centavos FROM contas_estoque ce JOIN produtos p ON p.id = ce.produto_id
-                                 LEFT JOIN produto_estoque e ON e.produto_id = p.id WHERE ce.conta_id = ? AND ce.estornado_movimento_id IS NULL`).bind(c.id).first();
-    if (ce && ce.saldo < ce.quantidade) erro(`Não dá para cancelar: ${ce.quantidade} de ${ce.nome} entraram por esta conta, mas só há ${ce.saldo} no estoque. Ajuste o estoque antes.`, 409);
-    const movEst = ce ? crypto.randomUUID() : null;
-    try {
-      await db.batch([
-        db.prepare("UPDATE contas SET situacao = 'cancelada', motivo_cancelamento = ? WHERE id = ? AND barbearia_id = ? AND situacao = 'aberta'").bind(motivo, c.id, ctx.barbeariaId),
-        auditoria(ctx, "conta_cancelada", c.id, { motivo, antes: { situacao: "aberta" }, depois: { situacao: "cancelada" }, estoque: ce ? { produto: ce.nome, quantidade: -ce.quantidade } : undefined }),
+    // Parcelada: "todasParcelas" cancela esta e as outras parcelas ainda em aberto da mesma compra.
+    const alvos = input.todasParcelas === true && c.grupo_id
+      ? (await db.prepare(`SELECT k.* FROM contas k JOIN contas_detalhes d ON d.conta_id = k.id
+                           WHERE d.grupo_id = ? AND k.barbearia_id = ? AND k.situacao = 'aberta' ORDER BY k.vencimento`).bind(c.grupo_id, ctx.barbeariaId).all()).results
+      : [c];
+    const comandos = [];
+    const saiu = [];
+    for (const k of alvos) {
+      // Material que entrou no estoque por esta conta sai de novo (ajuste "Correção"), se ainda houver saldo.
+      const ce = await db.prepare(`SELECT ce.*, p.nome, COALESCE(e.saldo, 0) AS saldo, p.custo_medio_centavos FROM contas_estoque ce JOIN produtos p ON p.id = ce.produto_id
+                                   LEFT JOIN produto_estoque e ON e.produto_id = p.id WHERE ce.conta_id = ? AND ce.estornado_movimento_id IS NULL`).bind(k.id).first();
+      if (ce && ce.saldo < ce.quantidade) erro(`Não dá para cancelar: ${ce.quantidade} de ${ce.nome} entraram por esta conta, mas só há ${ce.saldo} no estoque. Ajuste o estoque antes.`, 409);
+      const movEst = ce ? crypto.randomUUID() : null;
+      if (ce) saiu.push(`${ce.quantidade} de ${ce.nome}`);
+      comandos.push(
+        db.prepare("UPDATE contas SET situacao = 'cancelada', motivo_cancelamento = ? WHERE id = ? AND barbearia_id = ? AND situacao = 'aberta'").bind(motivo, k.id, ctx.barbeariaId),
+        auditoria(ctx, "conta_cancelada", k.id, { motivo, antes: { situacao: "aberta" }, depois: { situacao: "cancelada" }, estoque: ce ? { produto: ce.nome, quantidade: -ce.quantidade } : undefined }),
         ...(ce ? [
           db.prepare("UPDATE produto_estoque SET saldo = saldo - ?, atualizado_em = CURRENT_TIMESTAMP WHERE produto_id = ? AND barbearia_id = ?").bind(ce.quantidade, ce.produto_id, ctx.barbeariaId),
           db.prepare(`INSERT INTO estoque_movimentos (id, barbearia_id, produto_id, tipo, quantidade, custo_unit_centavos, motivo, criado_por) VALUES (?, ?, ?, 'ajuste', ?, ?, ?, ?)`)
-            .bind(movEst, ctx.barbeariaId, ce.produto_id, -ce.quantidade, ce.custo_unit_centavos, `Correção: conta cancelada (${c.descricao})`, user.id),
+            .bind(movEst, ctx.barbeariaId, ce.produto_id, -ce.quantidade, ce.custo_unit_centavos, `Correção: conta cancelada (${k.descricao})`, user.id),
           db.prepare("UPDATE contas_estoque SET estornado_movimento_id = ? WHERE id = ?").bind(movEst, ce.id)
-        ] : [])
-      ]);
+        ] : []));
+    }
+    try {
+      await db.batch(comandos);
     } catch (e) {
       if (/CHECK constraint failed|constraint failed/i.test(String(e?.message))) erro("Saldo do estoque insuficiente para desfazer a entrada desta conta.", 409);
       throw e;
     }
-    return json({ mensagem: ce ? `Conta cancelada. ${ce.quantidade} de ${ce.nome} saíram do estoque.` : "Conta cancelada." });
+    const txt = alvos.length > 1 ? `${alvos.length} parcelas canceladas.` : "Conta cancelada.";
+    return json({ mensagem: saiu.length ? `${txt} ${saiu.join(", ")} saíram do estoque.` : txt, canceladas: alvos.length });
   }
   return null;
 }

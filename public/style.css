@@ -1258,3 +1258,44 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
 .zap .fila-envio:not(:empty) { padding: 12px; border-top: 1px solid var(--borda); }
 .painel-modelos-corpo { padding: 12px; }
 .painel-modelos-corpo .cartao { box-shadow: none; padding: 0; }
+
+/* ---------- FINANCEIRO LIMPO (17/11/2026): despesas, comissões e notas ---------- */
+.resumo-despesas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.resumo-item { background: var(--cartao); border-radius: 12px; padding: 10px 12px; box-shadow: var(--sombra); display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.resumo-item small { color: var(--suave); font-size: 12px; font-weight: 600; }
+.resumo-item strong { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.resumo-item span { color: var(--suave); font-size: 12px; }
+.resumo-item.alerta { box-shadow: inset 4px 0 0 var(--erro), var(--sombra); }
+.resumo-item.alerta strong { color: var(--erro); }
+.resumo-item.ok strong { color: var(--ok); }
+@media (max-width: 480px) { .resumo-item strong { font-size: 15px; } .resumo-item { padding: 8px 9px; } }
+.dados-item { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 2px 0 10px; font-size: 14px; }
+.dados-item dt { color: var(--suave); }
+.dados-item dd { margin: 0; font-weight: 600; }
+.mais-opcoes { margin: 6px 0 12px; border-top: 1px solid var(--borda); padding-top: 8px; }
+.mais-opcoes > summary { cursor: pointer; color: var(--suave); font-weight: 600; font-size: 14px; padding: 4px 0; }
+.mais-opcoes[open] > summary { margin-bottom: 8px; }
+.destaque-valor { font-size: 26px; font-weight: 800; margin: 0 0 2px; }
+.campo-parcelas[hidden] { display: none; }
+.lista-x .item-x.conta-atrasada .preco { color: var(--erro); }
+/* comissões */
+.passos-comissao { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 10px; }
+.periodo-comissao { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.periodo-comissao strong { font-size: 15px; }
+.linha-pessoa { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--borda); }
+.linha-pessoa:last-child { border-bottom: 0; }
+.linha-pessoa .item-x-avatar { flex: none; }
+.linha-pessoa .nome { flex: 1; min-width: 0; }
+.linha-pessoa .nome small { display: block; color: var(--suave); font-size: 12.5px; }
+.linha-pessoa .valor { font-weight: 800; white-space: nowrap; }
+.total-comissao { display: flex; justify-content: space-between; font-weight: 800; padding-top: 10px; margin-top: 4px; border-top: 2px solid var(--borda); }
+.secao-titulo { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 18px 0 8px; }
+.secao-titulo h3 { margin: 0; }
+.resumo-despesas.duas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+[data-teste=previa-comissao] .chips-filtro { flex-wrap: wrap; overflow: visible; }
+.periodo-outro { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; margin: 8px 0; }
+.periodo-outro .campo { min-width: 0; margin: 0; }
+.periodo-outro input { width: 100%; min-width: 0; }
+.periodo-outro .botao { grid-column: 1 / -1; }
+.periodo-outro[hidden] { display: none; }
+.secao-titulo { flex-wrap: wrap; }

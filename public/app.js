@@ -3652,151 +3652,281 @@ async function telaDesempenho() {
 }
 
 // ---------- COMISSÕES E VALES (gestão) ----------
-const estadoComissao = { ini: null, fim: null };
-async function telaComissoes() {
+// 17/11/2026: tela em 3 partes simples — 1) quanto pagar a cada um no período, 2) pagamentos (fechamentos), 3) vales.
+const estadoComissao = { ini: null, fim: null, atalho: "semana", filtroPag: "apagar" };
+function periodoAtalho(id) {
   const ontem = somaDias(hojeLocal(), -1);
-  estadoComissao.fim ||= ontem;
-  estadoComissao.ini ||= somaDias(estadoComissao.fim, -6);
-  const q = `dataIni=${estadoComissao.ini}&dataFim=${estadoComissao.fim}`;
+  if (id === "semana") return [somaDias(ontem, -6), ontem];
+  if (id === "mes") { const fim = somaDias(`${hojeLocal().slice(0, 7)}-01`, -1); return [`${fim.slice(0, 7)}-01`, fim]; }
+  if (id === "quinzena") return [somaDias(ontem, -14), ontem];
+  return [estadoComissao.ini, estadoComissao.fim];
+}
+function janelaLancarVale(profs) {
+  return abrirJanela("Lançar vale (adiantamento)", [
+    el("p", { class: "suave", text: "O vale é descontado da próxima comissão do profissional." }),
+    campo("Profissional", { tag: "select", name: "barb", opcoes: profs.map(p => [p.id, p.nome]) }),
+    el("div", { class: "lado-a-lado" },
+      campo("Valor (R$)", { name: "valor", inputmode: "decimal", required: true, placeholder: "0,00" }),
+      campo("Data", { name: "dataVale", type: "date", value: hojeLocal(), required: true })),
+    campo("Descrição (opcional)", { name: "desc", maxlength: "120" })
+  ], {
+    ok: "Lançar vale",
+    aoConfirmar: async f => {
+      const v = paraCentavos(f.valor.value);
+      if (!v) throw new Error("Valor inválido. Exemplo: 50,00");
+      await api("/vales", { metodo: "POST", corpo: { barbeiroId: f.barb.value, valorCentavos: v, data: f.dataVale.value, descricao: f.desc.value || null } });
+      avisar("Vale lançado."); telaComissoes();
+    }
+  });
+}
+function janelaPagarFechamento(f) {
+  return abrirJanela(`Pagar ${f.barbeiro}`, [
+    el("p", { class: "destaque-valor", text: reais(f.aPagarCentavos) }),
+    el("p", { class: "suave", text: `Comissão de ${dataBR(f.dataIni)} a ${dataBR(f.dataFim)}.` }),
+    caixaMarcar("Saiu do dinheiro do caixa (vira retirada do caixa de hoje)", { name: "comCaixa" })
+  ], {
+    ok: "Registrar pagamento",
+    aoConfirmar: async form => {
+      await api("/comissoes/fechamentos/pagar", { metodo: "POST", corpo: { id: f.id, comCaixa: form.comCaixa.checked } });
+      avisar("Pagamento registrado."); telaComissoes();
+    }
+  });
+}
+async function telaComissoes() {
+  const est = estadoComissao;
+  if (est.atalho !== "outro" || !est.ini) [est.ini, est.fim] = periodoAtalho(est.atalho === "outro" ? "semana" : est.atalho);
+  const q = `dataIni=${est.ini}&dataFim=${est.fim}`;
   const [prev, fech, vales, ag] = await Promise.all([
     api(`/comissoes/previa?${q}`), api("/comissoes/fechamentos"),
     api(`/vales?dataIni=${somaDias(hojeLocal(), -60)}&dataFim=${hojeLocal()}`), api(`/agenda?data=${hojeLocal()}`)
   ]);
-  const formPeriodo = el("form", { class: "cartao" },
-    el("h3", { text: "Fechar comissão" }),
-    el("div", { class: "lado-a-lado" },
-      campo("De", { name: "ini", type: "date", value: estadoComissao.ini, required: true }),
-      campo("Até", { name: "fim", type: "date", value: estadoComissao.fim, required: true })),
-    el("div", { class: "lado-a-lado" },
-      botao("Semana passada", () => { estadoComissao.fim = ontem; estadoComissao.ini = somaDias(ontem, -6); telaComissoes(); }, "pequeno"),
-      el("button", { type: "submit", class: "botao pequeno", text: "Ver período" })),
+
+  // 1) Quanto pagar no período
+  const mudar = id => { est.atalho = id; if (id !== "outro") [est.ini, est.fim] = periodoAtalho(id); telaComissoes(); };
+  const chips = el("div", { class: "chips-filtro", role: "group", "aria-label": "Período" },
+    [["semana", "Últimos 7 dias"], ["quinzena", "Últimos 15 dias"], ["mes", "Mês passado"], ["outro", "Outro período"]].map(([id, t]) =>
+      el("button", { type: "button", class: `chip-filtro ${est.atalho === id ? "ativo" : ""}`, "data-periodo": id, text: t, onclick: () => mudar(id) })));
+  const formOutro = el("form", { class: "lado-a-lado periodo-outro", hidden: est.atalho === "outro" ? null : true },
+    campo("De", { name: "ini", type: "date", value: est.ini, required: true }),
+    campo("Até", { name: "fim", type: "date", value: est.fim, required: true }),
+    el("button", { type: "submit", class: "botao pequeno", text: "Ver período" }));
+  formOutro.addEventListener("submit", ev => { ev.preventDefault(); est.atalho = "outro"; est.ini = formOutro.ini.value; est.fim = formOutro.fim.value; telaComissoes(); });
+  const livres = prev.barbeiros.filter(b => !b.jaFechadoNoPeriodo);
+  const total = livres.reduce((t, b) => t + b.aPagarCentavos, 0);
+  const cartaoPrevia = el("section", { class: "cartao", "data-teste": "previa-comissao" },
+    el("h3", { text: "1. Quanto pagar" }),
+    chips, formOutro,
+    el("p", { class: "suave", "data-teste": "periodo-comissao", text: `De ${dataBR(est.ini)} a ${dataBR(est.fim)}` }),
     prev.barbeiros.length
-      ? el("table", { class: "tabela" },
-        el("thead", {}, el("tr", {}, ["Profissional", "Comissões", "Vales", "A pagar"].map(t => el("th", { text: t })))),
-        el("tbody", {}, prev.barbeiros.map(b => el("tr", { "data-previa": b.nome },
-          el("td", { text: b.nome }), el("td", { text: reais(b.comissaoCentavos) }), el("td", { text: `− ${reais(b.valesCentavos)}` }),
-          el("td", { class: "forte", text: b.jaFechadoNoPeriodo ? "já fechado" : reais(b.aPagarCentavos) })))))
-      : el("p", { class: "suave", text: "Nada para fechar nesse período." }),
-    prev.barbeiros.some(b => !b.jaFechadoNoPeriodo)
-      ? botao("Fechar comissão do período", () => abrirJanela("Fechar comissão", el("p", { text: `Fecha ${dataBR(estadoComissao.ini)} a ${dataBR(estadoComissao.fim)}. Depois de fechado, os atendimentos, vendas e vales do período não podem mais ser alterados.` }), {
-        ok: "Fechar", perigo: true,
-        aoConfirmar: async () => {
-          await api("/comissoes/fechar", { metodo: "POST", corpo: { dataIni: estadoComissao.ini, dataFim: estadoComissao.fim } });
-          avisar("Comissão fechada."); telaComissoes();
-        }
-      }), "principal") : null);
-  formPeriodo.addEventListener("submit", ev => { ev.preventDefault(); estadoComissao.ini = formPeriodo.ini.value; estadoComissao.fim = formPeriodo.fim.value; telaComissoes(); });
+      ? [el("div", {}, prev.barbeiros.map(b => el("div", { class: "linha-pessoa", "data-previa": b.nome },
+          el("span", { class: "item-x-avatar", text: iniciais(b.nome) }),
+          el("span", { class: "nome" }, el("strong", { text: b.nome }),
+            el("small", { text: b.jaFechadoNoPeriodo ? "Já tem fechamento neste período" : `Comissão ${reais(b.comissaoCentavos)}${b.valesCentavos ? ` − vales ${reais(b.valesCentavos)}` : ""}` })),
+          el("span", { class: "valor", text: b.jaFechadoNoPeriodo ? "—" : reais(b.aPagarCentavos) })))),
+        livres.length > 1 ? el("div", { class: "total-comissao" }, el("span", { text: "Total" }), el("span", { text: reais(total) })) : null]
+      : el("p", { class: "vazio", text: "Nada para pagar neste período." }),
+    livres.length
+      ? botao("Fechar comissão do período", () => abrirJanela("Fechar comissão", [
+          el("p", { text: `Fecha ${dataBR(est.ini)} a ${dataBR(est.fim)}: ${reais(total)} para ${livres.length} profissional(is).` }),
+          el("p", { class: "suave", text: "Depois de fechado, os atendimentos, vendas e vales deste período não podem mais ser alterados. O pagamento você registra em seguida." })
+        ], {
+          ok: "Fechar", perigo: true,
+          aoConfirmar: async () => {
+            await api("/comissoes/fechar", { metodo: "POST", corpo: { dataIni: est.ini, dataFim: est.fim } });
+            est.filtroPag = "apagar";
+            avisar("Comissão fechada. Agora registre os pagamentos."); telaComissoes();
+          }
+        }), "principal largo") : null);
 
-  const listaFech = fech.fechamentos.length
-    ? el("ul", { class: "lista" }, fech.fechamentos.map(f => el("li", { class: "item", "data-fechamento": f.barbeiro },
-      el("div", { class: "item-topo" }, el("strong", { text: f.barbeiro }), el("span", { class: "preco", text: reais(f.aPagarCentavos) }),
-        el("span", { class: `etiqueta ${f.pagoEm ? "verde" : "amarela"}`, text: f.pagoEm ? `Pago ${dataBR(f.pagoEm)}` : "A pagar" })),
-      el("p", { class: "suave", text: `${dataBR(f.dataIni)} a ${dataBR(f.dataFim)} · serviços ${reais(f.comissaoServicoCentavos)} + produtos ${reais(f.comissaoProdutoCentavos)} − vales ${reais(f.valesCentavos)}` }),
-      f.pagoEm ? null : el("div", { class: "item-acoes" }, botao("Registrar pagamento", () => abrirJanela(`Pagar ${f.barbeiro}`, [
-        el("p", { text: `Valor: ${reais(f.aPagarCentavos)}` }),
-        caixaMarcar("Pago com dinheiro do caixa (vira sangria do caixa de hoje)", { name: "comCaixa" })
-      ], {
-        ok: "Registrar",
-        aoConfirmar: async form => {
-          await api("/comissoes/fechamentos/pagar", { metodo: "POST", corpo: { id: f.id, comCaixa: form.comCaixa.checked } });
-          avisar("Pagamento registrado."); telaComissoes();
-        }
-      }), "pequeno")))))
-    : el("p", { class: "suave", text: "Nenhum fechamento ainda." });
+  // 2) Pagamentos (fechamentos)
+  const ulPag = el("ul", { class: "lista-x" });
+  const desenharPag = () => {
+    const vis = fech.fechamentos.filter(f => est.filtroPag === "pagos" ? f.pagoEm : !f.pagoEm);
+    ulPag.replaceChildren(...(vis.length ? vis.map(f => itemExpansivel({
+      chave: `fech:${f.id}`, attrs: { "data-fechamento": f.barbeiro }, avatar: iniciais(f.barbeiro),
+      titulo: f.barbeiro, sub: `${dataBR(f.dataIni)} a ${dataBR(f.dataFim)}`,
+      direita: [el("span", { class: "preco", text: reais(f.aPagarCentavos) }),
+        el("span", { class: `etiqueta ${f.pagoEm ? "verde" : "amarela"}`, text: f.pagoEm ? `Pago ${dataBR(f.pagoEm)}` : "A pagar" })],
+      detalhes: () => [
+        el("dl", { class: "dados-item" },
+          el("dt", { text: "Serviços" }), el("dd", { text: reais(f.comissaoServicoCentavos) }),
+          el("dt", { text: "Produtos" }), el("dd", { text: reais(f.comissaoProdutoCentavos) }),
+          el("dt", { text: "Vales" }), el("dd", { text: `− ${reais(f.valesCentavos)}` }),
+          el("dt", { text: "A pagar" }), el("dd", { text: reais(f.aPagarCentavos) }),
+          f.pagoEm ? [el("dt", { text: "Pago em" }), el("dd", { text: `${dataBR(f.pagoEm)}${f.pagoComCaixa ? " com dinheiro do caixa" : ""}` })] : null),
+        f.pagoEm ? null : acoesItem(botao("Registrar pagamento", () => janelaPagarFechamento(f), "pequeno principal"))
+      ]
+    })) : [el("li", { class: "vazio", text: est.filtroPag === "pagos" ? "Nenhum pagamento ainda." : "Nada esperando pagamento." })]));
+  };
+  desenharPag();
+  const qtdAPagar = fech.fechamentos.filter(f => !f.pagoEm).length;
+  const blocoPag = el("section", {},
+    el("div", { class: "secao-titulo" }, el("h3", { text: "2. Pagamentos" })),
+    barraBusca({ placeholder: "", filtros: [["apagar", `A pagar${qtdAPagar ? ` (${qtdAPagar})` : ""}`], ["pagos", "Pagos"]], estado: { get filtro() { return est.filtroPag; }, set filtro(v) { est.filtroPag = v; }, busca: "" }, aoMudar: desenharPag })
+      .querySelector(".chips-filtro"),
+    ulPag);
 
-  const formVale = el("form", { class: "cartao" },
-    el("h3", { text: "Lançar vale (adiantamento)" }),
-    campo("Profissional", { tag: "select", name: "barb", opcoes: ag.profissionais.map(p => [p.id, p.nome]) }),
-    el("div", { class: "lado-a-lado" },
-      campo("Valor (R$)", { name: "valor", inputmode: "decimal", required: true }),
-      campo("Data", { name: "dataVale", type: "date", value: hojeLocal(), required: true })),
-    campo("Descrição (opcional)", { name: "desc", maxlength: "120" }),
-    el("button", { type: "submit", class: "botao principal", text: "Lançar vale" }));
-  formVale.addEventListener("submit", ev => {
-    ev.preventDefault();
-    enviar(formVale, async () => {
-      const v = paraCentavos(formVale.valor.value);
-      if (!v) throw new Error("Valor inválido. Exemplo: 50,00");
-      await api("/vales", { metodo: "POST", corpo: { barbeiroId: formVale.barb.value, valorCentavos: v, data: formVale.dataVale.value, descricao: formVale.desc.value || null } });
-      avisar("Vale lançado."); telaComissoes();
-    });
-  });
-  const listaVales = vales.vales.length
-    ? el("ul", { class: "lista" }, vales.vales.map(v => el("li", { class: `item ${v.situacao === "cancelado" ? "inativo" : ""}`, "data-vale": v.barbeiro },
-      el("div", { class: "item-topo" }, el("strong", { text: `${dataBR(v.data)} · ${v.barbeiro}` }), el("span", { class: "preco", text: reais(v.valorCentavos) }),
-        v.situacao === "cancelado" ? el("span", { class: "etiqueta vermelha", text: "Cancelado" }) : v.fechado ? el("span", { class: "etiqueta", text: "Fechado" }) : null),
-      v.descricao || v.motivoCancelamento ? el("p", { class: "suave", text: [v.descricao, v.motivoCancelamento ? `Motivo: ${v.motivoCancelamento}` : null].filter(Boolean).join(" · ") }) : null,
-      v.situacao === "ativo" && !v.fechado ? el("div", { class: "item-acoes" }, botao("Cancelar", () => pedirMotivo("Cancelar vale", "Nada é apagado; fica registrado.", async motivo => {
-        await api("/vales/cancelar", { metodo: "POST", corpo: { id: v.id, motivo } });
-        avisar("Vale cancelado."); telaComissoes();
-      }, "Cancelar vale"), "pequeno perigo")) : null)))
-    : el("p", { class: "suave", text: "Nenhum vale nos últimos 60 dias." });
+  // 3) Vales
+  const estVales = estadoComissaoVales;
+  const ulVales = el("ul", { class: "lista-x" });
+  const desenharVales = () => {
+    const vis = vales.vales.filter(v => estVales.filtro === "todos" || v.situacao === "ativo");
+    ulVales.replaceChildren(...(vis.length ? vis.map(v => itemExpansivel({
+      chave: `vale:${v.id}`, attrs: { "data-vale": v.barbeiro }, classe: v.situacao === "cancelado" ? "inativo" : "", avatar: iniciais(v.barbeiro),
+      titulo: v.barbeiro, sub: [dataBR(v.data), v.descricao].filter(Boolean).join(" · "),
+      direita: [el("span", { class: "preco", text: reais(v.valorCentavos) }),
+        v.situacao === "cancelado" ? el("span", { class: "etiqueta vermelha", text: "Cancelado" }) : v.fechado ? el("span", { class: "etiqueta", text: "Descontado" }) : null],
+      detalhes: () => [
+        el("p", { class: "suave", text: v.situacao === "cancelado" ? `Cancelado. Motivo: ${v.motivoCancelamento}` : v.fechado ? "Já descontado num fechamento de comissão." : "Será descontado no próximo fechamento." }),
+        v.situacao === "ativo" && !v.fechado ? acoesItem(botao("Cancelar vale", () => pedirMotivo("Cancelar vale", "Nada é apagado; fica registrado.", async motivo => {
+          await api("/vales/cancelar", { metodo: "POST", corpo: { id: v.id, motivo } });
+          avisar("Vale cancelado."); telaComissoes();
+        }, "Cancelar vale"), "pequeno texto-perigo")) : null
+      ]
+    })) : [el("li", { class: "vazio", text: "Nenhum vale nos últimos 60 dias." })]));
+  };
+  desenharVales();
+  const blocoVales = el("section", {},
+    el("div", { class: "secao-titulo" }, el("h3", { text: "3. Vales (adiantamentos)" }),
+      botao("+ Lançar vale", () => janelaLancarVale(ag.profissionais), "pequeno principal")),
+    barraBusca({ placeholder: "", filtros: [["ativos", "Ativos"], ["todos", "Todos (inclui cancelados)"]], estado: estVales, aoMudar: desenharVales }).querySelector(".chips-filtro"),
+    ulVales);
 
-  mostrar(cabecalho("Comissões e vales", "Comissão = valor bruto × % de cada profissional (serviços e produtos). A pagar = comissões − vales."),
+  mostrar(cabecalho("Comissões e vales", "Escolha o período, confira quanto pagar a cada um, feche e registre o pagamento. Vales são descontados automaticamente."),
     el("div", { class: "duas-colunas" },
-      el("section", {}, formPeriodo, el("h3", { text: "Fechamentos" }), listaFech),
-      el("section", {}, formVale, el("h3", { text: "Vales recentes" }), listaVales)));
+      el("section", {}, cartaoPrevia, blocoPag),
+      blocoVales));
 }
+const estadoComissaoVales = { filtro: "ativos", busca: "" };
 
-// ---------- CONTAS A PAGAR ----------
+// ---------- DESPESAS (contas a pagar) ----------
+// 17/11/2026: lista limpa que expande ao tocar, forma de pagamento (cartão, boleto, Pix…) e parcelamento.
 const NOME_CATEGORIA = { aluguel: "Aluguel", luz: "Luz", agua: "Água", fornecedor: "Fornecedor", outros: "Outros" };
 const STATUS_CONTA = { atrasada: ["Atrasada", "vermelha"], hoje: ["Vence hoje", "amarela"], proxima: ["Próximos 7 dias", ""], futura: ["Em aberto", ""], paga: ["Paga", "verde"], cancelada: ["Cancelada", "vermelha"] };
-// Editar conta: em aberto muda tudo; paga muda só descrição e categoria.
+const FORMAS_DESPESA = [["pix", "Pix"], ["dinheiro", "Dinheiro"], ["debito", "Débito"], ["credito", "Crédito"], ["boleto", "Boleto"], ["transferencia", "Transferência"]];
+const NOME_FORMA_DESPESA = Object.fromEntries(FORMAS_DESPESA);
+const opcoesForma = () => [["", "Não informar"], ...FORMAS_DESPESA];
+const estadoDespesas = { busca: "", filtro: "abertas" };
+
+// Editar despesa: em aberto muda tudo; paga muda só descrição, categoria e forma.
 function janelaEditarConta(c) {
   const aberta = c.situacao === "aberta";
   return abrirJanela(`Editar ${c.descricao}`, [
-    aberta ? null : el("p", { class: "info", text: "Conta já paga: dá para corrigir a descrição e a categoria. Valor e data já entraram no caixa e nos relatórios." }),
-    campo("Descrição", { name: "eDesc", required: true, maxlength: "100", value: c.descricao }),
+    aberta ? null : el("p", { class: "info", text: "Despesa já paga: dá para corrigir a descrição, a categoria e a forma. Valor e data já entraram nos relatórios." }),
+    campo("Descrição (opcional)", { name: "eDesc", maxlength: "100", value: c.descricao }),
     el("div", { class: "lado-a-lado" },
       campo("Categoria", { tag: "select", name: "eCat", valor: c.categoria, opcoes: Object.entries(NOME_CATEGORIA) }),
-      aberta ? campo("Valor (R$)", { name: "eValor", inputmode: "decimal", required: true, value: centavosParaTexto(c.valorCentavos) }) : null),
-    aberta ? campo("Vencimento", { name: "eVenc", type: "date", required: true, value: c.vencimento }) : null,
-    aberta ? caixaMarcar("Recorrente (todo mês)", { name: "eRec", checked: c.recorrente || null }) : null
+      campo("Forma de pagamento", { tag: "select", name: "eForma", valor: c.forma || "", opcoes: opcoesForma() })),
+    aberta ? el("div", { class: "lado-a-lado" },
+      campo("Valor (R$)", { name: "eValor", inputmode: "decimal", required: true, value: centavosParaTexto(c.valorCentavos) }),
+      campo("Vencimento", { name: "eVenc", type: "date", required: true, value: c.vencimento })) : null,
+    aberta && c.parcelas === 1 ? caixaMarcar("Repete todo mês", { name: "eRec", checked: c.recorrente || null }) : null
   ], {
     ok: "Salvar alterações",
     aoConfirmar: async f => {
-      const corpo = { id: c.id, descricao: f.eDesc.value, categoria: f.eCat.value };
+      const corpo = { id: c.id, descricao: f.eDesc.value.trim() || null, categoria: f.eCat.value, forma: f.eForma.value || null };
       if (aberta) {
         const v = paraCentavos(f.eValor.value);
         if (!v) throw new Error("Valor inválido. Exemplo: 1500,00");
-        Object.assign(corpo, { valorCentavos: v, vencimento: f.eVenc.value, recorrente: f.eRec.checked });
+        Object.assign(corpo, { valorCentavos: v, vencimento: f.eVenc.value });
+        if (f.eRec) corpo.recorrente = f.eRec.checked;
       }
       await api("/contas/alterar", { metodo: "POST", corpo });
-      avisar("Conta alterada."); telaContas();
+      avisar("Despesa alterada."); telaContas();
     }
   });
 }
 
-async function telaContas() {
-  const [{ contas }, { produtos: itensEstoque }] = await Promise.all([api("/contas"), api("/estoque")]);
-  const doEstoque = itensEstoque.filter(p => p.ativo);
-  // Despesa que já lança o material/produto no estoque (pedido de 16/11/2026): custo de cada = valor ÷ quantidade.
-  const blocoEst = el("fieldset", { class: "servicos-escolha", "data-teste": "conta-estoque", hidden: true },
-    el("legend", { text: "Lançar no estoque" }),
+function janelaPagarConta(c) {
+  const linhaCaixa = caixaMarcar("Saiu do dinheiro do caixa (vira retirada do caixa de hoje)", { name: "comCaixa" });
+  const conteudo = [
+    el("p", { class: "destaque-valor", text: reais(c.valorCentavos) }),
+    el("p", { class: "suave", text: `Pagamento com data de hoje.${c.recorrente ? " A do mês seguinte já fica cadastrada." : ""}` }),
+    campo("Pago com", { tag: "select", name: "pForma", valor: c.forma || "", opcoes: opcoesForma() }),
+    linhaCaixa
+  ];
+  const ajustar = sel => { linhaCaixa.hidden = Boolean(sel.value) && sel.value !== "dinheiro"; if (linhaCaixa.hidden) linhaCaixa.querySelector("input").checked = false; };
+  setTimeout(() => { const sel = janela.querySelector("#c-pForma"); if (sel) { ajustar(sel); sel.addEventListener("change", () => ajustar(sel)); } }, 0);
+  return abrirJanela(`Pagar ${c.descricao}`, conteudo, {
+    ok: "Confirmar pagamento",
+    aoConfirmar: async f => {
+      const r = await api("/contas/pagar", { metodo: "POST", corpo: { id: c.id, comCaixa: f.comCaixa.checked, ...(f.pForma.value ? { forma: f.pForma.value } : {}) } });
+      avisar(r.mensagem); telaContas();
+    }
+  });
+}
+
+function janelaCancelarConta(c) {
+  return abrirJanela(`Cancelar ${c.descricao}`, [
+    el("p", { text: "Nada é apagado: a despesa fica registrada como cancelada." }),
+    c.parcelas > 1 ? caixaMarcar("Cancelar também as outras parcelas em aberto desta compra", { name: "todas", checked: true }) : null,
+    campo("Motivo", { name: "motivo", required: true, minlength: "3", maxlength: "300", autocomplete: "off" })
+  ], {
+    ok: "Cancelar despesa", perigo: true,
+    aoConfirmar: async f => {
+      const r = await api("/contas/cancelar", { metodo: "POST", corpo: { id: c.id, motivo: f.motivo.value.trim(), todasParcelas: Boolean(f.todas?.checked) } });
+      avisar(r.mensagem); telaContas();
+    }
+  });
+}
+
+function formNovaDespesa(doEstoque) {
+  const parcelasOps = Array.from({ length: 24 }, (_, i) => [String(i + 1), i ? `${i + 1}x` : "À vista (1x)"]);
+  const blocoParcelas = el("div", { class: "campo-parcelas", hidden: true }, campo("Parcelas", { tag: "select", name: "parc", opcoes: parcelasOps, valor: "1" }));
+  const resumoParc = el("p", { class: "info", "data-teste": "resumo-parcelas", hidden: true });
+  const linhaPaga = caixaMarcar("Já está paga (paguei hoje)", { name: "paga" });
+  const linhaCaixa = caixaMarcar("Saiu do dinheiro do caixa", { name: "comCaixa" });
+  linhaCaixa.hidden = true;
+  const rotuloVenc = el("label", { for: "c-venc", text: "Vencimento" });
+  const campoVenc = el("div", { class: "campo" }, rotuloVenc, el("input", { type: "date", id: "c-venc", name: "venc", required: true, value: hojeLocal() }));
+  // Estoque: despesa que já lança o material/produto no estoque (custo de cada = valor total ÷ quantidade).
+  const blocoEst = el("div", { class: "servicos-escolha", "data-teste": "conta-estoque", hidden: true },
     doEstoque.length
       ? [campo("Material ou produto", { tag: "select", name: "estProd", opcoes: doEstoque.map(p => [p.id, `${p.nome}${p.usoInterno ? " (uso da barbearia)" : ""} · tem ${p.saldo}`]) }),
         campo("Quantidade que chegou", { name: "estQtd", type: "number", min: "1", inputmode: "numeric" }),
         el("p", { class: "suave", "data-teste": "custo-unidade", text: "" })]
       : el("p", { class: "suave", text: "Nenhum material ou produto no estoque. Cadastre primeiro em Estoque → + Material de uso (ou em Produtos)." }));
-  const form = el("form", { class: "cartao" },
-    el("h3", { text: "Nova conta" }),
-    campo("Descrição", { name: "desc", required: true, maxlength: "100" }),
-    el("div", { class: "lado-a-lado" },
-      campo("Categoria", { tag: "select", name: "cat", opcoes: Object.entries(NOME_CATEGORIA) }),
-      campo("Valor (R$)", { name: "valor", inputmode: "decimal", required: true })),
-    campo("Vencimento", { name: "venc", type: "date", required: true, value: hojeLocal() }),
-    caixaMarcar("Recorrente (todo mês)", { name: "rec" }),
+  const mais = el("details", { class: "mais-opcoes" }, el("summary", { text: "Mais opções" }),
+    caixaMarcar("Repete todo mês (aluguel, luz…)", { name: "rec" }),
     caixaMarcar("É compra de material/produto: lançar no estoque", { name: "lancaEst" }),
-    blocoEst,
-    el("button", { type: "submit", class: "botao principal", text: "Salvar conta" }));
-  const custoUnidade = () => {
+    blocoEst);
+  const form = el("form", { class: "cartao form-despesa" },
+    campo("Descrição (opcional)", { name: "desc", maxlength: "100", placeholder: "Em branco: usa o nome da categoria" }),
+    el("div", { class: "lado-a-lado" },
+      campo("Valor total (R$)", { name: "valor", inputmode: "decimal", required: true, placeholder: "0,00" }),
+      campo("Categoria", { tag: "select", name: "cat", opcoes: Object.entries(NOME_CATEGORIA) })),
+    el("div", { class: "lado-a-lado" },
+      campo("Forma de pagamento", { tag: "select", name: "forma", opcoes: opcoesForma() }),
+      blocoParcelas),
+    campoVenc, resumoParc, linhaPaga, linhaCaixa, mais,
+    el("button", { type: "submit", class: "botao principal", text: "Salvar despesa" }));
+  const parcelas = () => blocoParcelas.hidden ? 1 : parseInt(form.parc.value, 10) || 1;
+  const atualizar = () => {
+    const forma = form.forma.value;
+    blocoParcelas.hidden = !["credito", "boleto"].includes(forma);
+    const n = parcelas();
+    if (n > 1) { form.rec.checked = false; form.rec.disabled = true; } else form.rec.disabled = false;
+    rotuloVenc.textContent = n > 1 ? (forma === "credito" ? "1ª parcela (vencimento da fatura)" : "1º vencimento") : "Vencimento";
+    const v = paraCentavos(form.valor.value || "");
+    if (n > 1 && v) {
+      const base = Math.floor(v / n), primeira = v - base * (n - 1);
+      resumoParc.hidden = false;
+      resumoParc.textContent = `${n}x de ${reais(base)}${primeira !== base ? ` (1ª de ${reais(primeira)})` : ""} — uma por mês, de ${dataBR(form.venc.value)} a ${dataBR(somaMeses(form.venc.value, n - 1))}.`;
+    } else resumoParc.hidden = true;
+    // "Já paga" serve para o que sai na hora (Pix, dinheiro, débito, transferência) ou para a 1ª parcela.
+    linhaPaga.querySelector("label").textContent = n > 1 ? "A 1ª parcela já está paga" : "Já está paga (paguei hoje)";
+    linhaCaixa.hidden = !(form.paga.checked && (forma === "dinheiro" || !forma));
+    if (linhaCaixa.hidden) form.comCaixa.checked = false;
+    blocoEst.hidden = !form.lancaEst.checked;
+    if (form.lancaEst.checked) form.rec.checked = false;
     const out = blocoEst.querySelector("[data-teste=custo-unidade]");
-    if (!out) return;
-    const v = paraCentavos(form.valor.value || ""), q = parseInt(form.estQtd?.value || "0", 10);
-    out.textContent = v && q > 0 ? `Custo de cada unidade: ${reais(Math.round(v / q))} (entra no estoque com esse custo).` : "";
+    if (out) {
+      const q = parseInt(form.estQtd?.value || "0", 10);
+      out.textContent = v && q > 0 ? `Custo de cada unidade: ${reais(Math.round(v / q))} (entra no estoque com esse custo).` : "";
+    }
   };
-  form.addEventListener("input", custoUnidade);
-  form.addEventListener("change", () => { blocoEst.hidden = !form.lancaEst.checked; if (form.lancaEst.checked) form.rec.checked = false; custoUnidade(); });
+  form.addEventListener("input", atualizar);
+  form.addEventListener("change", atualizar);
   form.addEventListener("submit", ev => {
     ev.preventDefault();
     enviar(form, async () => {
@@ -3809,37 +3939,76 @@ async function telaContas() {
         if (!q || q < 1) throw new Error("Informe a quantidade que chegou.");
         estoque = { produtoId: form.estProd.value, quantidade: q };
       }
-      await api("/contas", { metodo: "POST", corpo: { descricao: form.desc.value, categoria: form.cat.value, valorCentavos: v, vencimento: form.venc.value, recorrente: form.rec.checked, ...(estoque ? { estoque } : {}) } });
-      avisar(estoque ? "Conta cadastrada e material lançado no estoque." : "Conta cadastrada."); telaContas();
+      const n = parcelas();
+      const r = await api("/contas", { metodo: "POST", corpo: {
+        descricao: form.desc.value.trim() || null, categoria: form.cat.value, valorCentavos: v, vencimento: form.venc.value, recorrente: form.rec.checked,
+        ...(form.forma.value ? { forma: form.forma.value } : {}), ...(n > 1 ? { parcelas: n } : {}),
+        ...(form.paga.checked ? { jaPaga: true, comCaixa: form.comCaixa.checked } : {}), ...(estoque ? { estoque } : {}) } });
+      estadoDespesas.filtro = form.paga.checked && n === 1 ? "pagas" : "abertas";
+      avisar([r.contasCriadas > 1 ? `Despesa lançada em ${r.contasCriadas} parcelas.` : "Despesa lançada.", estoque ? "Material lançado no estoque." : null].filter(Boolean).join(" "));
+      telaContas();
     });
   });
-  const lista = contas.length
-    ? el("ul", { class: "lista" }, contas.map(c => el("li", { class: `item conta-${c.status}`, "data-conta": c.descricao },
-      el("div", { class: "item-topo" }, el("strong", { text: c.descricao }), el("span", { class: "preco", text: reais(c.valorCentavos) }),
-        el("span", { class: `etiqueta ${STATUS_CONTA[c.status][1]}`, text: STATUS_CONTA[c.status][0] })),
-      el("p", { class: "suave", text: [NOME_CATEGORIA[c.categoria], `vence ${dataBR(c.vencimento)}`, c.recorrente ? "mensal" : null,
-        c.pagoEm ? `paga em ${dataBR(c.pagoEm)}${c.pagoComCaixa ? " com dinheiro do caixa" : ""}` : null, c.motivoCancelamento].filter(Boolean).join(" · ") }),
-      c.estoque ? el("p", { class: "suave", "data-teste": "conta-no-estoque", text: `+${c.estoque.quantidade} ${c.estoque.produto} no estoque${c.situacao === "cancelada" ? " (devolvido ao cancelar)" : ""}` }) : null,
-      c.situacao === "paga" ? el("div", { class: "item-acoes" }, botao("Editar", () => janelaEditarConta(c), "pequeno")) : null,
-      c.situacao === "aberta" ? el("div", { class: "item-acoes" },
-        botao("Editar", () => janelaEditarConta(c), "pequeno"),
-        botao("Pagar", () => abrirJanela(`Pagar ${c.descricao}`, [
-          el("p", { text: `${reais(c.valorCentavos)} · pagamento com data de hoje.${c.recorrente ? " A do mês seguinte já fica cadastrada." : ""}` }),
-          caixaMarcar("Pago com dinheiro do caixa (vira sangria do caixa de hoje)", { name: "comCaixa" })
-        ], {
-          ok: "Confirmar pagamento",
-          aoConfirmar: async f => {
-            const r = await api("/contas/pagar", { metodo: "POST", corpo: { id: c.id, comCaixa: f.comCaixa.checked } });
-            avisar(r.mensagem); telaContas();
-          }
-        }), "pequeno principal"),
-        botao("Cancelar", () => pedirMotivo("Cancelar conta", "Nada é apagado; fica registrado.", async motivo => {
-          await api("/contas/cancelar", { metodo: "POST", corpo: { id: c.id, motivo } });
-          avisar("Conta cancelada."); telaContas();
-        }, "Cancelar conta"), "pequeno perigo")) : null)))
-    : el("p", { class: "vazio", text: "Nenhuma conta em aberto." });
-  mostrar(cabecalho("Contas a pagar", "Atrasadas em vermelho, vencendo hoje em amarelo. Mostra as em aberto e as pagas nos últimos 30 dias."),
-    el("div", { class: "duas-colunas" }, el("section", {}, lista), el("section", {}, form)));
+  return form;
+}
+// Soma meses mantendo o dia (31 → último dia do mês), igual ao servidor.
+function somaMeses(data, n) {
+  const [a, m, d] = data.split("-").map(Number);
+  const alvo = new Date(Date.UTC(a, m - 1 + n, 1));
+  const ultimo = new Date(Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth() + 1, 0)).getUTCDate();
+  alvo.setUTCDate(Math.min(d, ultimo));
+  return alvo.toISOString().slice(0, 10);
+}
+
+async function telaContas() {
+  const [{ contas }, { produtos: itensEstoque }] = await Promise.all([api("/contas"), api("/estoque")]);
+  const doEstoque = itensEstoque.filter(p => p.ativo);
+  const estado = estadoDespesas;
+  const abertas = contas.filter(c => c.situacao === "aberta");
+  const soma = l => l.reduce((t, c) => t + c.valorCentavos, 0);
+  const atrasadas = abertas.filter(c => c.status === "atrasada");
+  const semana = abertas.filter(c => ["hoje", "proxima"].includes(c.status));
+  const resumo = el("div", { class: "resumo-despesas", "data-teste": "resumo-despesas" },
+    el("div", { class: `resumo-item ${atrasadas.length ? "alerta" : ""}` }, el("small", { text: "Atrasadas" }), el("strong", { text: reais(soma(atrasadas)) }), el("span", { text: `${atrasadas.length} conta(s)` })),
+    el("div", { class: "resumo-item" }, el("small", { text: "Vencem em 7 dias" }), el("strong", { text: reais(soma(semana)) }), el("span", { text: `${semana.length} conta(s)` })),
+    el("div", { class: "resumo-item" }, el("small", { text: "Total a pagar" }), el("strong", { text: reais(soma(abertas)) }), el("span", { text: `${abertas.length} conta(s)` })));
+  const ul = el("ul", { class: "lista-x" });
+  const filtros = { abertas: c => c.situacao === "aberta", pagas: c => c.situacao === "paga", todas: () => true };
+  const desenhar = () => {
+    const t = normalizar(estado.busca);
+    const vis = contas.filter(c => filtros[estado.filtro](c) && (!t || normalizar(`${c.descricao} ${NOME_CATEGORIA[c.categoria]}`).includes(t)));
+    if (estado.filtro === "pagas") vis.sort((x, y) => (y.pagoEm || "").localeCompare(x.pagoEm || ""));
+    ul.replaceChildren(...(vis.length ? vis.map(c => {
+      const [stTxt, stCor] = STATUS_CONTA[c.status];
+      const quando = c.situacao === "paga" ? `Paga ${dataBR(c.pagoEm)}` : c.situacao === "cancelada" ? "Cancelada" : `Vence ${dataBR(c.vencimento)}`;
+      return itemExpansivel({
+        chave: `conta:${c.id}`, attrs: { "data-conta": c.descricao }, classe: `conta-${c.status} ${c.situacao === "cancelada" ? "inativo" : ""}`,
+        titulo: c.descricao, sub: [quando, c.forma ? NOME_FORMA_DESPESA[c.forma] : null].filter(Boolean).join(" · "),
+        direita: [el("span", { class: "preco", text: reais(c.valorCentavos) }), el("span", { class: `etiqueta ${stCor}`, text: stTxt })],
+        detalhes: () => [
+          el("dl", { class: "dados-item" },
+            el("dt", { text: "Categoria" }), el("dd", { text: NOME_CATEGORIA[c.categoria] }),
+            el("dt", { text: "Vencimento" }), el("dd", { text: dataBR(c.vencimento) }),
+            el("dt", { text: "Forma" }), el("dd", { text: c.forma ? NOME_FORMA_DESPESA[c.forma] : "Não informada" }),
+            c.parcelas > 1 ? [el("dt", { text: "Parcela" }), el("dd", { text: `${c.parcela} de ${c.parcelas}` })] : null,
+            c.recorrente ? [el("dt", { text: "Repete" }), el("dd", { text: "Todo mês" })] : null,
+            c.pagoEm ? [el("dt", { text: "Paga em" }), el("dd", { text: `${dataBR(c.pagoEm)}${c.pagoComCaixa ? " com dinheiro do caixa" : ""}` })] : null,
+            c.motivoCancelamento ? [el("dt", { text: "Motivo" }), el("dd", { text: c.motivoCancelamento })] : null),
+          c.estoque ? el("p", { class: "suave", "data-teste": "conta-no-estoque", text: `+${c.estoque.quantidade} ${c.estoque.produto} no estoque${c.situacao === "cancelada" ? " (devolvido ao cancelar)" : ""}` }) : null,
+          c.situacao === "aberta" ? acoesItem(botao("Pagar", () => janelaPagarConta(c), "pequeno principal"), botao("Editar", () => janelaEditarConta(c), "pequeno"),
+            botao("Cancelar", () => janelaCancelarConta(c), "pequeno texto-perigo")) : null,
+          c.situacao === "paga" ? acoesItem(botao("Editar", () => janelaEditarConta(c), "pequeno")) : null
+        ]
+      });
+    }) : [el("li", { class: "vazio", text: estado.filtro === "abertas" ? "Nenhuma despesa a pagar. 🎉" : "Nenhuma despesa encontrada." })]));
+  };
+  desenhar();
+  telaLista({
+    titulo: "Despesas", subtitulo: "Contas e compras da barbearia. Toque numa despesa para pagar, editar ou cancelar.",
+    topo: resumo,
+    barra: barraBusca({ placeholder: "Buscar despesa", filtros: [["abertas", "A pagar"], ["pagas", "Pagas"], ["todas", "Todas"]], estado, aoMudar: desenhar }),
+    lista: ul, painel: painelCadastro("Nova despesa", formNovaDespesa(doEstoque))
+  });
 }
 
 // ---------- ENVIAR AO CONTADOR + CÓPIA DOS DADOS ----------
@@ -4567,63 +4736,83 @@ function mostrarFilaEnvio(fila, envio) {
 // ---------- NOTAS EM ABERTO (promissória) ----------
 // Quem levou serviço/produto para pagar depois. "Receber" só quando o cliente quita: o valor entra no caixa de hoje.
 // Nota paga continua registrada (aba Pagas). Cancelar nota em aberto: só gerente/proprietário, com motivo.
-const estadoNotas = { aba: "abertas" };
+const estadoNotas = { aba: "abertas", busca: "" };
+// 17/11/2026: uma linha por cliente (nome + total); toque abre as notas e as ações. Abas viraram filtros simples.
 async function telaNotas() {
   const aba = estadoNotas.aba;
   const [{ clientes, resumo }, hist, rec] = await Promise.all([
     api("/promissorias"),
-    aba === "abertas" ? null : api(`/promissorias/historico?situacao=${aba}`),
+    aba === "canceladas" ? api("/promissorias/historico?situacao=canceladas") : null,
     aba === "pagas" ? api("/promissorias/recebimentos") : null
   ]);
-  const abas = el("div", { class: "alterna largo-celular", role: "tablist", "aria-label": "Notas" },
-    [["abertas", `Em aberto (${resumo.notas})`], ["pagas", "Pagas"], ["canceladas", "Canceladas"]].map(([k, t]) =>
-      botao(t, () => { estadoNotas.aba = k; comCarga(telaNotas).catch(e => avisar(e.message, "erro")); }, `pequeno ${aba === k ? "ativo" : ""}`)));
-  let corpo;
-  if (aba === "abertas") {
-    corpo = clientes.length
-      ? el("ul", { class: "lista" }, clientes.map(c => el("li", { class: "item nota-cliente", "data-nota-cliente": c.cliente },
-        el("div", { class: "item-topo" },
-          el("strong", { text: c.cliente }),
-          el("span", { class: "preco", "data-teste": "nota-total", text: reais(c.totalCentavos) })),
-        el("p", { class: "suave", text: `${c.notas.length} lançamento(s) desde ${dataBR(c.desde)}${c.telefone ? ` · ${fone(c.telefone)}` : ""}` }),
-        el("ul", { class: "notas-itens" }, c.notas.map(n => el("li", { "data-nota": n.descricao },
-          el("span", { text: `${dataBR(n.data).slice(0, 5)} · ${n.origem === "venda" ? "Produto" : "Serviço"}: ${n.descricao}` }),
-          el("strong", { text: reais(n.valorCentavos) }),
-          gestao() ? el("button", { type: "button", class: "link-perigo", "data-cancelar-nota": n.descricao, text: "Cancelar",
-            onclick: () => pedirMotivo("Cancelar nota", `${reais(n.valorCentavos)} de ${c.cliente}. A nota fica registrada como cancelada (nada é apagado).`, async motivo => {
-              await api("/promissorias/cancelar", { metodo: "POST", corpo: { id: n.id, motivo } });
-              avisar("Nota cancelada."); telaNotas();
-            }, "Cancelar nota") }) : null))),
-        el("div", { class: "item-acoes" },
-          botao("Receber (dar baixa)", () => janelaReceberNota(c), "pequeno principal"),
-          c.whatsapp ? el("a", { class: "botao pequeno whats", href: c.whatsapp, target: "_blank", rel: "noopener", text: "Lembrar no WhatsApp" }) : null))))
-      : el("p", { class: "vazio", text: "Nenhuma nota em aberto. Para lançar, escolha \"Promissória (paga depois)\" como forma de pagamento no caixa." });
-  } else {
-    const notas = hist.notas;
-    const listaNotas = notas.length
-      ? el("ul", { class: "lista" }, notas.map(n => el("li", { class: `item ${n.situacao === "cancelada" ? "inativo" : ""}`, "data-nota-historico": n.cliente },
-        el("div", { class: "item-topo" }, el("strong", { text: n.cliente }), el("span", { class: "preco", text: reais(n.valorCentavos) }),
-          n.situacao === "paga" ? el("span", { class: "etiqueta verde", text: `Paga em ${dataBR(n.pagoEm).slice(0, 5)}` }) : el("span", { class: "etiqueta vermelha", text: "Cancelada" })),
-        el("p", { class: "suave", text: [`${dataBR(n.data)} · ${n.origem === "venda" ? "Produto" : "Serviço"}: ${n.descricao}`, n.motivo].filter(Boolean).join(" · ") }))))
-      : el("p", { class: "vazio", text: aba === "pagas" ? "Nenhuma nota paga nos últimos 90 dias." : "Nenhuma nota cancelada nos últimos 90 dias." });
-    const recebimentos = rec ? (rec.recebimentos.length
-      ? el("ul", { class: "lista" }, rec.recebimentos.map(r => el("li", { class: `item ${r.situacao === "estornado" ? "inativo" : ""}`, "data-recebimento": r.cliente },
-        el("div", { class: "item-topo" }, el("strong", { text: r.cliente }), el("span", { class: "preco", text: reais(r.totalCentavos) }),
-          r.situacao === "estornado" ? el("span", { class: "etiqueta vermelha", text: "Estornado" }) : el("span", { class: "etiqueta verde", text: "Pago" })),
-        el("p", { class: "suave", text: [`${dataBR(r.data)} · ${r.notas} nota(s)`, r.pagamentos.map(p => `${NOME_FORMA[p.forma]} ${reais(p.valorCentavos)}`).join(" + "), `por ${r.por.split(" ")[0]}`, r.motivoEstorno ? `motivo: ${r.motivoEstorno}` : null].filter(Boolean).join(" · ") }),
-        r.podeEstornar ? el("div", { class: "item-acoes" }, botao("Estornar recebimento", () => pedirMotivo("Estornar recebimento", "O dinheiro sai do caixa de hoje e as notas voltam a ficar em aberto. Fica registrado.", async motivo => {
-          await api("/promissorias/estornar-recebimento", { metodo: "POST", corpo: { recebimentoId: r.id, motivo } });
-          avisar("Recebimento estornado."); telaNotas();
-        }, "Estornar"), "pequeno perigo")) : null)))
-      : el("p", { class: "vazio", text: "Nenhum recebimento nos últimos 30 dias." })) : null;
-    corpo = rec ? el("div", { class: "duas-colunas" }, el("section", {}, el("h3", { text: "Notas pagas (90 dias)" }), listaNotas),
-      el("section", {}, el("h3", { text: "Recebimentos (30 dias)" }), recebimentos)) : listaNotas;
-  }
-  mostrar(cabecalho("Notas (promissória)", "Clientes que pagam depois. Só dê baixa quando o cliente pagar: o valor entra no caixa de hoje. Nota paga fica registrada como paga."),
-    el("div", { class: "cartoes" },
-      el("div", { class: "cartao-num", "data-cartao": "notas-clientes" }, el("span", { class: "cartao-tit", text: "Clientes com nota" }), el("strong", { text: String(resumo.clientes) })),
-      el("div", { class: "cartao-num negativo", "data-cartao": "notas-total" }, el("span", { class: "cartao-tit", text: "Total a receber" }), el("strong", { text: reais(resumo.totalCentavos) }))),
-    abas, corpo);
+  const ul = el("ul", { class: "lista-x" });
+  const casa = txt => !estadoNotas.busca || normalizar(txt).includes(normalizar(estadoNotas.busca));
+  const desenhar = () => {
+    let itens = [];
+    if (aba === "abertas") {
+      itens = clientes.filter(c => casa(c.cliente)).map(c => itemExpansivel({
+        chave: `nota:${c.clienteId}`, attrs: { "data-nota-cliente": c.cliente }, avatar: iniciais(c.cliente),
+        titulo: c.cliente, sub: `${c.notas.length} nota(s) · desde ${dataBR(c.desde)}`,
+        direita: el("span", { class: "preco", "data-teste": "nota-total", text: reais(c.totalCentavos) }),
+        detalhes: () => [
+          el("ul", { class: "notas-itens" }, c.notas.map(n => el("li", { "data-nota": n.descricao },
+            el("span", { text: `${dataBR(n.data).slice(0, 5)} · ${n.descricao}` }),
+            el("strong", { text: reais(n.valorCentavos) }),
+            gestao() ? el("button", { type: "button", class: "link-perigo", "data-cancelar-nota": n.descricao, text: "Cancelar", "aria-label": `Cancelar nota ${n.descricao}`,
+              onclick: () => pedirMotivo("Cancelar nota", `${reais(n.valorCentavos)} de ${c.cliente}. A nota fica registrada como cancelada (nada é apagado).`, async motivo => {
+                await api("/promissorias/cancelar", { metodo: "POST", corpo: { id: n.id, motivo } });
+                avisar("Nota cancelada."); telaNotas();
+              }, "Cancelar nota") }) : null))),
+          acoesItem(
+            botao("Receber", () => janelaReceberNota(c), "pequeno principal"),
+            c.whatsapp ? el("a", { class: "botao pequeno whats", href: c.whatsapp, target: "_blank", rel: "noopener", text: "Lembrar no WhatsApp" }) : null)
+        ]
+      }));
+    } else if (aba === "pagas") {
+      itens = rec.recebimentos.filter(r => casa(r.cliente)).map(r => itemExpansivel({
+        chave: `rec:${r.id}`, attrs: { "data-recebimento": r.cliente }, classe: r.situacao === "estornado" ? "inativo" : "", avatar: iniciais(r.cliente),
+        titulo: r.cliente, sub: `Pagou em ${dataBR(r.data)} · ${r.notas} nota(s)`,
+        direita: [el("span", { class: "preco", text: reais(r.totalCentavos) }),
+          r.situacao === "estornado" ? el("span", { class: "etiqueta vermelha", text: "Estornado" }) : el("span", { class: "etiqueta verde", text: "Pago" })],
+        detalhes: () => [
+          el("dl", { class: "dados-item" },
+            el("dt", { text: "Pago com" }), el("dd", { text: r.pagamentos.map(p => `${NOME_FORMA[p.forma]} ${reais(p.valorCentavos)}`).join(" + ") }),
+            el("dt", { text: "Recebido por" }), el("dd", { text: r.por.split(" ")[0] }),
+            r.motivoEstorno ? [el("dt", { text: "Motivo do estorno" }), el("dd", { text: r.motivoEstorno })] : null),
+          r.podeEstornar ? acoesItem(botao("Estornar recebimento", () => pedirMotivo("Estornar recebimento", "O dinheiro sai do caixa de hoje e as notas voltam a ficar em aberto. Fica registrado.", async motivo => {
+            await api("/promissorias/estornar-recebimento", { metodo: "POST", corpo: { recebimentoId: r.id, motivo } });
+            avisar("Recebimento estornado."); telaNotas();
+          }, "Estornar"), "pequeno texto-perigo")) : null
+        ]
+      }));
+    } else {
+      itens = hist.notas.filter(n => casa(n.cliente)).map(n => itemExpansivel({
+        chave: `ncanc:${n.id}`, attrs: { "data-nota-historico": n.cliente }, classe: "inativo", avatar: iniciais(n.cliente),
+        titulo: n.cliente, sub: `${dataBR(n.data)} · ${n.descricao}`,
+        direita: [el("span", { class: "preco", text: reais(n.valorCentavos) }), el("span", { class: "etiqueta vermelha", text: "Cancelada" })],
+        detalhes: () => el("p", { class: "suave", text: n.motivo || "Sem motivo registrado." })
+      }));
+    }
+    const vazio = { abertas: clientes.length ? "Nenhum cliente encontrado." : "Ninguém devendo. Para lançar, escolha \"Promissória (paga depois)\" no caixa.",
+      pagas: "Nenhum recebimento nos últimos 30 dias.", canceladas: "Nenhuma nota cancelada nos últimos 90 dias." }[aba];
+    ul.replaceChildren(...(itens.length ? itens : [el("li", { class: "vazio", text: vazio })]));
+  };
+  desenhar();
+  const resumoEl = el("div", { class: "resumo-despesas duas" },
+    el("div", { class: `resumo-item ${resumo.totalCentavos ? "alerta" : ""}`, "data-cartao": "notas-total" }, el("small", { text: "Total a receber" }), el("strong", { text: reais(resumo.totalCentavos) })),
+    el("div", { class: "resumo-item", "data-cartao": "notas-clientes" }, el("small", { text: "Clientes devendo" }), el("strong", { text: String(resumo.clientes) })));
+  const barra = barraBusca({
+    placeholder: "Buscar cliente",
+    filtros: [["abertas", `A receber (${resumo.clientes})`], ["pagas", "Pagas"], ["canceladas", "Canceladas"]],
+    estado: { busca: estadoNotas.busca, get filtro() { return estadoNotas.aba; }, set filtro(v) { estadoNotas.aba = v; } },
+    aoMudar: () => {
+      const campoB = document.querySelector(".busca-viva");
+      if (estadoNotas.aba !== aba) { estadoNotas.busca = campoB?.value || ""; comCarga(telaNotas).catch(e => avisar(e.message, "erro")); return; }
+      estadoNotas.busca = campoB?.value || ""; desenhar();
+    }
+  });
+  telaLista({ titulo: "Notas (fiado)", subtitulo: "Quem levou para pagar depois. Toque no cliente para ver as notas e dar baixa quando ele pagar (entra no caixa de hoje).",
+    topo: resumoEl, barra, lista: ul });
 }
 
 function janelaReceberNota(c) {
@@ -4717,7 +4906,7 @@ function gruposDoPerfil(p) {
   return [
     { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ...(p === "gerente" || p === "proprietario" ? [["desempenho", "Meu desempenho", "grafico"]] : [])] },
     { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
-    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["comissoes", "Comissões e vales", "comissao"], ["notas", "Notas em aberto", "contas"], ["contas", "Contas a pagar", "contas"], ["contador", "Contador e dados", "contador"]] },
+    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["comissoes", "Comissões e vales", "comissao"], ["notas", "Notas em aberto", "contas"], ["contas", "Despesas", "contas"], ["contador", "Contador e dados", "contador"]] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"], ["estoque", "Estoque", "estoque"]] },
     { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"], ["assinatura", "Meu plano", "dinheiro"]] }
   ];

@@ -186,7 +186,7 @@ try {
   await page.waitForSelector(".grafico-fin");
   await foto("financeiro");
   await ir(page, "Comissões e vales"); await foto("comissoes");
-  await ir(page, "Contas a pagar"); await foto("contas");
+  await ir(page, "Despesas"); await foto("contas");
   await ir(page, "Contador e dados"); await foto("contador");
 
   await entrar("ana.semana", SEMANA);
