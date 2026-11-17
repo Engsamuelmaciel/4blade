@@ -6,6 +6,7 @@ import {
 import { PLANOS, limiteDoPerfil, PERFIS_EQUIPE, valorDoPlano } from "./perfis.js";
 import { MODELOS_PADRAO } from "./cadastros.js";
 import { SQL_PLANO, assinaturaPublica, alterarPlanoAssinatura } from "./assinatura.js";
+import { SQL_USO_RESUMO } from "./uso.js";
 
 function barbeariaPublica(b) {
   return {
@@ -28,7 +29,9 @@ function barbeariaPublica(b) {
       gerente: Number(b.n_gerente || 0),
       barbeiro: Number(b.n_barbeiro || 0),
       caixa: Number(b.n_caixa || 0)
-    }
+    },
+    // uso do app (17/11/2026): só horários, sem dados de clientes
+    uso: { ultimo: b.uso_ultimo || null, online: Number(b.uso_online || 0) }
   };
 }
 
@@ -40,7 +43,8 @@ const SELECT_BARBEARIAS = `
     p.id AS prop_id, p.telefone AS prop_tel, p.nome AS prop_nome, p.login AS prop_login, p.trocar_senha AS prop_troca,
     (SELECT COUNT(*) FROM usuarios x WHERE x.barbearia_id = b.id AND x.ativo = 1 AND x.perfil = 'gerente') AS n_gerente,
     (SELECT COUNT(*) FROM usuarios x WHERE x.barbearia_id = b.id AND x.ativo = 1 AND x.perfil = 'barbeiro') AS n_barbeiro,
-    (SELECT COUNT(*) FROM usuarios x WHERE x.barbearia_id = b.id AND x.ativo = 1 AND x.perfil = 'caixa') AS n_caixa
+    (SELECT COUNT(*) FROM usuarios x WHERE x.barbearia_id = b.id AND x.ativo = 1 AND x.perfil = 'caixa') AS n_caixa,
+    ${SQL_USO_RESUMO}
   FROM barbearias b
   LEFT JOIN usuarios p ON p.barbearia_id = b.id AND p.perfil = 'proprietario'
   LEFT JOIN assinaturas a ON a.barbearia_id = b.id

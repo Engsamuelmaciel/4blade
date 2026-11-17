@@ -147,6 +147,28 @@ async function rodar(tela) {
       await sair();
     }
 
+    passo("suporte (plataforma) vê o uso do app da barbearia: on-line, acessos, duração e telas — sem dados de clientes");
+    await page.goto(`${base}/#/entrar`);
+    await page.waitForSelector("#c-login");
+    await page.fill("#c-login", "suporte");
+    await page.fill("#c-senha", "Nova-suporte-senha");
+    await page.click("button:has-text('Entrar')");
+    await page.waitForSelector('[data-barbearia="Barbearia Semana Fictícia"] [data-teste=uso-resumo]');
+    assert.match(await page.textContent('[data-barbearia="Barbearia Semana Fictícia"] [data-teste=uso-resumo]'), /Último uso|on-line/);
+    await page.click('[data-barbearia="Barbearia Semana Fictícia"] [data-teste=ver-uso]');
+    await page.waitForSelector("[data-teste=uso-topo]");
+    await pronto();
+    assert.ok(await page.locator('[data-uso-pessoa="Gustavo Gerente"]').count() === 1);
+    assert.match(await page.textContent('[data-uso-pessoa="Gustavo Gerente"]'), /\d+ acesso/);
+    await page.waitForSelector('[data-teste=uso-telas] [data-uso-tela="pagamento-equipe"]');
+    assert.match(await page.textContent('[data-uso-tela="pagamento-equipe"]'), /Pagamento da equipe/);
+    await abrirItem(page, '[data-uso-acesso="Gustavo Gerente"]');
+    await page.waitForSelector('[data-uso-acesso="Gustavo Gerente"] .uso-caminho li');
+    const corpo = await page.textContent("main, body");
+    assert.ok(!/Cliente Fictício/.test(corpo), "nenhum dado de cliente na tela de uso");
+    await print("suporte-uso-do-app");
+    await sair();
+
     const reais = problemas.filter(p => !/status of 40[39]/.test(p));
     assert.deepEqual(reais, [], `erros no console: ${reais.join(" | ")}`);
     passo("OK — nenhum erro no console (inclui bloqueios de CSP)");

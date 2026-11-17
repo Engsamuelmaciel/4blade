@@ -1210,6 +1210,9 @@ async function telaPlataforma() {
       el("p", { class: "suave", text: `Proprietário: ${b.proprietario?.nome || "—"} · usuário ${b.proprietario?.login || "—"}${b.proprietario?.telefone ? ` · WhatsApp ${fone(b.proprietario.telefone)}` : ""}${b.proprietario?.trocaPendente ? " · ainda não entrou" : ""}` }),
       b.telefone ? el("p", { class: "suave", text: `Telefone: ${fone(b.telefone)}` }) : null,
       el("p", { class: "suave", "data-teste": "equipe-ativa", text: `Equipe ativa: ${textoGerentes(b)}, ${b.usuariosAtivos.barbeiro} barbeiro(s), ${b.usuariosAtivos.caixa} caixa(s)` }),
+      el("p", { class: `uso-linha ${b.uso?.online ? "on" : ""}`, "data-teste": "uso-resumo" },
+        el("span", { class: "bolinha", "aria-hidden": "true" }),
+        b.uso?.online ? `${b.uso.online} on-line agora` : b.uso?.ultimo ? `Último uso ${tempoAtras(b.uso.ultimo)}` : "Ainda não usou o app"),
       b.bloqueada && b.motivoBloqueio ? el("p", { class: "suave", text: `Motivo do bloqueio: ${b.motivoBloqueio}` }) : null,
       el("div", { class: "item-acoes" },
         botao(b.bloqueada ? "Desbloquear" : "Bloquear", () => pedirMotivo(
@@ -1223,6 +1226,7 @@ async function telaPlataforma() {
         botao("Plano", () => janelaPlano(b), "pequeno"),
         botao("Editar dados", () => janelaEditarBarbearia(b), "pequeno"),
         botao("Equipe", () => janelaEquipeBarbearia(b), "pequeno"),
+        el("a", { class: "botao pequeno", href: `#/uso/${b.id}`, "data-teste": "ver-uso", text: "Uso do app" }),
         botao("Enviar acesso ao dono", () => pedirMotivo(
           "Enviar acesso ao dono",
           b.proprietario?.trocaPendente
@@ -5140,6 +5144,75 @@ async function telaVisaoDia() {
       el("div", {}, notas, produtos, bloqueados)));
 }
 
+// ---------- USO DO APP (painel do suporte, 17/11/2026) ----------
+// O aparelho avisa a tela aberta e manda um sinal por minuto com o app visível. Só horários e nomes de telas.
+let ultimoSinalUso = 0;
+function enviarUso(tela = null) {
+  if (!usuario?.barbearia || usuario.perfil === "plataforma" || usuario.assinatura?.bloqueada) return;
+  const token = localStorage.getItem(CHAVE_TOKEN);
+  if (!token) return;
+  ultimoSinalUso = Date.now();
+  fetch("/api/uso", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ ...(tela ? { tela } : {}), aparelho: window.matchMedia("(max-width: 760px)").matches ? "celular" : "computador" }) }).catch(() => {});
+}
+setInterval(() => { if (document.visibilityState === "visible" && Date.now() - ultimoSinalUso > 55000) enviarUso(); }, 60000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Date.now() - ultimoSinalUso > 55000) enviarUso(); });
+
+const NOME_TELA = {
+  "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
+  clientes: "Clientes", mensagens: "Mensagens", notas: "Notas", notificacoes: "Notificações", financeiro: "Relatório financeiro",
+  "pagamento-equipe": "Pagamento da equipe", comissoes: "Comissões e vales", contas: "Despesas", contador: "Contador e dados",
+  servicos: "Serviços", produtos: "Produtos", estoque: "Estoque", equipe: "Equipe", funcionamento: "Funcionamento", assinatura: "Meu plano",
+  desempenho: "Meu desempenho", duvidas: "Dúvidas", tutoriais: "Tutoriais", suporte: "Suporte", inicio: "Início"
+};
+const nomeTela = t => NOME_TELA[t] || t;
+function tempoAtras(iso) {
+  const min = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min} min`;
+  if (min < 1440) return `há ${Math.floor(min / 60)} h`;
+  return `há ${Math.floor(min / 1440)} dia(s)`;
+}
+const dataHoraBR = iso => new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+const duracaoTexto = m => (m < 1 ? "menos de 1 min" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`);
+const estadoUso = { dias: 7 };
+async function telaUsoApp(id) {
+  const u = await api(`/plataforma/barbearias/uso?id=${encodeURIComponent(id)}&dias=${estadoUso.dias}`);
+  const chips = el("div", { class: "chips-filtro chips-quebra", role: "group", "aria-label": "Período" },
+    [[1, "Hoje e ontem"], [7, "7 dias"], [30, "30 dias"]].map(([d, t]) => el("button", { type: "button", class: `chip-filtro ${estadoUso.dias === d ? "ativo" : ""}`, "data-dias": String(d), text: t,
+      onclick: () => { estadoUso.dias = d; comCarga(() => telaUsoApp(id)).catch(e => avisar(e.message, "erro")); } })));
+  const totalMin = u.pessoas.reduce((t, p) => t + p.minutos, 0);
+  const resumo = el("div", { class: "resumo-despesas", "data-teste": "uso-topo" },
+    el("div", { class: `resumo-item ${u.onlineAgora ? "ok" : ""}` }, el("small", { text: "On-line agora" }), el("strong", { text: String(u.onlineAgora) }), el("span", { text: "pessoa(s)" })),
+    el("div", { class: "resumo-item" }, el("small", { text: "Acessos" }), el("strong", { text: String(u.acessos.length) }), el("span", { text: `nos últimos ${u.dias} dia(s)` })),
+    el("div", { class: "resumo-item" }, el("small", { text: "Tempo de uso" }), el("strong", { text: duracaoTexto(totalMin) }), el("span", { text: "somando a equipe" })));
+  const pessoas = el("ul", { class: "lista-x" }, u.pessoas.map(p => el("li", { class: `item-x linha-simples ${p.ativo ? "" : "inativo"}`, "data-uso-pessoa": p.nome },
+    el("div", { class: "item-x-resumo estatico" },
+      el("span", { class: `bolinha-grande ${p.online ? "on" : ""}`, title: p.online ? "On-line" : "Off-line" }),
+      el("span", { class: "item-x-txt" }, el("strong", { text: p.nome }),
+        el("small", { text: `${NOME_PERFIL[p.perfil]} · ${p.online ? "on-line agora" : p.ultimoAcesso ? `último uso ${tempoAtras(p.ultimoAcesso)}` : "nunca usou"}` })),
+      el("span", { class: "item-x-dir uso-num" }, el("strong", { text: `${p.acessos} acesso(s)` }), el("small", { text: p.acessos ? duracaoTexto(p.minutos) : "—" }))))));
+  const maior = Math.max(1, ...u.telas.map(t => t.vezes));
+  const telas = u.telas.length ? el("ul", { class: "fin-partes partes-entrada", "data-teste": "uso-telas" }, u.telas.map(t => el("li", { "data-uso-tela": t.tela },
+    el("div", { class: "ranking-topo" }, el("span", { text: nomeTela(t.tela) }), el("strong", { text: `${t.vezes} vez(es) · ${t.pessoas} pessoa(s)` })),
+    el("progress", { max: String(maior), value: String(t.vezes), "aria-label": nomeTela(t.tela) }))))
+    : el("p", { class: "vazio", text: "Nenhuma tela aberta no período." });
+  const acessos = u.acessos.length ? el("ul", { class: "lista-x", "data-teste": "uso-acessos" }, u.acessos.map((a, i) => itemExpansivel({
+    chave: `uso:${id}:${i}:${a.inicio}`, attrs: { "data-uso-acesso": a.usuario },
+    avatar: iniciais(a.usuario), titulo: a.usuario,
+    sub: [a.online ? el("span", { class: "on-texto", text: "● on-line · " }) : null, `${dataHoraBR(a.inicio)} → ${a.online ? "agora" : dataHoraBR(a.ultimo).slice(-5)}${a.aparelho ? ` · ${a.aparelho}` : ""}`],
+    direita: el("span", { class: "preco", text: duracaoTexto(a.duracaoMin) }),
+    detalhes: () => a.telas.length ? el("ol", { class: "uso-caminho" }, a.telas.map(t => el("li", {}, el("span", { class: "suave", text: dataHoraBR(t.em).slice(-5) }), " ", nomeTela(t.tela))))
+      : el("p", { class: "suave", text: "Sem troca de tela registrada (ficou na mesma tela)." })
+  }))) : el("p", { class: "vazio", text: "Nenhum acesso no período." });
+  mostrar(cabecalho(`Uso do app — ${u.barbearia.nome}`, "Como a barbearia está usando o 4blade: quem está on-line, horários, duração e telas. Sem dados de clientes nem valores.", "#/plataforma"),
+    chips, resumo,
+    el("div", { class: "duas-colunas" },
+      el("section", {}, el("section", { class: "cartao" }, el("h3", { text: "Equipe" }), pessoas),
+        el("section", { class: "cartao" }, el("h3", { text: "Telas mais usadas" }), telas)),
+      el("section", { class: "cartao" }, el("h3", { text: "Acessos (toque para ver o caminho)" }), acessos)));
+}
+
 // ---------- NOTAS EM ABERTO (promissória) ----------
 // Quem levou serviço/produto para pagar depois. "Receber" só quando o cliente quita: o valor entra no caixa de hoje.
 // Nota paga continua registrada (aba Pagas). Cancelar nota em aberto: só gerente/proprietário, com motivo.
@@ -5370,6 +5443,7 @@ function fecharMenu() {
 // ---------- ROTEADOR ----------
 const ROTAS = {
   plataforma: { perfis: ["plataforma"], tela: telaPlataforma },
+  uso: { perfis: ["plataforma"], tela: telaUsoApp },
   inicio: { perfis: ["proprietario", "gerente", "barbeiro"], tela: () => (gestao() ? telaPainel() : telaAgenda()) },
   caixa: { perfis: ["caixa", "proprietario", "gerente"], tela: telaCaixa },
   funcionamento: { perfis: ["proprietario", "gerente"], tela: telaFuncionamento },
@@ -5446,6 +5520,7 @@ async function rotear() {
   }
   if (!["suporte", "duvidas", "tutoriais"].includes(nome)) telaAnterior = nome;
   if (nome !== "notificacoes") buscarNotificacoes().catch(() => {});   // número do sino (no máximo 1 busca por minuto)
+  enviarUso(nome);   // uso do app (para o suporte): só o nome da tela
   return montarTela(rota.tela, parametro);
 }
 let telaAnterior = null;   // última tela de trabalho (vai junto no chamado de suporte)
