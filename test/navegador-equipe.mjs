@@ -91,7 +91,7 @@ async function rodar(tela) {
     await page.fill("dialog[open] #c-sal", "1500,00");
     await ok();
     await page.waitForSelector('[data-pessoa="Beto Barbeiro"] [data-teste=a-pagar]:has-text("1.5")');   // salário + comissão − vales
-    const aPagarBeto = await page.textContent('[data-pessoa="Beto Barbeiro"] [data-teste=a-pagar]');
+    let aPagarBeto = await page.textContent('[data-pessoa="Beto Barbeiro"] [data-teste=a-pagar]');
     assert.match(aPagarBeto, /R\$\s?1\.\d{3},\d\d/);
     await abrirItem(page, '[data-pessoa="Beto Barbeiro"]');
     assert.match(await page.textContent('[data-pessoa="Beto Barbeiro"] [data-teste=mini-grade]'), /Dias trabalhados.*Atendimentos.*Produção.*Comissão.*R\$\s?83,50/s);
@@ -109,6 +109,23 @@ async function rodar(tela) {
     await page.locator(".grafico-dias .dia-alvo >> nth=0").dispatchEvent("click");
     await print("equipe-beto-desempenho");
     await page.click("a.voltar");
+    await page.waitForSelector("[data-teste=resumo-equipe]");
+    passo("lança um vale para o Beto direto do cartão dele (vales ficam no Pagamento da equipe)");
+    await abrirItem(page, '[data-pessoa="Beto Barbeiro"]');
+    await page.click('[data-pessoa="Beto Barbeiro"] .item-x-acoes button:has-text("Lançar vale")');
+    assert.match(await page.locator("dialog[open] #c-barb option:checked").innerText(), /Beto Barbeiro/);
+    await page.fill("dialog[open] #c-valor", "10,00");
+    await ok();
+    await page.waitForSelector("text=Vale lançado.");
+    await page.waitForFunction(antes => document.querySelector('[data-pessoa="Beto Barbeiro"] [data-teste=a-pagar]')?.textContent !== antes, aPagarBeto);
+    aPagarBeto = await page.textContent('[data-pessoa="Beto Barbeiro"] [data-teste=a-pagar]');   // − R$ 10,00 do vale
+    assert.equal(await page.locator("[data-teste=resumo-equipe]").count(), 1, "continua na aba do mês");
+    passo("aba Comissões e vales dentro do Pagamento da equipe");
+    await page.click("[data-aba-equipe=comissoes]");
+    await page.waitForSelector("[data-teste=previa-comissao]");
+    await page.waitForSelector('[data-vale="Beto Barbeiro"]');
+    await print("equipe-aba-comissoes-vales");
+    await page.click("[data-aba-equipe=mes]");
     await page.waitForSelector("[data-teste=resumo-equipe]");
     await pronto();
     await abrirItem(page, '[data-pessoa="Beto Barbeiro"]');

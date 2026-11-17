@@ -188,12 +188,9 @@ try {
   await page.waitForSelector(".grafico-fin");
   await foto("financeiro");
   await ir(page, "Pagamento da equipe"); await foto("pagamento-equipe");
-  await ir(page, "Comissões e vales"); await foto("comissoes");
+  await page.click("[data-aba-equipe=comissoes]"); await page.waitForSelector("[data-teste=aba-comissoes]"); await foto("comissoes");
   await ir(page, "Despesas"); await foto("contas");
   await ir(page, "Contador e dados"); await foto("contador");
-
-  await entrar("ana.semana", SEMANA);
-  await ir(page, "Meu desempenho"); await foto("desempenho");
 
   await entrar("dono.nova", "Senha-Nova-2026");
   await ir(page, "Caixa"); await foto("abrir-caixa");

@@ -8,7 +8,6 @@ import img_cobrar_jpg from "../public/tutoriais/cobrar.jpg";
 import img_comissoes_jpg from "../public/tutoriais/comissoes.jpg";
 import img_contador_jpg from "../public/tutoriais/contador.jpg";
 import img_contas_jpg from "../public/tutoriais/contas.jpg";
-import img_desempenho_jpg from "../public/tutoriais/desempenho.jpg";
 import img_equipe_jpg from "../public/tutoriais/equipe.jpg";
 import img_fechar_caixa_jpg from "../public/tutoriais/fechar-caixa.jpg";
 import img_finalizar_jpg from "../public/tutoriais/finalizar.jpg";
@@ -39,7 +38,6 @@ export const IMAGENS_TUTORIAIS = {
   "/tutoriais/comissoes.jpg": img_comissoes_jpg,
   "/tutoriais/contador.jpg": img_contador_jpg,
   "/tutoriais/contas.jpg": img_contas_jpg,
-  "/tutoriais/desempenho.jpg": img_desempenho_jpg,
   "/tutoriais/equipe.jpg": img_equipe_jpg,
   "/tutoriais/fechar-caixa.jpg": img_fechar_caixa_jpg,
   "/tutoriais/finalizar.jpg": img_finalizar_jpg,

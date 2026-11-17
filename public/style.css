@@ -1426,3 +1426,4 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
 .recibo h4 { margin: 14px 0 6px; }
 .equipe-hero .botao.principal { background: var(--dourado); color: var(--sobre-dourado); border-color: var(--dourado); font-weight: 800; }
 .equipe-hero .botao.principal:hover { filter: brightness(1.05); }
+.abas-equipe { margin-bottom: 12px; }

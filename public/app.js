@@ -3725,42 +3725,10 @@ async function telaFinanceiro() {
 }
 
 // ---------- DESEMPENHO DO BARBEIRO (só dele) + EXTRATO ----------
-let periodoDesempenho = "semana";
-async function telaDesempenho() {
-  const d = await api(`/desempenho?periodo=${periodoDesempenho}`);
-  const pf = d.proximoFechamento;
-  const mesInput = el("input", { type: "month", value: hojeLocal().slice(0, 7), "aria-label": "Mês do extrato", name: "mesExtrato" });
-  const formExtrato = el("form", { class: "cartao" },
-    el("h3", { text: "Extrato do mês" }),
-    el("p", { class: "suave", text: "Atendimentos, comissões e vales do mês, em PDF e planilha (útil para quem é MEI)." }),
-    el("div", { class: "campo" }, el("label", { for: "mes-extrato", text: "Mês" }), Object.assign(mesInput, { id: "mes-extrato" })),
-    el("button", { type: "submit", class: "botao principal", text: "Baixar extrato" }));
-  formExtrato.addEventListener("submit", ev => {
-    ev.preventDefault();
-    enviar(formExtrato, async () => {
-      const e = await api(`/extrato?mes=${mesInput.value}`);
-      const r = await compartilharOuBaixar([
-        [`${e.arquivos.nomeBase}.pdf`, blobDeBase64(e.arquivos.pdfBase64, "application/pdf")],
-        [`${e.arquivos.nomeBase}.csv`, new Blob([e.arquivos.csv], { type: "text/csv" })]
-      ], "Extrato 4blade");
-      if (r !== "cancelado") avisar(r === "compartilhado" ? "Extrato compartilhado." : "Extrato baixado (PDF e planilha).");
-    });
-  });
-  mostrar(
-    cabecalho("Meu desempenho", d.barbeiro.nome),
-    filtroPeriodo(periodoDesempenho, v => { periodoDesempenho = v; telaDesempenho(); }),
-    el("div", { class: "cartoes" },
-      cartao("Atendimentos", String(d.atendimentosQtd), null, "", "atendimentos"),
-      cartao("Faturamento bruto", reais(d.faturamentoCentavos), null, "", "bruto"),
-      cartao("Minha comissão", reais(d.comissaoCentavos), `Serviços ${reais(d.comissaoServicoCentavos)} · produtos ${reais(d.comissaoProdutoCentavos)}`, "positivo", "comissao"),
-      cartao("Vales", reais(d.valesCentavos), null, "", "vales"),
-      cartao("Próximo fechamento", reais(pf.previstoCentavos), `${pf.desde ? `Desde ${dataBR(pf.desde)}: ` : ""}comissões ${reais(pf.comissoesCentavos)} − vales ${reais(pf.valesCentavos)}`, "", "proximo")),
-    formExtrato);
-}
 
 // ---------- PAGAMENTO DA EQUIPE (17/11/2026) ----------
 // Por mês: o que cada pessoa produziu, comissão, salário fixo, vales e quanto falta pagar. "Pagar" registra tudo de uma vez.
-const estadoEquipePag = { mes: null };
+const estadoEquipePag = { mes: null, aba: "mes" };
 const NOME_MES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 const mesMais = (mes, n) => { const [a, m] = mes.split("-").map(Number); const d = new Date(Date.UTC(a, m - 1 + n, 1)); return d.toISOString().slice(0, 7); };
 function janelaSalario(p, recarregar) {
@@ -3835,6 +3803,16 @@ async function telaPagamentoEquipe(pessoaId = null) {
   const hojeMes = hojeLocal().slice(0, 7);
   estadoEquipePag.mes ||= hojeMes;
   if (pessoaId) return telaPessoaEquipe(pessoaId);
+  // Abas: o mês (salário + comissão − vales) e Comissões e vales por período (antes era outra tela do menu).
+  const abaEq = estadoEquipePag.aba;
+  const abas = el("div", { class: "alterna abas-equipe", role: "tablist", "aria-label": "Pagamento da equipe" },
+    [["mes", "Pagamento do mês"], ["comissoes", "Comissões e vales"]].map(([k, t]) =>
+      el("button", { type: "button", role: "tab", "aria-selected": String(abaEq === k), class: `botao ${abaEq === k ? "ativo" : ""}`, "data-aba-equipe": k, text: t,
+        onclick: () => { estadoEquipePag.aba = k; comCarga(telaPagamentoEquipe).catch(e => avisar(e.message, "erro")); } })));
+  if (abaEq === "comissoes") {
+    const bloco = await blocoComissoes();
+    return mostrar(cabecalho("Pagamento da equipe", "Comissões por período, pagamentos de comissão e vales (adiantamentos)."), abas, bloco);
+  }
   const mes = estadoEquipePag.mes;
   const q = await api(`/equipe/pagamento?mes=${mes}`);
   const recarregar = () => telaPagamentoEquipe();
@@ -3892,12 +3870,13 @@ async function telaPagamentoEquipe(pessoaId = null) {
         acoesItem(
           el("a", { class: "botao pequeno principal", href: `#/pagamento-equipe/${p.id}`, "data-teste": "ver-desempenho", text: "Ver desempenho completo" }),
           a.totalCentavos > 0 || a.salarioCentavos > 0 ? botao(`Pagar ${reais(Math.max(0, a.totalCentavos))}`, () => janelaPagarPessoa(p, mes, titulo, recarregar), "pequeno") : null,
-          podeSalario(p) ? botao(p.salario.valorCentavos ? "Alterar salário" : "Definir salário", () => janelaSalario(p, recarregar), "pequeno") : null)
+          podeSalario(p) ? botao(p.salario.valorCentavos ? "Alterar salário" : "Definir salário", () => janelaSalario(p, recarregar), "pequeno") : null,
+          atende && p.ativo ? botao("Lançar vale", () => janelaLancarVale(q.pessoas.filter(x => atendePerfil(x.perfil) && x.ativo), { pessoaId: p.id, depois: recarregar }), "pequeno") : null)
       ]
     });
   }) : [el("li", { class: "vazio", text: "Ninguém na equipe ainda." })]);
   mostrar(cabecalho("Pagamento da equipe", "Quanto pagar a cada um no mês: salário + comissão − vales. Toque na pessoa para ver o resumo; \"Ver desempenho completo\" abre o panorama."),
-    navega, topo,
+    abas, navega, topo,
     el("div", { class: "duas-colunas" }, el("section", {}, el("h3", { class: "titulo-lista", text: "Equipe" }), ul), ranking),
     el("p", { class: "suave nota-rodape", text: "O salário pago entra nas despesas (\"Salários (equipe)\") e no relatório financeiro; a comissão fica fechada. Gastos com pessoal = comissões + salários." }));
 }
@@ -3977,10 +3956,10 @@ function periodoAtalho(id) {
   if (id === "quinzena") return [somaDias(ontem, -14), ontem];
   return [estadoComissao.ini, estadoComissao.fim];
 }
-function janelaLancarVale(profs) {
+function janelaLancarVale(profs, { pessoaId = null, depois = null } = {}) {
   return abrirJanela("Lançar vale (adiantamento)", [
     el("p", { class: "suave", text: "O vale é descontado da próxima comissão do profissional." }),
-    campo("Profissional", { tag: "select", name: "barb", opcoes: profs.map(p => [p.id, p.nome]) }),
+    campo("Profissional", { tag: "select", name: "barb", valor: pessoaId || undefined, opcoes: profs.map(p => [p.id, p.nome]) }),
     el("div", { class: "lado-a-lado" },
       campo("Valor (R$)", { name: "valor", inputmode: "decimal", required: true, placeholder: "0,00" }),
       campo("Data", { name: "dataVale", type: "date", value: hojeLocal(), required: true })),
@@ -3991,7 +3970,7 @@ function janelaLancarVale(profs) {
       const v = paraCentavos(f.valor.value);
       if (!v) throw new Error("Valor inválido. Exemplo: 50,00");
       await api("/vales", { metodo: "POST", corpo: { barbeiroId: f.barb.value, valorCentavos: v, data: f.dataVale.value, descricao: f.desc.value || null } });
-      avisar("Vale lançado."); telaComissoes();
+      avisar("Vale lançado."); (depois || telaComissoes)();
     }
   });
 }
@@ -4008,7 +3987,9 @@ function janelaPagarFechamento(f) {
     }
   });
 }
-async function telaComissoes() {
+// A antiga tela "Comissões e vales" virou a aba "Comissões e vales" do Pagamento da equipe.
+function telaComissoes() { estadoEquipePag.aba = "comissoes"; return telaPagamentoEquipe(); }
+async function blocoComissoes() {
   const est = estadoComissao;
   if (est.atalho !== "outro" || !est.ini) [est.ini, est.fim] = periodoAtalho(est.atalho === "outro" ? "semana" : est.atalho);
   const q = `dataIni=${est.ini}&dataFim=${est.fim}`;
@@ -4108,10 +4089,9 @@ async function telaComissoes() {
     barraBusca({ placeholder: "", filtros: [["ativos", "Ativos"], ["todos", "Todos (inclui cancelados)"]], estado: estVales, aoMudar: desenharVales }).querySelector(".chips-filtro"),
     ulVales);
 
-  mostrar(cabecalho("Comissões e vales", "Escolha o período, confira quanto pagar a cada um, feche e registre o pagamento. Vales são descontados automaticamente."),
-    el("div", { class: "duas-colunas" },
-      el("section", {}, cartaoPrevia, blocoPag),
-      blocoVales));
+  return el("div", { class: "duas-colunas", "data-teste": "aba-comissoes" },
+    el("section", {}, el("p", { class: "suave", text: "Comissão por período (semana, quinzena…): confira, feche e registre o pagamento. Vales são descontados automaticamente." }), cartaoPrevia, blocoPag),
+    blocoVales);
 }
 const estadoComissaoVales = { filtro: "ativos", busca: "" };
 
@@ -5313,7 +5293,7 @@ const NOME_TELA = {
   clientes: "Clientes", mensagens: "Mensagens", notas: "Notas", notificacoes: "Notificações", financeiro: "Relatório financeiro",
   "pagamento-equipe": "Pagamento da equipe", comissoes: "Comissões e vales", contas: "Despesas", contador: "Contador e dados",
   servicos: "Serviços", produtos: "Produtos", estoque: "Estoque", equipe: "Equipe", funcionamento: "Funcionamento", assinatura: "Meu plano",
-  desempenho: "Meu desempenho", duvidas: "Dúvidas", tutoriais: "Tutoriais", suporte: "Suporte", inicio: "Início"
+  duvidas: "Dúvidas", tutoriais: "Tutoriais", suporte: "Suporte", inicio: "Início"
 };
 const nomeTela = t => NOME_TELA[t] || t;
 function tempoAtras(iso) {
@@ -5531,13 +5511,13 @@ function gruposDoPerfil(p) {
     { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
   ];
   if (p === "barbeiro") return [
-    { id: "atendimento", titulo: "Meu trabalho", icone: "agenda", itens: [["agenda", "Minha agenda", "agenda"], ["desempenho", "Meu desempenho", "grafico"], ["notificacoes", "Notificações", "sino"]] },
+    { id: "atendimento", titulo: "Meu trabalho", icone: "agenda", itens: [["agenda", "Minha agenda", "agenda"], ["notificacoes", "Notificações", "sino"]] },
     { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
   ];
   return [
-    { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ["visao-dia", "Visão do dia", "lista"], ["notificacoes", "Notificações", "sino"], ...(p === "gerente" || p === "proprietario" ? [["desempenho", "Meu desempenho", "grafico"]] : [])] },
+    { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ["visao-dia", "Visão do dia", "lista"], ["notificacoes", "Notificações", "sino"]] },
     { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
-    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["pagamento-equipe", "Pagamento da equipe", "equipe"], ["comissoes", "Comissões e vales", "comissao"], ["notas", "Notas em aberto", "contas"], ["contas", "Despesas", "contas"], ["contador", "Contador e dados", "contador"]] },
+    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["pagamento-equipe", "Pagamento da equipe", "equipe"], ["notas", "Notas em aberto", "contas"], ["contas", "Despesas", "contas"], ["contador", "Contador e dados", "contador"]] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"], ["estoque", "Estoque", "estoque"]] },
     { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"], ["assinatura", "Meu plano", "dinheiro"]] }
   ];
@@ -5599,11 +5579,11 @@ const ROTAS = {
   funcionamento: { perfis: ["proprietario", "gerente"], tela: telaFuncionamento },
   estoque: { perfis: ["proprietario", "gerente"], tela: telaEstoque },
   painel: { perfis: ["proprietario", "gerente"], tela: telaPainel },
-  comissoes: { perfis: ["proprietario", "gerente"], tela: telaComissoes },
+  // Comissões e vales ficam dentro do Pagamento da equipe (17/11/2026); o endereço antigo leva para lá.
+  comissoes: { perfis: ["proprietario", "gerente"], tela: () => { estadoEquipePag.aba = "comissoes"; location.replace("#/pagamento-equipe"); } },
   contas: { perfis: ["proprietario", "gerente"], tela: telaContas },
   contador: { perfis: ["proprietario", "gerente"], tela: telaContador },
   financeiro: { perfis: ["proprietario", "gerente"], tela: telaFinanceiro },
-  desempenho: { perfis: ["proprietario", "gerente", "barbeiro"], tela: telaDesempenho },
   "caixa-historico": { perfis: ["proprietario", "gerente"], tela: telaHistoricoCaixa },
   "caixa-dia": { perfis: ["proprietario", "gerente"], tela: data => telaCaixa(/^\d{4}-\d{2}-\d{2}$/.test(data || "") ? data : hojeLocal()) },
   equipe: { perfis: ["proprietario", "gerente"], tela: telaEquipe },

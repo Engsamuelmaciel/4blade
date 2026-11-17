@@ -2,7 +2,7 @@
 // Caminho (com a semana simulada de test/semana-simulada.mjs): gerente vê o painel (Hoje/Semana/Mês) com os números
 // conferidos à mão → lança e cancela um vale → fecha a comissão da semana e registra um pagamento → cadastra e paga conta com
 // dinheiro do caixa → envia ao contador (PDF + planilha baixados) e vê o aviso de alteração → baixa uma planilha da cópia dos dados →
-// barbeira vê só o próprio desempenho e baixa o extrato.
+// barbeira não tem "Meu desempenho" (retirado em 17/11/2026).
 // Roda em computador (1366 px) e celular (390 px); prints em docs/prints/e4/.  Uso: node test/navegador-e4.mjs
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
@@ -121,7 +121,10 @@ async function rodar(tela) {
 
     // ---------- COMISSÕES E VALES ----------
     passo("gerente lança e cancela um vale, fecha a comissão da semana e registra um pagamento");
-    await ir(page, "Comissões e vales");
+    // Comissões e vales ficam numa aba do Pagamento da equipe (17/11/2026)
+    assert.equal(await page.locator("#menu [data-nav='Comissões e vales']").count(), 0, "sem item próprio no menu");
+    await ir(page, "Pagamento da equipe");
+    await page.click("[data-aba-equipe=comissoes]");
     await page.waitForSelector("[data-teste=previa-comissao]");
     await page.click("button:has-text('+ Lançar vale')");
     await page.selectOption("dialog[open] #c-barb", { label: "Beto Barbeiro" });
@@ -266,22 +269,11 @@ async function rodar(tela) {
     await sair();
 
     // ---------- BARBEIRA ----------
-    passo("barbeira vê só o próprio desempenho e baixa o extrato");
+    passo("barbeira não tem Meu desempenho (retirado); endereço antigo volta para a agenda");
     await entrar("ana.semana");
-    await ir(page, "Meu desempenho");
-    await page.waitForSelector("[data-cartao=comissao]");
-    // semana: 4 atendimentos, 180,00, comissão 94,50, vales 20,00
-    assert.match(await texto("[data-cartao=atendimentos]"), /4/);
-    assert.match(await texto("[data-cartao=bruto]"), R("180,00"));
-    assert.match(await texto("[data-cartao=comissao]"), R("94,50"));
-    assert.match(await texto("[data-cartao=vales]"), R("20,00"));
-    assert.ok(!/Beto/.test(await page.locator("main").innerText()), "não vê dados do outro barbeiro");
-    await print("barbeira-desempenho");
-    await page.fill("#mes-extrato", dia(4).slice(0, 7));
-    const ext = await baixados(() => page.click("button:has-text('Baixar extrato')"), 2);
-    assert.ok(ext.some(([nome, b]) => nome.endsWith(".pdf") && b.subarray(0, 5).toString() === "%PDF-"));
-    await page.waitForSelector("text=Extrato baixado");
-    await print("barbeira-extrato-baixado");
+    assert.equal(await page.locator("#menu [data-nav='Meu desempenho']").count(), 0);
+    await page.goto(`${base}/#/desempenho`);
+    await page.waitForFunction(() => !/desempenho/.test(location.hash) && !document.body.dataset.carregando);
     await sair();
 
     assert.deepEqual(problemas, [], `erros no console: ${problemas.join(" | ")}`);
