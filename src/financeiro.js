@@ -47,7 +47,9 @@ function classe(tipo) {
 // as avulsas viram "Retirada do caixa" (saída).
 function movimentos(rel) {
   return [
-    ...rel.lancamentos.filter(l => l.tipo !== "Sangria").map(l => ({ ...l, classe: classe(l.tipo) })),
+    ...rel.lancamentos.filter(l => l.tipo !== "Sangria").map(l => ({ ...l, classe: classe(l.tipo),
+      // salário pago pelo "Pagamento da equipe" (despesa "Salário Fulano (mês/ano)")
+      ...(l.tipo.startsWith("Conta paga") && /^Salário /.test(l.descricao || "") ? { tipo: "Salário pago" } : {}) })),
     ...rel.saidas.sangriasAvulsas.map(s => ({ data: s.data, tipo: "Retirada do caixa", descricao: s.motivo || "", forma: "dinheiro", valorCentavos: -s.valorCentavos, classe: "saida" }))
   ];
 }
@@ -114,13 +116,19 @@ async function relatorioFinanceiro(ctx) {
   // No dia, o gráfico mostra os 7 dias que terminam nele (um dia sozinho não faz gráfico); o dia anterior sai desses 7.
   // (Duas leituras do período, no máximo: o Worker tem limite de consultas por acesso.)
   const iniSerie = per.tipo === "dia" ? somarDias(per.ini, -6) : per.ini;
-  const [atual, outro, top] = await Promise.all([
+  const [atual, outro, top, salariosR] = await Promise.all([
     relatorioComDados(ctx, { tipo: per.tipo, ref: data, ini: per.ini, fim: per.fim, titulo: per.titulo }),
     per.tipo === "dia"
       ? relatorioComDados(ctx, { tipo: "dia", ref: data, ini: iniSerie, fim: per.fim, titulo: "" })
       : relatorioComDados(ctx, { tipo: per.tipo, ref: data, ini: per.anterior.ini, fim: per.anterior.fim, titulo: "" }),
-    maisVendidos(ctx.db, ctx.barbeariaId, per.ini, per.fim)
+    maisVendidos(ctx.db, ctx.barbeariaId, per.ini, per.fim),
+    // Salários pagos no período (pagamento da equipe, 17/11/2026): despesas ligadas a cada pessoa.
+    ctx.db.prepare(`SELECT cp.usuario_id, u.nome, u.perfil, SUM(k.valor_centavos) AS total FROM contas_pessoal cp JOIN contas k ON k.id = cp.conta_id
+                    JOIN usuarios u ON u.id = cp.usuario_id WHERE cp.barbearia_id = ? AND k.situacao = 'paga' AND k.pago_em BETWEEN ? AND ?
+                    GROUP BY cp.usuario_id`).bind(ctx.barbeariaId, per.ini, per.fim).all()
   ]);
+  const salarioDe = Object.fromEntries(salariosR.results.map(x => [x.usuario_id, Number(x.total)]));
+  const salariosTotal = salariosR.results.reduce((s, x) => s + Number(x.total), 0);
   const anterior = per.tipo === "dia" ? totais(outro.rel, outro.d, per.anterior.ini, per.anterior.fim) : totais(outro.rel, outro.d);
   const { rel, d } = atual;
   const t = totais(rel, d);
@@ -136,12 +144,19 @@ async function relatorioFinanceiro(ctx) {
   const diasNoPeriodo = Math.max(1, Math.min(
     (Date.parse(`${per.fim}T12:00:00Z`) - Date.parse(`${per.ini}T12:00:00Z`)) / 864e5 + 1,
     (Date.parse(`${hoje}T12:00:00Z`) - Date.parse(`${per.ini}T12:00:00Z`)) / 864e5 + 1));
-  const profissionais = porBarbeiro(d, atual.profissionais).map(p => ({
-    nome: p.nome, atendimentosQtd: p.atendimentosQtd, servicosCentavos: p.faturamentoCentavos,
-    produtosCentavos: d.vendas.filter(v => v.vendedor_id === p.id).reduce((s, v) => s + v.total_centavos, 0),
-    comissaoCentavos: p.comissaoCentavos
-  })).filter(p => p.atendimentosQtd || p.produtosCentavos || p.comissaoCentavos)
-    .sort((a, b) => (b.servicosCentavos + b.produtosCentavos) - (a.servicosCentavos + a.produtosCentavos));
+  // Produção e custo de cada pessoa: custo = comissões + salário pago no período (cada um identificado).
+  const profissionais = [
+    ...porBarbeiro(d, atual.profissionais).map(p => ({
+      nome: p.nome, atendimentosQtd: p.atendimentosQtd, servicosCentavos: p.faturamentoCentavos,
+      produtosCentavos: d.vendas.filter(v => v.vendedor_id === p.id).reduce((s, v) => s + v.total_centavos, 0),
+      comissaoCentavos: p.comissaoCentavos, salarioCentavos: salarioDe[p.id] || 0, custoCentavos: p.comissaoCentavos + (salarioDe[p.id] || 0)
+    })),
+    // quem não atende (caixa) entra só com o salário
+    ...salariosR.results.filter(x => !atual.profissionais.some(p => p.id === x.usuario_id)).map(x => ({
+      nome: x.nome, atendimentosQtd: 0, servicosCentavos: 0, produtosCentavos: 0, comissaoCentavos: 0, salarioCentavos: Number(x.total), custoCentavos: Number(x.total)
+    }))
+  ].filter(p => p.atendimentosQtd || p.produtosCentavos || p.comissaoCentavos || p.salarioCentavos)
+    .sort((a, b) => (b.servicosCentavos + b.produtosCentavos) - (a.servicosCentavos + a.produtosCentavos) || b.custoCentavos - a.custoCentavos);
   const ordenados = [...movs].sort((a, b) => String(b.data).localeCompare(String(a.data)));
 
   return json({
@@ -155,7 +170,13 @@ async function relatorioFinanceiro(ctx) {
       porForma: formas
     },
     saidas: {
-      contasPorCategoria: Object.entries(rel.saidas.contasPagasPorCategoria).map(([id, valorCentavos]) => ({ id, nome: CATEGORIAS[id], valorCentavos })),
+      // Salários (pessoal) aparecem separados de "Outros".
+      contasPorCategoria: [
+        ...Object.entries(rel.saidas.contasPagasPorCategoria).map(([id, valorCentavos]) => ({ id, nome: CATEGORIAS[id], valorCentavos: id === "outros" ? valorCentavos - salariosTotal : valorCentavos })),
+        { id: "pessoal", nome: "Salários (equipe)", valorCentavos: salariosTotal }
+      ],
+      salariosCentavos: salariosTotal,
+      pessoalCentavos: salariosTotal + rel.comissoes.totalCentavos,
       contasCentavos: rel.saidas.contasPagasCentavos,
       comprasMercadoriaCentavos: rel.saidas.comprasMercadoriaCentavos,
       comissoesPagasCentavos: somaTipo("Comissão paga"),

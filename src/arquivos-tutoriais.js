@@ -20,6 +20,7 @@ import img_mensagens_jpg from "../public/tutoriais/mensagens.jpg";
 import img_meu_plano_jpg from "../public/tutoriais/meu-plano.jpg";
 import img_notas_jpg from "../public/tutoriais/notas.jpg";
 import img_notificacoes_jpg from "../public/tutoriais/notificacoes.jpg";
+import img_pagamento_equipe_jpg from "../public/tutoriais/pagamento-equipe.jpg";
 import img_painel_jpg from "../public/tutoriais/painel.jpg";
 import img_primeiro_acesso_jpg from "../public/tutoriais/primeiro-acesso.jpg";
 import img_produtos_estoque_jpg from "../public/tutoriais/produtos-estoque.jpg";
@@ -50,6 +51,7 @@ export const IMAGENS_TUTORIAIS = {
   "/tutoriais/meu-plano.jpg": img_meu_plano_jpg,
   "/tutoriais/notas.jpg": img_notas_jpg,
   "/tutoriais/notificacoes.jpg": img_notificacoes_jpg,
+  "/tutoriais/pagamento-equipe.jpg": img_pagamento_equipe_jpg,
   "/tutoriais/painel.jpg": img_painel_jpg,
   "/tutoriais/primeiro-acesso.jpg": img_primeiro_acesso_jpg,
   "/tutoriais/produtos-estoque.jpg": img_produtos_estoque_jpg,

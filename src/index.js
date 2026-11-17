@@ -20,6 +20,7 @@ import { rotasAgenda } from "./agenda.js";
 import { rotasMensagens } from "./mensagens.js";
 import { rotasPromissorias } from "./promissorias.js";
 import { rotasNotificacoes } from "./notificacoes.js";
+import { rotasEquipe } from "./equipe.js";
 import { rotasCaixa } from "./caixa.js";
 import { rotasEstoque, rotasVendas } from "./estoque.js";
 import { rotasGestao } from "./gestao.js";
@@ -298,7 +299,7 @@ export default {
       // ---------- DADOS DA BARBEARIA: exige usuário de barbearia ----------
       const r = (await rotasFuncionamento(ctx, path, method)) || (await rotasAgenda(ctx, path, method)) ||
         (await rotasCaixa(ctx, path, method)) || (await rotasEstoque(ctx, path, method)) || (await rotasVendas(ctx, path, method)) ||
-        (await rotasGestao(ctx, path, method)) || (await rotasFinanceiro(ctx, path, method)) || (await rotasContador(ctx, path, method)) || (await rotasMensagens(ctx, path, method)) || (await rotasPromissorias(ctx, path, method)) || (await rotasNotificacoes(ctx, path, method)) || (await rotasAssinatura(ctx, path, method)) || (await rotasSuporte(ctx, path, method)) || (await rotasUsuarios(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
+        (await rotasGestao(ctx, path, method)) || (await rotasFinanceiro(ctx, path, method)) || (await rotasContador(ctx, path, method)) || (await rotasMensagens(ctx, path, method)) || (await rotasPromissorias(ctx, path, method)) || (await rotasNotificacoes(ctx, path, method)) || (await rotasEquipe(ctx, path, method)) || (await rotasAssinatura(ctx, path, method)) || (await rotasSuporte(ctx, path, method)) || (await rotasUsuarios(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
       if (r) {
         return r;
       }

@@ -3342,6 +3342,7 @@ async function telaPainel() {
       cartao("Atendimentos", String(c.atendimentosQtd), `Ticket médio ${reais(c.ticketMedioCentavos)}`, "", "atendimentos"),
       cartao("Vendas de produtos", reais(c.vendasCentavos), `${c.vendasQtd} venda(s) · ${c.unidadesVendidas} un.`, "", "vendas"),
       cartao("Comissões", reais(c.comissoesCentavos), c.comissoesPorBarbeiro.filter(b => b.comissaoCentavos).map(b => `${b.nome.split(" ")[0]} ${reais(b.comissaoCentavos)}`).join(" · ") || "—", "", "comissoes"),
+      cartao("Gastos com pessoal", reais(c.pessoalCentavos || 0), `Comissões ${reais(c.comissoesCentavos)} · salários pagos ${reais(c.salariosCentavos || 0)}`, "", "pessoal"),
       cartao("Lucro", reais(c.lucroCentavos),
         p.periodo.nome === "mes" ? `Bruto − comissões − custo dos produtos (${reais(c.custoProdutosCentavos)}) − contas pagas (${reais(c.contasPagasCentavos)})`
           : `Bruto − comissões − custo dos produtos (${reais(c.custoProdutosCentavos)})`, c.lucroCentavos < 0 ? "negativo" : "positivo", "lucro"),
@@ -3596,7 +3597,7 @@ async function telaFinanceiro() {
   const origens = [["Serviços (atendimentos)", en.servicosCentavos], ["Venda de produtos", en.produtosCentavos], ["Notas recebidas", en.notasRecebidasCentavos]]
     .map(([nome, valor]) => ({ nome, valor })).filter(x => x.valor);
   const saidas = [
-    ...sd.contasPorCategoria.map(c => ({ nome: `Conta: ${c.nome}`, valor: c.valorCentavos })),
+    ...sd.contasPorCategoria.map(c => ({ nome: c.id === "pessoal" ? c.nome : `Conta: ${c.nome}`, valor: c.valorCentavos })),
     { nome: "Compra de mercadoria", valor: sd.comprasMercadoriaCentavos },
     { nome: "Comissões pagas", valor: sd.comissoesPagasCentavos },
     { nome: "Vales (adiantamentos)", valor: sd.valesCentavos },
@@ -3614,9 +3615,10 @@ async function telaFinanceiro() {
       linhaRes("= Resultado (lucro)", r.resultadoCentavos, `forte ${r.resultadoCentavos < 0 ? "negativo" : "positivo"}`)));
 
   const profs = f.profissionais.length ? el("div", { class: "rolagem-x" }, el("table", { class: "tabela", "data-teste": "fin-profissionais" },
-    el("thead", {}, el("tr", {}, ...["Profissional", "Atend.", "Serviços", "Produtos", "Comissão"].map(x => el("th", { text: x })))),
-    el("tbody", {}, ...f.profissionais.map(p => el("tr", {}, el("td", { text: p.nome }), el("td", { class: "num", text: String(p.atendimentosQtd) }),
-      el("td", { class: "num", text: reais(p.servicosCentavos) }), el("td", { class: "num", text: reais(p.produtosCentavos) }), el("td", { class: "num", text: reais(p.comissaoCentavos) }))))))
+    el("thead", {}, el("tr", {}, ...["Pessoa", "Atend.", "Serviços", "Produtos", "Comissão", "Salário", "Custo"].map(x => el("th", { text: x })))),
+    el("tbody", {}, ...f.profissionais.map(p => el("tr", { "data-pessoa-fin": p.nome }, el("td", { text: p.nome }), el("td", { class: "num", text: String(p.atendimentosQtd) }),
+      el("td", { class: "num", text: reais(p.servicosCentavos) }), el("td", { class: "num", text: reais(p.produtosCentavos) }), el("td", { class: "num", text: reais(p.comissaoCentavos) }),
+      el("td", { class: "num", text: reais(p.salarioCentavos || 0) }), el("td", { class: "num forte", text: reais(p.custoCentavos ?? p.comissaoCentavos) }))))))
     : el("p", { class: "vazio", text: "Sem atendimentos no período." });
   const top = (lista, un) => (lista.length ? el("ol", { class: "fin-top" }, lista.map(x => el("li", {},
     el("span", { text: x.nome }), el("span", { class: "suave", text: `${x.qtd} ${un}` }), el("strong", { text: reais(x.totalCentavos) }))))
@@ -3665,7 +3667,8 @@ async function telaFinanceiro() {
         el("p", { class: "suave", text: "Entradas e saídas mostram o dinheiro que passou pelo caixa. O resultado mostra se a barbearia ganhou ou perdeu no período." }),
         ds.diferencasCaixa.length ? el("ul", { class: "lista-avisos" }, ds.diferencasCaixa.map(x => el("li", { class: "aviso-vermelha",
           text: `Diferença no caixa de ${dataBR(x.data)}: ${x.diferencaCentavos > 0 ? "sobra" : "falta"} de ${reais(Math.abs(x.diferencaCentavos))}` }))) : null),
-      secao("Por profissional", f.profissionais.length ? `${f.profissionais.length} profissional(is)` : "", "profissionais", profs)),
+      secao("Equipe: produção e custo", f.profissionais.length ? `pessoal ${reais(f.saidas.pessoalCentavos || 0)}` : "", "profissionais", profs,
+        el("p", { class: "suave", text: "Custo = comissões + salário pago no período. Para pagar a equipe: Financeiro → Pagamento da equipe." }))),
     el("div", { class: "duas-colunas iguais" },
       secao("Serviços que mais faturaram", f.maisVendidos.servicos[0]?.nome || "", "servicos", top(f.maisVendidos.servicos, "vez(es)")),
       secao("Produtos mais vendidos", f.maisVendidos.produtos[0]?.nome || "", "produtos", top(f.maisVendidos.produtos, "un."))),
@@ -3704,6 +3707,91 @@ async function telaDesempenho() {
       cartao("Vales", reais(d.valesCentavos), null, "", "vales"),
       cartao("Próximo fechamento", reais(pf.previstoCentavos), `${pf.desde ? `Desde ${dataBR(pf.desde)}: ` : ""}comissões ${reais(pf.comissoesCentavos)} − vales ${reais(pf.valesCentavos)}`, "", "proximo")),
     formExtrato);
+}
+
+// ---------- PAGAMENTO DA EQUIPE (17/11/2026) ----------
+// Por mês: o que cada pessoa produziu, comissão, salário fixo, vales e quanto falta pagar. "Pagar" registra tudo de uma vez.
+const estadoEquipePag = { mes: null };
+const NOME_MES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const mesMais = (mes, n) => { const [a, m] = mes.split("-").map(Number); const d = new Date(Date.UTC(a, m - 1 + n, 1)); return d.toISOString().slice(0, 7); };
+function janelaSalario(p, recarregar) {
+  return abrirJanela(`Salário de ${p.nome}`, [
+    el("p", { class: "suave", text: "Salário fixo por mês (0 = só comissão). Vale a partir do mês que ainda não foi pago. Fica registrado quem mudou." }),
+    campo("Salário fixo mensal (R$)", { name: "sal", inputmode: "decimal", value: centavosParaTexto(p.salario.valorCentavos), placeholder: "0,00" })
+  ], {
+    ok: "Salvar salário",
+    aoConfirmar: async f => {
+      const v = paraCentavos(f.sal.value || "0");
+      if (v === null || v < 0) throw new Error("Valor inválido. Exemplo: 1500,00");
+      const r = await api("/equipe/salario", { metodo: "POST", corpo: { usuarioId: p.id, salarioCentavos: v } });
+      avisar(r.mensagem); recarregar();
+    }
+  });
+}
+function janelaPagarPessoa(p, mes, titulo, recarregar) {
+  const linhaCaixa = caixaMarcar("Saiu do dinheiro do caixa (vira retirada do caixa de hoje)", { name: "comCaixa" });
+  const ajustar = sel => { linhaCaixa.hidden = sel.value !== "dinheiro"; if (linhaCaixa.hidden) linhaCaixa.querySelector("input").checked = false; };
+  setTimeout(() => { const sel = janela.querySelector("#c-pgForma"); if (sel) { ajustar(sel); sel.addEventListener("change", () => ajustar(sel)); } }, 0);
+  const a = p.aPagar;
+  return abrirJanela(`Pagar ${p.nome}`, [
+    el("p", { class: "destaque-valor", text: reais(Math.max(0, a.totalCentavos)) }),
+    el("dl", { class: "dados-item" },
+      a.salarioCentavos ? [el("dt", { text: "Salário" }), el("dd", { text: reais(a.salarioCentavos) })] : null,
+      a.comissaoCentavos || p.vales.aDescontarCentavos ? [el("dt", { text: "Comissão" }), el("dd", { text: `${reais(p.comissao.abertaCentavos + p.comissao.fechadaAPagarCentavos)}${p.vales.aDescontarCentavos ? ` − vales ${reais(p.vales.aDescontarCentavos)}` : ""}` })] : null),
+    el("p", { class: "suave", text: `Referente a ${titulo}. O salário vira uma despesa paga e a comissão do mês fica fechada (não muda mais).` }),
+    campo("Pago com", { tag: "select", name: "pgForma", valor: "pix", opcoes: FORMAS_DESPESA }),
+    linhaCaixa
+  ], {
+    ok: "Confirmar pagamento",
+    aoConfirmar: async f => {
+      const r = await api("/equipe/pagar", { metodo: "POST", corpo: { usuarioId: p.id, mes, forma: f.pgForma.value, comCaixa: f.comCaixa.checked } });
+      avisar(r.mensagem); recarregar();
+    }
+  });
+}
+async function telaPagamentoEquipe() {
+  const hojeMes = hojeLocal().slice(0, 7);
+  estadoEquipePag.mes ||= hojeMes;
+  const mes = estadoEquipePag.mes;
+  const q = await api(`/equipe/pagamento?mes=${mes}`);
+  const recarregar = () => telaPagamentoEquipe();
+  const irMes = n => { estadoEquipePag.mes = mesMais(mes, n); comCarga(telaPagamentoEquipe).catch(e => avisar(e.message, "erro")); };
+  const titulo = q.titulo;
+  const navega = el("div", { class: "fin-navega", "data-teste": "mes-equipe" },
+    el("button", { type: "button", class: "botao pequeno", "aria-label": "Mês anterior", text: "‹", onclick: () => irMes(-1) }),
+    el("strong", { class: "rotulo-periodo fin-titulo", text: titulo.replace(/^./, c => c.toUpperCase()) }),
+    el("button", { type: "button", class: "botao pequeno", "aria-label": "Próximo mês", text: "›", disabled: mes >= hojeMes || null, onclick: () => irMes(1) }));
+  const T = q.totais;
+  const resumo = el("div", { class: "resumo-despesas", "data-teste": "resumo-equipe" },
+    el("div", { class: "resumo-item" }, el("small", { text: "Produção da equipe" }), el("strong", { text: reais(T.producaoCentavos) }), el("span", { text: "serviços + produtos" })),
+    el("div", { class: "resumo-item" }, el("small", { text: "Gastos com pessoal" }), el("strong", { text: reais(T.custoCentavos) }), el("span", { text: `comissões ${reais(T.comissaoCentavos)} + salários ${reais(T.salariosCentavos)}` })),
+    el("div", { class: `resumo-item ${T.aPagarCentavos ? "alerta" : "ok"}` }, el("small", { text: "Falta pagar" }), el("strong", { "data-teste": "falta-pagar", text: reais(T.aPagarCentavos) }), el("span", { text: T.aPagarCentavos ? "toque na pessoa para pagar" : "tudo pago ✔" })));
+  const ul = el("ul", { class: "lista-x" }, q.pessoas.length ? q.pessoas.map(p => {
+    const a = p.aPagar;
+    const pago = a.totalCentavos <= 0 && (p.salario.pago || p.comissao.pagaCentavos);
+    return itemExpansivel({
+      chave: `eq:${p.id}:${mes}`, attrs: { "data-pessoa": p.nome }, classe: p.ativo ? "" : "inativo", avatar: iniciais(p.nome),
+      titulo: p.nome, sub: `${NOME_PERFIL[p.perfil]} · produção ${reais(p.producao.totalCentavos)}`,
+      direita: a.totalCentavos > 0 ? [el("span", { class: "preco", "data-teste": "a-pagar", text: reais(a.totalCentavos) }), el("span", { class: "etiqueta amarela", text: "A pagar" })]
+        : el("span", { class: `etiqueta ${pago ? "verde" : ""}`, text: pago ? "Pago" : "Nada a pagar" }),
+      detalhes: () => [
+        el("dl", { class: "dados-item quadro-pessoa" },
+          el("dt", { text: "Produção" }), el("dd", { text: `${p.producao.atendimentosQtd} atend. · serviços ${reais(p.producao.servicosCentavos)} · produtos ${reais(p.producao.produtosCentavos)}` }),
+          el("dt", { text: "Comissão" }), el("dd", { text: `${reais(p.comissao.totalCentavos)} (serviços ${reais(p.comissao.servicoCentavos)} · produtos ${reais(p.comissao.produtoCentavos)})` }),
+          el("dt", { text: "Salário fixo" }), el("dd", { text: p.salario.pago ? `${reais(p.salario.pago.valorCentavos)} · pago em ${dataBR(p.salario.pago.em)}` : p.salario.valorCentavos ? reais(p.salario.valorCentavos) : "Sem salário (só comissão)" }),
+          el("dt", { text: "Vales" }), el("dd", { text: p.vales.totalCentavos ? `− ${reais(p.vales.totalCentavos)}${p.vales.aDescontarCentavos !== p.vales.totalCentavos ? ` (a descontar ${reais(p.vales.aDescontarCentavos)})` : ""}` : "Nenhum" }),
+          p.comissao.pagaCentavos ? [el("dt", { text: "Comissão já paga" }), el("dd", { text: reais(p.comissao.pagaCentavos) })] : null,
+          el("dt", { class: "forte", text: "A pagar" }), el("dd", { class: "forte", text: a.totalCentavos > 0 ? `${reais(a.totalCentavos)}${a.salarioCentavos && a.comissaoCentavos ? ` (salário ${reais(a.salarioCentavos)} + comissão ${reais(a.comissaoCentavos)})` : ""}` : "Nada" }),
+          el("dt", { text: "Custo para a barbearia" }), el("dd", { text: reais(p.custoCentavos) })),
+        acoesItem(
+          a.totalCentavos > 0 || (a.salarioCentavos > 0) ? botao(`Pagar ${reais(Math.max(0, a.totalCentavos))}`, () => janelaPagarPessoa(p, mes, titulo, recarregar), "pequeno principal") : null,
+          (usuario.perfil === "proprietario" || (p.id !== usuario.id && ["barbeiro", "caixa"].includes(p.perfil))) ? botao(p.salario.valorCentavos ? "Alterar salário" : "Definir salário", () => janelaSalario(p, recarregar), "pequeno") : null)
+      ]
+    });
+  }) : [el("li", { class: "vazio", text: "Ninguém na equipe ainda." })]);
+  mostrar(cabecalho("Pagamento da equipe", "Quanto pagar a cada um no mês: salário + comissão − vales. Toque na pessoa para ver o detalhe e pagar."),
+    navega, resumo, ul,
+    el("p", { class: "suave nota-rodape", text: "O salário pago entra nas despesas (\"Salários (equipe)\") e no relatório financeiro; a comissão fica fechada. Gastos com pessoal = comissões + salários." }));
 }
 
 // ---------- COMISSÕES E VALES (gestão) ----------
@@ -5191,7 +5279,7 @@ function gruposDoPerfil(p) {
   return [
     { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ["visao-dia", "Visão do dia", "lista"], ["notificacoes", "Notificações", "sino"], ...(p === "gerente" || p === "proprietario" ? [["desempenho", "Meu desempenho", "grafico"]] : [])] },
     { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
-    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["comissoes", "Comissões e vales", "comissao"], ["notas", "Notas em aberto", "contas"], ["contas", "Despesas", "contas"], ["contador", "Contador e dados", "contador"]] },
+    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["pagamento-equipe", "Pagamento da equipe", "equipe"], ["comissoes", "Comissões e vales", "comissao"], ["notas", "Notas em aberto", "contas"], ["contas", "Despesas", "contas"], ["contador", "Contador e dados", "contador"]] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"], ["estoque", "Estoque", "estoque"]] },
     { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"], ["assinatura", "Meu plano", "dinheiro"]] }
   ];
@@ -5266,6 +5354,7 @@ const ROTAS = {
   mensagens: { perfis: ["proprietario", "gerente", "caixa"], tela: telaMensagens },
   agenda: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgenda },
   notas: { perfis: ["proprietario", "gerente", "caixa"], tela: telaNotas },
+  "pagamento-equipe": { perfis: ["proprietario", "gerente"], tela: telaPagamentoEquipe },
   notificacoes: { perfis: ["proprietario", "gerente", "caixa", "barbeiro"], tela: telaNotificacoes },
   "visao-dia": { perfis: ["proprietario", "gerente", "caixa"], tela: telaVisaoDia },
   assinatura: { perfis: ["proprietario", "gerente"], tela: telaAssinatura },

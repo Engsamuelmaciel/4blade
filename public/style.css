@@ -1359,3 +1359,7 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
 .fin-secao-tit { font-weight: 800; font-size: 16px; }
 .fin-secao-res { color: var(--suave); font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; margin-left: auto; }
 .linha-produto .valor-produto { justify-self: end; white-space: nowrap; }
+@media (max-width: 480px) {
+  .quadro-pessoa { grid-template-columns: 1fr; gap: 0; }
+  .quadro-pessoa dt { margin-top: 8px; font-size: 12.5px; }
+}

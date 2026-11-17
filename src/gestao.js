@@ -523,14 +523,16 @@ async function painel(ctx) {
   const p = periodo(url.searchParams.get("periodo") || "hoje", hoje);
   const diasGrafico = p.nome === "mes" ? 30 : 7;
   const iniGrafico = somarDias(hoje, -(diasGrafico - 1));
-  const [d, dGraf, profs, contas, produtos, caixasAbertos] = await Promise.all([
+  const [d, dGraf, profs, contas, produtos, caixasAbertos, salarios] = await Promise.all([
     dadosPeriodo(db, ctx.barbeariaId, p.ini, p.fim),
     dadosPeriodo(db, ctx.barbeariaId, iniGrafico, hoje),
     profissionaisDa(db, ctx.barbeariaId),
     db.prepare("SELECT * FROM contas WHERE barbearia_id = ? AND situacao = 'aberta' AND vencimento <= ? ORDER BY vencimento").bind(ctx.barbeariaId, somarDias(hoje, 7)).all(),
     db.prepare(`SELECT p.*, COALESCE(e.saldo, 0) AS saldo FROM produtos p LEFT JOIN produto_estoque e ON e.produto_id = p.id
                 WHERE p.barbearia_id = ? AND p.ativo = 1`).bind(ctx.barbeariaId).all(),
-    db.prepare("SELECT data FROM caixas WHERE barbearia_id = ? AND situacao = 'aberto' AND data < ? ORDER BY data").bind(ctx.barbeariaId, hoje).all()
+    db.prepare("SELECT data FROM caixas WHERE barbearia_id = ? AND situacao = 'aberto' AND data < ? ORDER BY data").bind(ctx.barbeariaId, hoje).all(),
+    db.prepare(`SELECT COALESCE(SUM(k.valor_centavos), 0) AS total FROM contas_pessoal cp JOIN contas k ON k.id = cp.conta_id
+                WHERE cp.barbearia_id = ? AND k.situacao = 'paga' AND k.pago_em BETWEEN ? AND ?`).bind(ctx.barbeariaId, p.ini, p.fim).first()
   ]);
   // lucro: dia/semana = bruto − comissões − custo dos produtos; mês = também − contas pagas
   const res = resultado(d, { descontarContas: p.nome === "mes" });
@@ -544,7 +546,8 @@ async function painel(ctx) {
   const estoque = produtos.results.map(x => ({ nome: x.nome, avisos: avisosProduto(x, hoje) })).filter(x => x.avisos.length);
   return json({
     periodo: p,
-    cartoes: { ...res, comissoesPorBarbeiro: barbeiros.map(b => ({ id: b.id, nome: b.nome, comissaoCentavos: b.comissaoCentavos })) },
+    // Gastos com pessoal (17/11/2026) = comissões do período + salários pagos no período.
+    cartoes: { ...res, salariosCentavos: Number(salarios.total), pessoalCentavos: res.comissoesCentavos + Number(salarios.total), comissoesPorBarbeiro: barbeiros.map(b => ({ id: b.id, nome: b.nome, comissaoCentavos: b.comissaoCentavos })) },
     contas: { atrasadas: grupo("atrasada"), hoje: grupo("hoje"), proximos7Dias: grupo("proxima"), lista: ct },
     faturamentoPorDia: Object.entries(porDia).map(([data, valorCentavos]) => ({ data, valorCentavos })),
     ranking: [...barbeiros].sort((a, b) => b.faturamentoCentavos - a.faturamentoCentavos)

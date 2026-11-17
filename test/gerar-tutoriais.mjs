@@ -187,6 +187,7 @@ try {
   await pronto();
   await page.waitForSelector(".grafico-fin");
   await foto("financeiro");
+  await ir(page, "Pagamento da equipe"); await foto("pagamento-equipe");
   await ir(page, "Comissões e vales"); await foto("comissoes");
   await ir(page, "Despesas"); await foto("contas");
   await ir(page, "Contador e dados"); await foto("contador");
