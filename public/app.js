@@ -3772,51 +3772,175 @@ function janelaPagarPessoa(p, mes, titulo, recarregar) {
     }
   });
 }
-async function telaPagamentoEquipe() {
+// Variação contra o mês anterior: "▲ 12% vs outubro" (sem base → nada)
+function variacaoMes(atual, antes, nomeAnt) {
+  if (!antes) return null;
+  const v = Math.round(((atual - antes) / antes) * 100);
+  return el("span", { class: `variacao ${v > 0 ? "var-boa" : v < 0 ? "var-ruim" : ""}`, "data-variacao-mes": String(v), text: `${v > 0 ? "▲" : v < 0 ? "▼" : "="} ${Math.abs(v)}% vs ${nomeAnt}` });
+}
+// Gráfico de barras da produção por dia (serviços + produtos empilhados), em SVG (CSP: só atributos).
+function graficoDiasPessoa(dias) {
+  const max = Math.max(1, ...dias.map(d => d.servicosCentavos + d.produtosCentavos));
+  const L = 12, G = 4, H = 110, larg = dias.length * (L + G);
+  const leitura = el("p", { class: "fin-leitura suave", "data-teste": "leitura-dia", text: "Toque numa barra para ver o dia." });
+  const g = svg("svg", { viewBox: `0 0 ${larg} ${H + 16}`, class: "grafico-dias", role: "img", "aria-label": "Produção por dia" },
+    ...dias.flatMap((d, i) => {
+      const x = i * (L + G);
+      const hs = Math.round((d.servicosCentavos / max) * H), hp = Math.round((d.produtosCentavos / max) * H);
+      const total = d.servicosCentavos + d.produtosCentavos;
+      const alvo = svg("rect", { x: String(x - 1), y: "0", width: String(L + 2), height: String(H + 16), class: "dia-alvo", "data-dia-grafico": d.data });
+      alvo.addEventListener("click", () => { leitura.textContent = `${dataBR(d.data)}: ${reais(total)} · ${d.atendimentos} atendimento(s)${d.produtosCentavos ? ` · produtos ${reais(d.produtosCentavos)}` : ""}`; });
+      return [
+        total ? null : svg("rect", { x: String(x), y: String(H - 2), width: String(L), height: "2", class: "dia-vazio" }),
+        hs ? svg("rect", { x: String(x), y: String(H - hs), width: String(L), height: String(hs), rx: "2", class: "dia-servico" }) : null,
+        hp ? svg("rect", { x: String(x), y: String(H - hs - hp), width: String(L), height: String(hp), rx: "2", class: "dia-produto" }) : null,
+        (i === 0 || (i + 1) % 5 === 0) ? svg("text", { x: String(x + L / 2), y: String(H + 13), "text-anchor": "middle", class: "dia-rotulo" }, String(Number(d.data.slice(8)))) : null,
+        alvo
+      ].filter(Boolean);
+    }));
+  return el("div", { class: "grafico-dias-caixa" },
+    el("div", { class: "legenda-dias" }, el("span", { class: "leg-servico", text: "Serviços" }), el("span", { class: "leg-produto", text: "Produtos" })),
+    el("div", { class: "rolagem-x" }, g), leitura);
+}
+const mini = (rotulo, valor, extra = null, teste = null) => el("div", { class: "mini-ind", ...(teste ? { "data-ind": teste } : {}) },
+  el("small", { text: rotulo }), el("strong", { text: valor }), extra);
+
+async function telaPagamentoEquipe(pessoaId = null) {
   const hojeMes = hojeLocal().slice(0, 7);
   estadoEquipePag.mes ||= hojeMes;
+  if (pessoaId) return telaPessoaEquipe(pessoaId);
   const mes = estadoEquipePag.mes;
   const q = await api(`/equipe/pagamento?mes=${mes}`);
   const recarregar = () => telaPagamentoEquipe();
   const irMes = n => { estadoEquipePag.mes = mesMais(mes, n); comCarga(telaPagamentoEquipe).catch(e => avisar(e.message, "erro")); };
   const titulo = q.titulo;
-  const navega = el("div", { class: "fin-navega", "data-teste": "mes-equipe" },
-    el("button", { type: "button", class: "botao pequeno", "aria-label": "Mês anterior", text: "‹", onclick: () => irMes(-1) }),
-    el("strong", { class: "rotulo-periodo fin-titulo", text: titulo.replace(/^./, c => c.toUpperCase()) }),
-    el("button", { type: "button", class: "botao pequeno", "aria-label": "Próximo mês", text: "›", disabled: mes >= hojeMes || null, onclick: () => irMes(1) }));
+  const navega = navegaMes(mes, titulo, irMes);
   const T = q.totais;
-  const resumo = el("div", { class: "resumo-despesas", "data-teste": "resumo-equipe" },
-    el("div", { class: "resumo-item" }, el("small", { text: "Produção da equipe" }), el("strong", { text: reais(T.producaoCentavos) }), el("span", { text: "serviços + produtos" })),
-    el("div", { class: "resumo-item" }, el("small", { text: "Gastos com pessoal" }), el("strong", { text: reais(T.custoCentavos) }), el("span", { text: `comissões ${reais(T.comissaoCentavos)} + salários ${reais(T.salariosCentavos)}` })),
-    el("div", { class: `resumo-item ${T.aPagarCentavos ? "alerta" : "ok"}` }, el("small", { text: "Falta pagar" }), el("strong", { "data-teste": "falta-pagar", text: reais(T.aPagarCentavos) }), el("span", { text: T.aPagarCentavos ? "toque na pessoa para pagar" : "tudo pago ✔" })));
+  // Topo: quanto já foi pago do custo do mês (barra) + produção da equipe
+  const custo = Math.max(T.custoCentavos, T.pagoCentavos + T.aPagarCentavos, 1);
+  const barra = el("span", { class: "progresso-pago-barra" });
+  barra.style.width = `${Math.min(100, Math.round((T.pagoCentavos / custo) * 100))}%`;
+  const topo = el("section", { class: "equipe-hero", "data-teste": "resumo-equipe" },
+    el("div", { class: "equipe-hero-linha" },
+      el("div", {}, el("small", { text: "Falta pagar" }), el("strong", { class: "equipe-hero-valor", "data-teste": "falta-pagar", text: reais(T.aPagarCentavos) })),
+      el("div", { class: "equipe-hero-dir" }, el("small", { text: "Já pago" }), el("strong", { text: reais(T.pagoCentavos) }))),
+    el("div", { class: "progresso-pago", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(Math.round((T.pagoCentavos / custo) * 100)) }, barra),
+    el("div", { class: "equipe-hero-numeros" },
+      mini("Produção da equipe", reais(T.producaoCentavos), el("span", { text: `${T.atendimentosQtd} atendimento(s)` })),
+      mini("Gastos com pessoal", reais(T.custoCentavos), el("span", { text: `comissões ${reais(T.comissaoCentavos)} + salários ${reais(T.salariosCentavos)}` })),
+      mini("Vales no mês", reais(T.valesCentavos))));
+  // Ranking de produção (quem atende)
+  const comProd = q.pessoas.filter(p => p.producao.totalCentavos > 0).sort((a, b) => b.producao.totalCentavos - a.producao.totalCentavos);
+  const maxProd = Math.max(1, ...comProd.map(p => p.producao.totalCentavos));
+  const ranking = comProd.length ? el("section", { class: "cartao", "data-teste": "ranking-equipe" },
+    el("h3", { text: "Quem mais produziu" }),
+    el("ol", { class: "ranking-equipe" }, comProd.map((p, i) => {
+      const b = el("span", { class: "rank-barra" }); b.style.width = `${Math.round((p.producao.totalCentavos / maxProd) * 100)}%`;
+      return el("li", { "data-rank": p.nome },
+        el("span", { class: `rank-pos pos-${i + 1}`, text: String(i + 1) }),
+        el("div", { class: "rank-meio" }, el("div", { class: "rank-topo" }, el("strong", { text: p.nome }), el("span", { text: reais(p.producao.totalCentavos) })),
+          el("span", { class: "rank-trilho" }, b),
+          el("small", { class: "suave", text: `${p.producao.atendimentosQtd} atend. · ${p.producao.diasTrabalhados} dia(s) · comissão ${reais(p.comissao.totalCentavos)}` })));
+    }))) : null;
+
   const ul = el("ul", { class: "lista-x" }, q.pessoas.length ? q.pessoas.map(p => {
     const a = p.aPagar;
     const pago = a.totalCentavos <= 0 && (p.salario.pago || p.comissao.pagaCentavos);
+    const atende = atendePerfil(p.perfil);
     return itemExpansivel({
       chave: `eq:${p.id}:${mes}`, attrs: { "data-pessoa": p.nome }, classe: p.ativo ? "" : "inativo", avatar: iniciais(p.nome),
-      titulo: p.nome, sub: `${NOME_PERFIL[p.perfil]} · produção ${reais(p.producao.totalCentavos)}`,
+      titulo: p.nome, sub: atende ? `${p.producao.atendimentosQtd} atend. · ${reais(p.producao.totalCentavos)}` : NOME_PERFIL[p.perfil],
       direita: a.totalCentavos > 0 ? [el("span", { class: "preco", "data-teste": "a-pagar", text: reais(a.totalCentavos) }), el("span", { class: "etiqueta amarela", text: "A pagar" })]
         : el("span", { class: `etiqueta ${pago ? "verde" : ""}`, text: pago ? "Pago" : "Nada a pagar" }),
       detalhes: () => [
+        atende ? el("div", { class: "mini-grade", "data-teste": "mini-grade" },
+          mini("Dias trabalhados", String(p.producao.diasTrabalhados)),
+          mini("Atendimentos", String(p.producao.atendimentosQtd)),
+          mini("Produção", reais(p.producao.totalCentavos)),
+          mini("Comissão", reais(p.comissao.totalCentavos), el("span", { text: `${pct(p.comissaoServicoBp)} serv. · ${pct(p.comissaoProdutoBp)} prod.` }))) : null,
         el("dl", { class: "dados-item quadro-pessoa" },
-          el("dt", { text: "Produção" }), el("dd", { text: `${p.producao.atendimentosQtd} atend. · serviços ${reais(p.producao.servicosCentavos)} · produtos ${reais(p.producao.produtosCentavos)}` }),
-          el("dt", { text: "Comissão" }), el("dd", { text: `${reais(p.comissao.totalCentavos)} (serviços ${reais(p.comissao.servicoCentavos)} · produtos ${reais(p.comissao.produtoCentavos)})` }),
           el("dt", { text: "Salário fixo" }), el("dd", { text: p.salario.pago ? `${reais(p.salario.pago.valorCentavos)} · pago em ${dataBR(p.salario.pago.em)}` : p.salario.valorCentavos ? reais(p.salario.valorCentavos) : "Sem salário (só comissão)" }),
-          el("dt", { text: "Vales" }), el("dd", { text: p.vales.totalCentavos ? `− ${reais(p.vales.totalCentavos)}${p.vales.aDescontarCentavos !== p.vales.totalCentavos ? ` (a descontar ${reais(p.vales.aDescontarCentavos)})` : ""}` : "Nenhum" }),
-          p.comissao.pagaCentavos ? [el("dt", { text: "Comissão já paga" }), el("dd", { text: reais(p.comissao.pagaCentavos) })] : null,
-          el("dt", { class: "forte", text: "A pagar" }), el("dd", { class: "forte", text: a.totalCentavos > 0 ? `${reais(a.totalCentavos)}${a.salarioCentavos && a.comissaoCentavos ? ` (salário ${reais(a.salarioCentavos)} + comissão ${reais(a.comissaoCentavos)})` : ""}` : "Nada" }),
+          p.vales.totalCentavos ? [el("dt", { text: "Vales" }), el("dd", { text: `− ${reais(p.vales.totalCentavos)}` })] : null,
+          el("dt", { class: "forte", text: "A pagar" }), el("dd", { class: "forte", text: a.totalCentavos > 0 ? reais(a.totalCentavos) : "Nada" }),
           el("dt", { text: "Custo para a barbearia" }), el("dd", { text: reais(p.custoCentavos) })),
         acoesItem(
-          a.totalCentavos > 0 || (a.salarioCentavos > 0) ? botao(`Pagar ${reais(Math.max(0, a.totalCentavos))}`, () => janelaPagarPessoa(p, mes, titulo, recarregar), "pequeno principal") : null,
-          (usuario.perfil === "proprietario" || (p.id !== usuario.id && ["barbeiro", "caixa"].includes(p.perfil))) ? botao(p.salario.valorCentavos ? "Alterar salário" : "Definir salário", () => janelaSalario(p, recarregar), "pequeno") : null)
+          el("a", { class: "botao pequeno principal", href: `#/pagamento-equipe/${p.id}`, "data-teste": "ver-desempenho", text: "Ver desempenho completo" }),
+          a.totalCentavos > 0 || a.salarioCentavos > 0 ? botao(`Pagar ${reais(Math.max(0, a.totalCentavos))}`, () => janelaPagarPessoa(p, mes, titulo, recarregar), "pequeno") : null,
+          podeSalario(p) ? botao(p.salario.valorCentavos ? "Alterar salário" : "Definir salário", () => janelaSalario(p, recarregar), "pequeno") : null)
       ]
     });
   }) : [el("li", { class: "vazio", text: "Ninguém na equipe ainda." })]);
-  mostrar(cabecalho("Pagamento da equipe", "Quanto pagar a cada um no mês: salário + comissão − vales. Toque na pessoa para ver o detalhe e pagar."),
-    navega, resumo, ul,
+  mostrar(cabecalho("Pagamento da equipe", "Quanto pagar a cada um no mês: salário + comissão − vales. Toque na pessoa para ver o resumo; \"Ver desempenho completo\" abre o panorama."),
+    navega, topo,
+    el("div", { class: "duas-colunas" }, el("section", {}, el("h3", { class: "titulo-lista", text: "Equipe" }), ul), ranking),
     el("p", { class: "suave nota-rodape", text: "O salário pago entra nas despesas (\"Salários (equipe)\") e no relatório financeiro; a comissão fica fechada. Gastos com pessoal = comissões + salários." }));
 }
+const podeSalario = p => usuario.perfil === "proprietario" || (p.id !== usuario.id && ["barbeiro", "caixa"].includes(p.perfil));
+function navegaMes(mes, titulo, irMes) {
+  return el("div", { class: "fin-navega", "data-teste": "mes-equipe" },
+    el("button", { type: "button", class: "botao pequeno", "aria-label": "Mês anterior", text: "‹", onclick: () => irMes(-1) }),
+    el("strong", { class: "rotulo-periodo fin-titulo", text: titulo.replace(/^./, c => c.toUpperCase()) }),
+    el("button", { type: "button", class: "botao pequeno", "aria-label": "Próximo mês", text: "›", disabled: mes >= hojeLocal().slice(0, 7) || null, onclick: () => irMes(1) }));
+}
 
+// Panorama de uma pessoa: desempenho completo + recibo do mês + pagamentos
+async function telaPessoaEquipe(id) {
+  const mes = estadoEquipePag.mes;
+  const r = await api(`/equipe/pessoa?id=${encodeURIComponent(id)}&mes=${mes}`);
+  const p = r.pessoa, pr = p.producao, c = p.comissao, a = p.aPagar, ant = r.anterior;
+  const recarregar = () => telaPessoaEquipe(id);
+  const irMes = n => { estadoEquipePag.mes = mesMais(mes, n); comCarga(() => telaPessoaEquipe(id)).catch(e => avisar(e.message, "erro")); };
+  const nomeAnt = ant ? NOME_MES[Number(ant.mes.slice(5)) - 1] : "";
+  const atende = atendePerfil(p.perfil);
+  const hero = el("section", { class: "equipe-hero pessoa-hero", "data-teste": "pessoa-hero" },
+    el("div", { class: "pessoa-id" }, el("span", { class: "item-x-avatar grande", text: iniciais(p.nome) }),
+      el("div", {}, el("strong", { class: "pessoa-nome", text: p.nome }), el("small", { text: `${NOME_PERFIL[p.perfil]}${atende ? ` · comissão ${pct(p.comissaoServicoBp)} serviços, ${pct(p.comissaoProdutoBp)} produtos` : ""}` }))),
+    el("div", { class: "equipe-hero-linha" },
+      el("div", {}, el("small", { text: a.totalCentavos > 0 ? "A pagar neste mês" : "Situação do mês" }),
+        el("strong", { class: "equipe-hero-valor", "data-teste": "pessoa-a-pagar", text: a.totalCentavos > 0 ? reais(a.totalCentavos) : "Tudo pago ✔" })),
+      a.totalCentavos > 0 || a.salarioCentavos > 0 ? botao(`Pagar ${reais(Math.max(0, a.totalCentavos))}`, () => janelaPagarPessoa(p, mes, r.titulo, recarregar), "principal") : null));
+  const cards = atende ? el("div", { class: "resumo-despesas quatro", "data-teste": "pessoa-cards" },
+    el("div", { class: "resumo-item" }, el("small", { text: "Produção" }), el("strong", { text: reais(pr.totalCentavos) }), variacaoMes(pr.totalCentavos, ant?.producaoCentavos, nomeAnt) || el("span", { text: "serviços + produtos" })),
+    el("div", { class: "resumo-item" }, el("small", { text: "Atendimentos" }), el("strong", { text: String(pr.atendimentosQtd) }), variacaoMes(pr.atendimentosQtd, ant?.atendimentosQtd, nomeAnt) || el("span", { text: "no mês" })),
+    el("div", { class: "resumo-item ok" }, el("small", { text: "Comissão" }), el("strong", { "data-teste": "pessoa-comissao", text: reais(c.totalCentavos) }), variacaoMes(c.totalCentavos, ant?.comissaoCentavos, nomeAnt) || el("span", { text: "serviços + produtos" })),
+    el("div", { class: "resumo-item" }, el("small", { text: "Dias trabalhados" }), el("strong", { "data-teste": "pessoa-dias", text: String(pr.diasTrabalhados) }), el("span", { text: ant ? `${ant.diasTrabalhados} em ${nomeAnt}` : "no mês" }))) : null;
+  const ind = r.indicadores;
+  const indicadores = atende ? el("section", { class: "cartao" }, el("h3", { text: "Indicadores" }),
+    el("div", { class: "mini-grade seis" },
+      mini("Ticket médio", reais(pr.ticketMedioCentavos), el("span", { text: "por atendimento" }), "ticket"),
+      mini("Média por dia", reais(pr.mediaPorDiaCentavos), el("span", { text: "dia trabalhado" }), "media-dia"),
+      mini("Clientes atendidos", String(ind.clientesAtendidos), null, "clientes"),
+      mini("Produtos vendidos", String(pr.unidadesVendidas), el("span", { text: reais(pr.produtosCentavos) }), "produtos"),
+      mini("Faltas de clientes", String(ind.faltas), ind.cancelados ? el("span", { text: `${ind.cancelados} cancelado(s)` }) : null, "faltas"),
+      mini("Melhor dia", ind.melhorDia && ind.melhorDia.totalCentavos ? reais(ind.melhorDia.totalCentavos) : "—", ind.melhorDia && ind.melhorDia.totalCentavos ? el("span", { text: dataBR(ind.melhorDia.data) }) : null, "melhor-dia"))) : null;
+  const grafico = atende ? el("section", { class: "cartao" }, el("h3", { text: "Produção por dia" }), graficoDiasPessoa(r.porDia)) : null;
+  const maxS = Math.max(1, ...r.servicos.map(x => x.totalCentavos));
+  const servicos = atende ? el("section", { class: "cartao" }, el("h3", { text: "Serviços mais feitos" }),
+    r.servicos.length ? el("ul", { class: "fin-partes partes-entrada" }, r.servicos.map(x => el("li", { "data-servico-pessoa": x.nome },
+      el("div", { class: "ranking-topo" }, el("span", { text: `${x.nome} · ${x.qtd}x` }), el("strong", { text: reais(x.totalCentavos) })),
+      el("progress", { max: String(maxS), value: String(x.totalCentavos), "aria-label": x.nome }))))
+      : el("p", { class: "vazio", text: "Nenhum atendimento no mês." })) : null;
+  // Recibo do mês: como chega no valor
+  const salarioMes = p.salario.pago ? p.salario.pago.valorCentavos : p.salario.valorCentavos;
+  const totalMes = salarioMes + c.totalCentavos - p.vales.totalCentavos;
+  const linhaR = (t, v, cls = "") => el("tr", { class: cls }, el("td", { text: t }), el("td", { class: "num", text: v }));
+  const recibo = el("section", { class: "cartao recibo", "data-teste": "recibo" }, el("h3", { text: `Recibo de ${r.titulo}` }),
+    el("table", { class: "tabela fin-demonstrativo" }, el("tbody", {},
+      linhaR("Salário fixo", reais(salarioMes)),
+      atende ? linhaR(`+ Comissão de serviços (${pct(p.comissaoServicoBp)})`, reais(c.servicoCentavos)) : null,
+      atende ? linhaR(`+ Comissão de produtos (${pct(p.comissaoProdutoBp)})`, reais(c.produtoCentavos)) : null,
+      p.vales.totalCentavos ? linhaR(`− Vales (${p.vales.qtd})`, `− ${reais(p.vales.totalCentavos)}`) : null,
+      linhaR("= Total do mês", reais(totalMes), "forte"),
+      linhaR("Já pago", reais((p.salario.pago ? p.salario.pago.valorCentavos : 0) + c.pagaCentavos)),
+      linhaR("Falta pagar", reais(Math.max(0, a.totalCentavos)), `forte ${a.totalCentavos > 0 ? "negativo" : "positivo"}`))),
+    el("p", { class: "suave", text: `Custo para a barbearia no mês: ${reais(p.custoCentavos)} (salário + comissões).` }),
+    r.pagamentos.length ? [el("h4", { text: "Pagamentos feitos" }),
+      el("ul", { class: "lista-pagamentos" }, r.pagamentos.map(x => el("li", {}, el("span", { text: `${x.tipo} · ${dataBR(x.em)}` }), el("strong", { text: reais(x.valorCentavos) }))))] : null,
+    acoesItem(podeSalario(p) ? botao(p.salario.valorCentavos ? "Alterar salário" : "Definir salário", () => janelaSalario(p, recarregar), "pequeno") : null));
+  mostrar(cabecalho(p.nome, `Desempenho e pagamento · ${r.titulo}`, "#/pagamento-equipe"),
+    navegaMes(mes, r.titulo, irMes), hero, cards,
+    el("div", { class: "duas-colunas" }, el("div", {}, indicadores, grafico), el("div", {}, recibo, servicos)));
+}
 // ---------- COMISSÕES E VALES (gestão) ----------
 // 17/11/2026: tela em 3 partes simples — 1) quanto pagar a cada um no período, 2) pagamentos (fechamentos), 3) vales.
 const estadoComissao = { ini: null, fim: null, atalho: "semana", filtroPag: "apagar" };

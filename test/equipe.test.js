@@ -64,6 +64,36 @@ describe("pagamento da equipe", () => {
     void b;
   });
 
+  test("panorama da pessoa: dias trabalhados, atendimentos, produção, comissão, indicadores e recibo; isolamento", async () => {
+    const amb = await cenario("pan");
+    const { post, get, ger, barb, cx } = amb;
+    await post("/api/equipe/salario", ger.token, { usuarioId: barb.id, salarioCentavos: 150000 });
+    const r = await get(`/api/equipe/pessoa?id=${barb.id}&mes=${MES}`, ger.token);
+    assert.equal(r.status, 200, JSON.stringify(r.dados));
+    const p = r.dados.pessoa;
+    assert.deepEqual([p.producao.diasTrabalhados, p.producao.atendimentosQtd, p.producao.totalCentavos, p.producao.ticketMedioCentavos, p.producao.mediaPorDiaCentavos],
+      [1, 1, 7000, 4000, 7000]);
+    assert.deepEqual([p.comissao.totalCentavos, p.comissaoServicoBp, p.comissaoProdutoBp], [2300, 5000, 1000]);
+    assert.equal(r.dados.indicadores.clientesAtendidos, 1);
+    assert.equal(r.dados.indicadores.melhorDia.totalCentavos, 7000);
+    assert.equal(r.dados.servicos[0].nome, "Corte");
+    assert.ok(r.dados.porDia.length >= 28 && r.dados.porDia.some(d => d.servicosCentavos === 4000 && d.produtosCentavos === 3000));
+    assert.equal(p.aPagar.totalCentavos, 151800);
+    // lista mostra dias trabalhados e o que já foi pago
+    const q = (await get(`/api/equipe/pagamento?mes=${MES}`, ger.token)).dados;
+    assert.equal(q.pessoas.find(x => x.id === barb.id).producao.diasTrabalhados, 1);
+    assert.equal(q.totais.pagoCentavos, 0);
+    await post("/api/equipe/pagar", ger.token, { usuarioId: barb.id, mes: MES, forma: "pix" });
+    assert.equal((await get(`/api/equipe/pagamento?mes=${MES}`, ger.token)).dados.totais.pagoCentavos, 151800);
+    const depois = (await get(`/api/equipe/pessoa?id=${barb.id}&mes=${MES}`, ger.token)).dados;
+    assert.equal(depois.pagamentos.length, 2, "salário + comissão");
+    // permissões e isolamento
+    assert.equal((await get(`/api/equipe/pessoa?id=${barb.id}&mes=${MES}`, barb.token)).status, 403);
+    assert.equal((await get(`/api/equipe/pessoa?id=${barb.id}&mes=${MES}`, cx.token)).status, 403);
+    const outra = await cenario("pan2", amb, amb.p);
+    assert.equal((await get(`/api/equipe/pessoa?id=${barb.id}&mes=${MES}`, outra.ger.token)).status, 404);
+  });
+
   test("salário base no cadastro da equipe (opcional) e na edição; aparece no pagamento da equipe", async () => {
     const amb = await cenario("eqc");
     const { post, get, ger, b } = amb;

@@ -33,7 +33,7 @@ export async function quadroEquipe(ctx, mes, usuarioId = null) {
   const { ini, fim } = periodoDoMes(mes);
   const [d, pessoas, fechados, fechamentos, salarios, pagos] = await Promise.all([
     dadosPeriodo(db, b, ini, fim),
-    db.prepare(`SELECT id, nome, perfil, ativo FROM usuarios WHERE barbearia_id = ? AND perfil IN ('proprietario','gerente','barbeiro','caixa')
+    db.prepare(`SELECT id, nome, perfil, ativo, comissao_servico_bp, comissao_produto_bp FROM usuarios WHERE barbearia_id = ? AND perfil IN ('proprietario','gerente','barbeiro','caixa')
                 ${usuarioId ? "AND id = ?" : ""} ORDER BY ativo DESC, CASE perfil WHEN 'proprietario' THEN 0 WHEN 'gerente' THEN 1 WHEN 'barbeiro' THEN 2 ELSE 3 END, nome`)
       .bind(b, ...(usuarioId ? [usuarioId] : [])).all(),
     db.prepare("SELECT tipo, ref_id FROM fechamento_comissao_itens WHERE barbearia_id = ?").bind(b).all(),
@@ -63,23 +63,74 @@ export async function quadroEquipe(ctx, mes, usuarioId = null) {
     const salarioAPagar = salPago ? 0 : salario;
     const comissaoAPagar = comLivre - valesLivres + soma(pendentes, "a_pagar_centavos");
     const comissaoTotal = soma(cs) + soma(cpd);
+    // dias trabalhados = dias com atendimento ou venda dele (dia do caixa)
+    const dias = new Set([...at.map(a => a.data), ...vd.map(v => v.data)]);
+    const totalProd = soma(at, "total_centavos") + soma(vd, "total_centavos");
     return {
       id: p.id, nome: p.nome, perfil: p.perfil, ativo: Boolean(p.ativo),
+      comissaoServicoBp: Number(p.comissao_servico_bp || 0), comissaoProdutoBp: Number(p.comissao_produto_bp || 0),
       producao: { atendimentosQtd: at.length, servicosCentavos: soma(at, "total_centavos"), produtosCentavos: soma(vd, "total_centavos"),
-        totalCentavos: soma(at, "total_centavos") + soma(vd, "total_centavos") },
+        totalCentavos: totalProd, vendasQtd: vd.length, unidadesVendidas: soma(vd, "unidades"), diasTrabalhados: dias.size,
+        ticketMedioCentavos: at.length ? Math.round(soma(at, "total_centavos") / at.length) : 0,
+        mediaPorDiaCentavos: dias.size ? Math.round(totalProd / dias.size) : 0 },
       comissao: { servicoCentavos: soma(cs), produtoCentavos: soma(cpd), totalCentavos: comissaoTotal,
         abertaCentavos: comLivre, fechadaAPagarCentavos: soma(pendentes, "a_pagar_centavos"), pagaCentavos: soma(fechs.filter(f => f.pago_em), "a_pagar_centavos") },
       vales: { totalCentavos: soma(vl), aDescontarCentavos: valesLivres, qtd: vl.length },
       salario: { valorCentavos: salario, pago: salPago ? { contaId: salPago.id, valorCentavos: salPago.valor_centavos, em: salPago.pago_em, comCaixa: Boolean(salPago.caixa_movimento_id) } : null },
       aPagar: { salarioCentavos: salarioAPagar, comissaoCentavos: comissaoAPagar, totalCentavos: salarioAPagar + comissaoAPagar },
       custoCentavos: (salPago ? salPago.valor_centavos : salario) + comissaoTotal,
-      _livres: livres, _pendentes: pendentes
+      _livres: livres, _pendentes: pendentes, _at: at, _vd: vd, _fechs: fechs
     };
   }).filter(x => x.ativo || x.producao.totalCentavos || x.comissao.totalCentavos || x.vales.totalCentavos || x.salario.pago);
   return { mes, ini, fim, linhas };
 }
 
-const publico = x => { const { _livres, _pendentes, ...r } = x; return r; };
+const publico = x => { const { _livres, _pendentes, _at, _vd, _fechs, ...r } = x; return r; };
+
+// Panorama de UMA pessoa no mês (pedido de 17/11/2026): desempenho completo + pagamento + comparação com o mês anterior.
+async function panoramaPessoa(ctx, usuarioId, mes) {
+  const { db } = ctx;
+  const b = ctx.barbeariaId;
+  const mesAnt = somarMes(`${mes}-01`, -1).slice(0, 7);
+  const { ini, fim } = periodoDoMes(mes);
+  const [atual, anterior, servicos, faltas, clientes] = await Promise.all([
+    quadroEquipe(ctx, mes, usuarioId),
+    quadroEquipe(ctx, mesAnt, usuarioId),
+    db.prepare(`SELECT i.nome, COUNT(*) AS qtd, SUM(i.preco_cobrado_centavos) AS total FROM finalizacao_itens i
+                JOIN finalizacoes f ON f.id = i.finalizacao_id JOIN caixas c ON c.id = f.caixa_id
+                WHERE f.barbearia_id = ? AND f.barbeiro_id = ? AND f.estornada = 0 AND c.data BETWEEN ? AND ?
+                GROUP BY i.nome ORDER BY total DESC LIMIT 6`).bind(b, usuarioId, ini, fim).all(),
+    db.prepare(`SELECT SUM(situacao = 'faltou') AS faltou, SUM(situacao = 'cancelado') AS cancelado FROM agendamentos
+                WHERE barbearia_id = ? AND barbeiro_id = ? AND data BETWEEN ? AND ?`).bind(b, usuarioId, ini, fim).first(),
+    db.prepare(`SELECT COUNT(DISTINCT a.cliente_id) AS n FROM finalizacoes f JOIN agendamentos a ON a.id = f.agendamento_id JOIN caixas c ON c.id = f.caixa_id
+                WHERE f.barbearia_id = ? AND f.barbeiro_id = ? AND f.estornada = 0 AND c.data BETWEEN ? AND ?`).bind(b, usuarioId, ini, fim).first()
+  ]);
+  const p = atual.linhas[0];
+  if (!p) erro("Pessoa não encontrada.", 404);
+  const ant = anterior.linhas[0] || null;
+  // produção por dia do mês (serviços + produtos), para o gráfico
+  const porDia = {};
+  for (let x = ini; x <= fim; x = somarDias(x, 1)) porDia[x] = { data: x, servicosCentavos: 0, produtosCentavos: 0, atendimentos: 0 };
+  for (const a of p._at) { porDia[a.data].servicosCentavos += Number(a.total_centavos); porDia[a.data].atendimentos++; }
+  for (const v of p._vd) porDia[v.data].produtosCentavos += Number(v.total_centavos);
+  const dias = Object.values(porDia);
+  const melhor = dias.reduce((m, x) => (x.servicosCentavos + x.produtosCentavos > (m ? m.servicosCentavos + m.produtosCentavos : 0) ? x : m), null);
+  return {
+    mes, titulo: `${MESES[Number(mes.slice(5)) - 1]} de ${mes.slice(0, 4)}`, pessoa: publico(p),
+    indicadores: {
+      clientesAtendidos: Number(clientes?.n || 0), faltas: Number(faltas?.faltou || 0), cancelados: Number(faltas?.cancelado || 0),
+      melhorDia: melhor ? { data: melhor.data, totalCentavos: melhor.servicosCentavos + melhor.produtosCentavos, atendimentos: melhor.atendimentos } : null
+    },
+    porDia: dias,
+    servicos: servicos.results.map(s => ({ nome: s.nome, qtd: Number(s.qtd), totalCentavos: Number(s.total) })),
+    anterior: ant ? { mes: mesAnt, producaoCentavos: ant.producao.totalCentavos, atendimentosQtd: ant.producao.atendimentosQtd,
+      comissaoCentavos: ant.comissao.totalCentavos, diasTrabalhados: ant.producao.diasTrabalhados } : null,
+    pagamentos: [
+      ...(p.salario.pago ? [{ tipo: "Salário", valorCentavos: p.salario.pago.valorCentavos, em: p.salario.pago.em }] : []),
+      ...p._fechs.filter(f => f.pago_em).map(f => ({ tipo: `Comissão ${f.data_ini.split("-").reverse().slice(0, 2).join("/")} a ${f.data_fim.split("-").reverse().slice(0, 2).join("/")}`, valorCentavos: f.a_pagar_centavos, em: f.pago_em }))
+    ]
+  };
+}
 
 async function pagar(ctx) {
   const { db, user } = ctx;
@@ -171,11 +222,19 @@ export async function rotasEquipe(ctx, path, method) {
       totais: {
         producaoCentavos: t(x => x.producao.totalCentavos), comissaoCentavos: t(x => x.comissao.totalCentavos),
         salariosCentavos: t(x => x.salario.pago ? x.salario.pago.valorCentavos : x.salario.valorCentavos),
-        valesCentavos: t(x => x.vales.totalCentavos), aPagarCentavos: t(x => Math.max(0, x.aPagar.totalCentavos)), custoCentavos: t(x => x.custoCentavos)
+        valesCentavos: t(x => x.vales.totalCentavos), aPagarCentavos: t(x => Math.max(0, x.aPagar.totalCentavos)), custoCentavos: t(x => x.custoCentavos),
+        pagoCentavos: t(x => (x.salario.pago ? x.salario.pago.valorCentavos : 0) + x.comissao.pagaCentavos),
+        atendimentosQtd: t(x => x.producao.atendimentosQtd)
       }
     });
   }
   if (path === "/equipe/pagar" && method === "POST") return pagar(ctx);
+  if (path === "/equipe/pessoa" && method === "GET") {
+    const url = new URL(ctx.request.url);
+    const id = url.searchParams.get("id");
+    if (!validId(id)) erro("Pessoa inválida.");
+    return json(await panoramaPessoa(ctx, id, lerMes(url.searchParams.get("mes"))));
+  }
   // Salário fixo: proprietário define de todos (inclusive o próprio pró-labore); gerente define de barbeiro e caixa.
   if (path === "/equipe/salario" && method === "POST") {
     const input = await readJson(ctx.request);

@@ -1374,3 +1374,55 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
 .uso-num small { color: var(--suave); }
 .uso-caminho { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; }
 .on-texto { color: var(--ok); font-weight: 700; }
+
+/* ---------- Pagamento da equipe: topo e panorama da pessoa (17/11/2026) ---------- */
+.equipe-hero { background: var(--primaria); color: #fff; border-radius: 16px; padding: 16px; box-shadow: var(--sombra); margin: 10px 0 14px; display: grid; gap: 12px; }
+.equipe-hero small { color: rgba(255, 255, 255, .72); font-size: 12.5px; font-weight: 600; display: block; }
+.equipe-hero-linha { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.equipe-hero-valor { font-size: 30px; font-weight: 900; line-height: 1.1; color: var(--dourado); }
+.equipe-hero-dir { text-align: right; }
+.equipe-hero-dir strong { font-size: 18px; }
+.progresso-pago { height: 10px; border-radius: 6px; background: rgba(255, 255, 255, .16); overflow: hidden; }
+.progresso-pago-barra { display: block; height: 100%; border-radius: 6px; background: var(--dourado); min-width: 4px; transition: width .3s; }
+.equipe-hero-numeros { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.equipe-hero .mini-ind { background: rgba(255, 255, 255, .08); border-radius: 10px; padding: 8px 10px; }
+.equipe-hero .mini-ind strong { color: #fff; }
+.equipe-hero .mini-ind span { color: rgba(255, 255, 255, .7); }
+@media (max-width: 600px) { .equipe-hero-numeros { grid-template-columns: 1fr 1fr; } .equipe-hero-numeros .mini-ind:first-child { grid-column: 1 / -1; } }
+.mini-ind { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.mini-ind small { color: var(--suave); font-size: 12px; font-weight: 600; }
+.mini-ind strong { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-ind span { font-size: 12px; color: var(--suave); }
+.mini-grade { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 4px 0 10px; }
+.mini-grade .mini-ind { background: var(--fundo); border-radius: 10px; padding: 8px 10px; }
+.mini-grade.seis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 600px) { .mini-grade { grid-template-columns: 1fr 1fr; } .mini-grade.seis { grid-template-columns: 1fr 1fr; } }
+.titulo-lista { margin: 0 0 8px; }
+.ranking-equipe { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.ranking-equipe li { display: flex; gap: 10px; align-items: flex-start; }
+.rank-pos { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 13px; background: var(--fundo); color: var(--suave); }
+.rank-pos.pos-1 { background: var(--dourado); color: var(--sobre-dourado); }
+.rank-pos.pos-2 { background: var(--borda); color: var(--texto); }
+.rank-meio { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.rank-topo { display: flex; justify-content: space-between; gap: 8px; }
+.rank-trilho { height: 8px; border-radius: 5px; background: var(--fundo); overflow: hidden; }
+.rank-barra { display: block; height: 100%; border-radius: 5px; background: var(--serie-entrada); }
+.pessoa-id { display: flex; align-items: center; gap: 12px; }
+.item-x-avatar.grande { width: 52px; height: 52px; font-size: 17px; }
+.pessoa-nome { font-size: 20px; display: block; }
+.grafico-dias-caixa { display: grid; gap: 6px; }
+.grafico-dias { width: 100%; min-width: 420px; height: auto; display: block; }
+.grafico-dias .dia-servico { fill: var(--serie-entrada); }
+.grafico-dias .dia-produto { fill: var(--dourado); }
+.grafico-dias .dia-vazio { fill: var(--borda); }
+.grafico-dias .dia-alvo { fill: transparent; cursor: pointer; }
+.grafico-dias .dia-rotulo { font-size: 9px; fill: var(--suave); }
+.legenda-dias { display: flex; gap: 14px; font-size: 12.5px; color: var(--suave); }
+.legenda-dias span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.leg-servico::before { background: var(--serie-entrada); }
+.leg-produto::before { background: var(--dourado); }
+.lista-pagamentos { list-style: none; padding: 0; margin: 0 0 10px; display: grid; gap: 6px; }
+.lista-pagamentos li { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; padding: 6px 0; border-bottom: 1px dashed var(--borda); }
+.recibo h4 { margin: 14px 0 6px; }
+.equipe-hero .botao.principal { background: var(--dourado); color: var(--sobre-dourado); border-color: var(--dourado); font-weight: 800; }
+.equipe-hero .botao.principal:hover { filter: brightness(1.05); }
