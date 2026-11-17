@@ -540,3 +540,24 @@ describe("editar, desfazer e excluir horário (pedido de 16/11/2026)", () => {
     }
   });
 });
+
+describe("finalizar com quantidade (pedido de 17/11/2026)", () => {
+  test("serviço repetido vai como quantidade; repetir o mesmo serviço em duas linhas é recusado", async () => {
+    const amb = await cenario("qtd");
+    const { post, get, barb, cx, corte, barba } = amb;
+    await post("/api/caixa/abrir", cx.token, { trocoCentavos: 0 });
+    const id = (await amb.marcar(barb.token, { hora: "15:00", servicoIds: [corte.id] })).dados.agendamento.id;
+    const dup = await post("/api/agenda/finalizar", barb.token, { id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }, { servicoId: corte.id, precoCobradoCentavos: 4000 }],
+      pagamentos: [{ forma: "pix", valorCentavos: 8000 }] });
+    assert.equal(dup.status, 400, "sem duplicar: use quantidade");
+    assert.equal((await post("/api/agenda/finalizar", barb.token, { id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000, quantidade: 21 }],
+      pagamentos: [{ forma: "pix", valorCentavos: 84000 }] })).status, 400);
+    // corte + 2 barbas (30,00 cada) = 40 + 60 = 100,00
+    const f = await post("/api/agenda/finalizar", barb.token, { id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }, { servicoId: barba.id, precoCobradoCentavos: 3000, quantidade: 2 }],
+      pagamentos: [{ forma: "pix", valorCentavos: 10000 }] });
+    assert.equal(f.status, 201, JSON.stringify(f.dados));
+    const a = (await get(`/api/agenda?data=${HOJE}`, barb.token)).dados.agendamentos.find(x => x.id === id);
+    assert.equal(a.finalizacao.totalCentavos, 10000);
+    assert.equal(amb.env.DB.raw.prepare("SELECT COUNT(*) AS n FROM finalizacao_itens WHERE servico_id = ?").get(barba.id).n, 2, "uma linha por unidade (relatórios contam certo)");
+  });
+});

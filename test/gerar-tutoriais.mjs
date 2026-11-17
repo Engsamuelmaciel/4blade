@@ -145,6 +145,15 @@ try {
   await abrirHorarios(page);
   await page.click("button:has-text('Finalizar') >> nth=0");
   await page.waitForSelector("dialog[open]");
+  // "Adicionar outro serviço": abre a lista dos que faltam; escolhido some da lista (sem duplicar)
+  const antes = await page.locator("dialog[open] [data-servico-final]").count();
+  await page.click("dialog[open] [data-teste=adicionar-servico]");
+  const opcao = page.locator("dialog[open] [data-servico-opcao]").first();
+  const nomeOpcao = await opcao.getAttribute("data-servico-opcao");
+  await opcao.click();
+  assert.equal(await page.locator("dialog[open] [data-servico-final]").count(), antes + 1);
+  assert.equal(await page.locator(`dialog[open] [data-servico-opcao="${nomeOpcao}"]`).count(), 0, "não repete o serviço");
+  await page.click(`dialog[open] [aria-label="Tirar ${nomeOpcao}"]`);
   await foto("finalizar", { janela: true });
   await page.keyboard.press("Escape");
 

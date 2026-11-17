@@ -221,7 +221,14 @@ async function rodar(tela) {
     passo("barbeiro finaliza com valor alterado em 2 formas");
     await abrirHorarios(page, "Diego Cliente Fictício");
     await page.click('[data-agendamento="Diego Cliente Fictício"] button:has-text("Finalizar")');
-    await page.fill("[aria-label='Valor cobrado de Corte masculino']", "35,00");
+    // só os serviços do horário aparecem; os outros ficam em "Adicionar outro serviço"; repetido = quantidade
+    assert.equal(await page.locator("dialog[open] [data-servico-final]").count(), 2);
+    await page.fill("[aria-label^='Valor cobrado de Corte masculino']", "35,00");
+    await page.waitForSelector("dialog[open] [data-teste=total]:has-text('65,00')");
+    await page.click("dialog[open] [aria-label='Mais Barba completa']");
+    await page.waitForSelector("dialog[open] [data-teste=total]:has-text('95,00')");
+    assert.equal(await page.textContent("dialog[open] [data-servico-final='Barba completa'] [data-teste=qtd]"), "2");
+    await page.click("dialog[open] [aria-label='Menos Barba completa']");
     await page.waitForSelector("dialog[open] [data-teste=total]:has-text('65,00')");
     await page.check("#c-dividir");
     await page.fill("#c-valor1", "40,00");

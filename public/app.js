@@ -2292,19 +2292,44 @@ function janelaBloquear(ag) {
 
 // Finalizar: serviços com valor de tabela (alterável), até 2 formas de pagamento com soma conferida.
 function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaAgenda, titulo = "Finalizar atendimento" } = {}) {
-  const doHorario = new Set(a.servicos.map(s => s.id));
-  const lista = [...(servicosCache || [])];
-  for (const s of a.servicos) if (!lista.some(x => x.id === s.id)) lista.push({ id: s.id, nome: s.nome, precoCentavos: 0, duracaoMin: s.duracaoMin });
+  // Começa só com o(s) serviço(s) do horário; "Adicionar outro serviço" abre a lista dos demais (sem repetir:
+  // serviço repetido = quantidade). Pedido de 17/11/2026.
+  const catalogo = [...(servicosCache || [])];
+  for (const s of a.servicos) if (!catalogo.some(x => x.id === s.id)) catalogo.push({ id: s.id, nome: s.nome, precoCentavos: 0, duracaoMin: s.duracaoMin });
   const totalEl = el("p", { class: "total-final", "data-teste": "total" });
-  const linhas = lista.map(s => {
-    const chk = el("input", { type: "checkbox", name: "fserv", value: s.id, id: `f-${s.id}`, checked: doHorario.has(s.id) || null });
-    const valor = el("input", { type: "text", inputmode: "decimal", name: `valor-${s.id}`, value: centavosParaTexto(s.precoCentavos), "aria-label": `Valor cobrado de ${s.nome}`, "data-tabela": String(s.precoCentavos) });
+  const caixaLinhas = el("div", { class: "lista-servicos" });
+  const linhas = [];
+  const painelMais = el("div", { class: "mais-servicos", hidden: true, "data-teste": "mais-servicos" });
+  const botaoMais = el("button", { type: "button", class: "botao pequeno botao-mais", "data-teste": "adicionar-servico", text: "+ Adicionar outro serviço" });
+  const novaLinha = (s, qtd = 1) => {
+    const valor = el("input", { type: "text", inputmode: "decimal", name: `valor-${s.id}`, value: centavosParaTexto(s.precoCentavos), "aria-label": `Valor cobrado de ${s.nome} (cada)`, "data-tabela": String(s.precoCentavos) });
+    const qtdEl = el("span", { class: "qtd-num", "data-teste": "qtd", text: String(qtd) });
     const aviso = el("span", { class: "alterado", text: "valor diferente da tabela" });
-    const linha = el("div", { class: "linha-servico" },
-      el("div", { class: "marcar" }, chk, el("label", { for: `f-${s.id}`, text: `${s.nome} (tabela ${reais(s.precoCentavos)})` })),
-      valor, aviso);
-    return { s, chk, valor, aviso, linha };
-  });
+    const l = { s, valor, aviso, qtd };
+    const menos = el("button", { type: "button", class: "qtd-btn", "aria-label": `Menos ${s.nome}`, text: "−", onclick: () => { if (l.qtd > 1) { l.qtd--; qtdEl.textContent = String(l.qtd); atualizar(); } } });
+    const mais = el("button", { type: "button", class: "qtd-btn", "aria-label": `Mais ${s.nome}`, text: "+", onclick: () => { if (l.qtd < 20) { l.qtd++; qtdEl.textContent = String(l.qtd); atualizar(); } } });
+    const tirar = el("button", { type: "button", class: "tirar-servico", "aria-label": `Tirar ${s.nome}`, title: "Tirar este serviço", text: "×", onclick: () => {
+      if (linhas.length === 1) { avisar("Deixe pelo menos um serviço.", "erro"); return; }
+      linhas.splice(linhas.indexOf(l), 1); l.linha.remove(); desenharMais(); atualizar();
+    } });
+    l.linha = el("div", { class: "linha-servico linha-final", "data-servico-final": s.nome },
+      el("div", { class: "nome-servico" }, el("strong", { text: s.nome }), el("small", { class: "suave", text: `tabela ${reais(s.precoCentavos)}` })),
+      el("div", { class: "qtd" }, menos, qtdEl, mais),
+      valor, tirar, aviso);
+    linhas.push(l);
+    caixaLinhas.append(l.linha);
+    return l;
+  };
+  function desenharMais() {
+    const restantes = catalogo.filter(s => !linhas.some(l => l.s.id === s.id));
+    botaoMais.hidden = !restantes.length;
+    if (!restantes.length) painelMais.hidden = true;
+    painelMais.replaceChildren(...(restantes.length ? restantes.map(s => el("button", { type: "button", class: "chip-modelo", "data-servico-opcao": s.nome,
+      text: `${s.nome} · ${reais(s.precoCentavos)}`, onclick: () => { novaLinha(s); painelMais.hidden = true; desenharMais(); atualizar(); } })) : []));
+  }
+  botaoMais.addEventListener("click", () => { painelMais.hidden = !painelMais.hidden; });
+  for (const s of a.servicos) novaLinha(catalogo.find(x => x.id === s.id));
+  desenharMais();
   const forma1 = campo("Forma de pagamento", { tag: "select", name: "forma1", valor: "pix", opcoes: Object.entries(NOME_FORMA) });
   const dividir = caixaMarcar("Dividir em 2 formas", { name: "dividir" });
   const valor1 = campo("Valor na 1ª forma (R$)", { name: "valor1", inputmode: "decimal" });
@@ -2314,7 +2339,7 @@ function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaA
   valor1.hidden = true;
   segunda.hidden = true;
 
-  const total = () => linhas.filter(l => l.chk.checked).reduce((t, l) => t + (paraCentavos(l.valor.value) ?? 0), 0);
+  const total = () => linhas.reduce((t, l) => t + (paraCentavos(l.valor.value) ?? 0) * l.qtd, 0);
   const troco = campoTroco(() => {
     const t = total();
     const f1 = forma1.querySelector("select").value;
@@ -2324,7 +2349,7 @@ function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaA
   });
   const atualizar = () => {
     troco.atualizar();
-    for (const l of linhas) l.aviso.hidden = !l.chk.checked || paraCentavos(l.valor.value) === Number(l.valor.dataset.tabela);
+    for (const l of linhas) l.aviso.hidden = paraCentavos(l.valor.value) === Number(l.valor.dataset.tabela);
     totalEl.textContent = `Total: ${reais(total())}`;
     const dividindo = dividir.querySelector("input").checked;
     valor1.hidden = !dividindo;
@@ -2334,20 +2359,20 @@ function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaA
   };
   const conteudo = [
     el("p", { class: "suave", text: `${a.cliente.nome} · ${a.inicio} · o valor pode ser alterado (fica registrado e aparece para o gerente).` }),
-    el("div", { class: "lista-servicos" }, linhas.map(l => l.linha)),
+    caixaLinhas, botaoMais, painelMais,
     totalEl, forma1, dividir, valor1, segunda, troco.el
   ];
   const promessa = abrirJanela(titulo, conteudo, {
     ok: "Confirmar",
     aoConfirmar: async f => {
       const itens = [];
-      for (const l of linhas.filter(x => x.chk.checked)) {
+      for (const l of linhas) {
         const v = paraCentavos(l.valor.value);
         if (v === null) throw new Error(`Valor de ${l.s.nome} inválido. Exemplo: 40,00`);
-        itens.push({ servicoId: l.s.id, precoCobradoCentavos: v });
+        itens.push({ servicoId: l.s.id, precoCobradoCentavos: v, ...(l.qtd > 1 ? { quantidade: l.qtd } : {}) });
       }
-      if (!itens.length) throw new Error("Marque pelo menos um serviço.");
-      const t = itens.reduce((s, i) => s + i.precoCobradoCentavos, 0);
+      if (!itens.length) throw new Error("Deixe pelo menos um serviço.");
+      const t = itens.reduce((s, i) => s + i.precoCobradoCentavos * (i.quantidade || 1), 0);
       let pagamentos = t > 0 ? [{ forma: f.forma1.value, valorCentavos: t }] : [];
       if (f.dividir.checked && t > 0) {
         const v1 = paraCentavos(f.valor1.value);

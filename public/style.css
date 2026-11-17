@@ -1098,3 +1098,19 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
 }
 @media (min-width: 1024px) { .mes-dia { min-height: 110px; } }
 @media (max-width: 699px) { .grade-cab-dia .so-largo { display: none; } }
+
+/* Finalizar: só o serviço do horário + "Adicionar outro serviço" e quantidade (17/11/2026) */
+.linha-final { display: grid; grid-template-columns: 1fr auto 96px 30px; align-items: center; gap: 6px 8px; padding: 8px 0; border-bottom: 1px solid var(--borda); }
+.linha-final .nome-servico { display: grid; min-width: 0; line-height: 1.25; }
+.linha-final .nome-servico strong { overflow: hidden; text-overflow: ellipsis; }
+.linha-final input { text-align: right; }
+.linha-final .alterado { grid-column: 1 / -1; }
+.qtd { display: inline-flex; align-items: center; border: 1px solid var(--campo-borda); border-radius: 10px; overflow: hidden; }
+.qtd-btn { width: 32px; height: 36px; border: 0; background: var(--neutro-2); color: var(--texto); font: inherit; font-size: 18px; font-weight: 700; cursor: pointer; }
+.qtd-btn:hover { background: var(--neutro); }
+.qtd-num { min-width: 28px; text-align: center; font-weight: 800; }
+.tirar-servico { width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: var(--suave); font-size: 20px; line-height: 1; cursor: pointer; }
+.tirar-servico:hover { background: var(--erro-fundo); color: var(--erro); }
+.botao-mais { justify-self: start; margin-top: 6px; }
+.mais-servicos { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; margin-top: 6px; border: 1px dashed var(--borda); border-radius: 10px; background: var(--neutro-2); }
+@media (max-width: 699px) { .linha-final { grid-template-columns: 1fr auto 30px; } .linha-final input { grid-column: 1 / 2; grid-row: 2; } .linha-final .qtd { grid-column: 2; grid-row: 2; } .linha-final .nome-servico { grid-column: 1 / 3; } }

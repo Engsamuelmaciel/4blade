@@ -146,6 +146,8 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 
 - 17/11/2026: **Semana em grade + mês + arrastar**: `gradeSemana` (faixas lado a lado por dia, `cor-N` por barbeiro, `gridTemplateColumns` por CSSOM), `calendarioMesNovo` (GET /agenda aceita `dias` até 42), `ativarArrastar(grade, {ini, colunas})` (pointer events; mouse arrasta após 5 px, toque após 400 ms; solta → confirma → `/agenda/remarcar`), `podeArrastar`. Modo Grade/Lista (`alternaModoAgenda`) vale para Dia e Semana. Testes: `test/navegador-e2.mjs` (arrastar 09:00→10:00 e semana) + `test/navegador-melhorias.mjs` (mês). Cache do sw `4blade-v21`.
 
+- 17/11/2026: **Finalizar com quantidade**: `finalizarDados` aceita `quantidade` por item (1–20; vira uma linha por unidade em finalizacao_itens; servicoId repetido continua recusado); `atendimentoAvulso` soma com quantidade. Tela `janelaFinalizar`: linhas `[data-servico-final]` com `.qtd` (aria "Mais/Menos <serviço>"), "×" (`Tirar <serviço>`), botão `[data-teste=adicionar-servico]` + `[data-servico-opcao]`. Testes: `test/agenda.test.js` + `test/navegador-e2.mjs` + `test/gerar-tutoriais.mjs`. `npm test` (141). Cache do sw `4blade-v22`.
+
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.

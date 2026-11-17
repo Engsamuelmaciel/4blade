@@ -361,11 +361,14 @@ export async function finalizarDados(ctx, input) {
     .bind(ctx.barbeariaId, ...ids).all();
   const porId = Object.fromEntries(tab.results.map(s => [s.id, s]));
   const doHorario = new Set((await db.prepare("SELECT servico_id FROM agendamento_servicos WHERE agendamento_id = ? AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = agendamento_servicos.id)").bind(a.id).all()).results.map(x => x.servico_id));
-  const itens = itensIn.map(i => {
+  // Serviço repetido = quantidade (1 a 20; pedido de 17/11/2026): vira uma linha por unidade, com o valor de cada.
+  const itens = itensIn.flatMap(i => {
     const s = porId[i.servicoId];
     if (!s || (!s.ativo && !doHorario.has(s.id))) erro("Serviço não encontrado ou desativado.", 404);
     if (!validCentavos(i.precoCobradoCentavos)) erro(`Valor cobrado de "${s.nome}" inválido.`);
-    return { servicoId: s.id, nome: s.nome, tabela: s.preco_centavos, cobrado: i.precoCobradoCentavos };
+    const q = i.quantidade ?? 1;
+    if (!Number.isInteger(q) || q < 1 || q > 20) erro(`Quantidade de "${s.nome}" inválida (1 a 20).`);
+    return Array.from({ length: q }, () => ({ servicoId: s.id, nome: s.nome, tabela: s.preco_centavos, cobrado: i.precoCobradoCentavos }));
   });
   const total = itens.reduce((t, i) => t + i.cobrado, 0);
 
@@ -828,7 +831,7 @@ export async function atendimentoAvulso(ctx) {
   if (!atende(prof.perfil) || !prof.ativo) erro("Escolha um gerente ou barbeiro ativo.");
   const itens = Array.isArray(input.itens) ? input.itens : erro("Escolha os serviços.");
   const servs = await servicosEscolhidos(ctx, itens.map(i => i?.servicoId));
-  const total = itens.reduce((t, i) => t + (validCentavos(i.precoCobradoCentavos) ? i.precoCobradoCentavos : erro("Valor cobrado inválido.")), 0);
+  const total = itens.reduce((t, i) => t + (validCentavos(i.precoCobradoCentavos) ? i.precoCobradoCentavos : erro("Valor cobrado inválido.")) * (i.quantidade ?? 1), 0);
   const pagConf = lerPagamentos(input.pagamentos, total, { promissoria: true });   // confere antes de gravar
   // Promissória no atendimento sem horário: só com cliente escolhido da base (não cria cliente na hora).
   if (pagConf.some(p => p.forma === "promissoria") && !(input.cliente && input.cliente.id !== undefined)) erro(MSG_NOTA_CADASTRO);
