@@ -149,6 +149,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 - 17/11/2026: **Finalizar com quantidade**: `finalizarDados` aceita `quantidade` por item (1–20; vira uma linha por unidade em finalizacao_itens; servicoId repetido continua recusado); `atendimentoAvulso` soma com quantidade. Tela `janelaFinalizar`: linhas `[data-servico-final]` com `.qtd` (aria "Mais/Menos <serviço>"), "×" (`Tirar <serviço>`), botão `[data-teste=adicionar-servico]` + `[data-servico-opcao]`. Testes: `test/agenda.test.js` + `test/navegador-e2.mjs` + `test/gerar-tutoriais.mjs`. `npm test` (141). Cache do sw `4blade-v22`.
 
 - 17/11/2026: **Marcar pela lista**: `itensDoDia(ag, data, profId, mostrarNome, livres)` insere `.slot-livre[data-livre-lista]` (livres da disponibilidade) entre os cartões; resumo do dia sem os botões de hora. Testes: `test/navegador-e2.mjs` + `test/navegador-melhorias.mjs`. Cache do sw `4blade-v23`.
+  - Publicado em 17/11/2026 (autorizado, só oficial, sem migração) junto com semana em grade, mês, arrastar e finalizar com quantidade: versão 712a1b43 (forblade.com.br: sw `4blade-v23`).
 
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
