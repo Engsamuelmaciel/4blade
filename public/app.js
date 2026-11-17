@@ -2763,18 +2763,18 @@ async function telaCaixa(dataHistorico = null) {
   const aberto = c.caixa.situacao === "aberto";
   const ehHoje = !dataHistorico || dataHistorico === hojeLocal();
   const topo = [
-    // Topo do caixa: quanto entrou no total, quanto deve ter na gaveta (só o dinheiro em espécie) e quanto entrou em cada forma.
+    // Topo do caixa: quanto entrou no total e quanto deve ter na gaveta; abaixo, uma linha compacta por forma.
     el("div", { class: "pdv-topo", "data-tela": "caixa" },
-      el("div", { class: "pdv-num" }, el("span", { text: "Recebido hoje (todas as formas)" }), el("strong", { "data-teste": "entradas", text: reais(t.entradasCentavos) }),
+      el("div", { class: "pdv-num" }, el("span", { text: "Recebido hoje" }), el("strong", { "data-teste": "entradas", text: reais(t.entradasCentavos) }),
         el("small", { text: `Atendimentos ${reais(t.atendimentosCentavos)} · produtos ${reais(t.vendasCentavos)}${t.notasRecebidasCentavos ? ` · notas ${reais(t.notasRecebidasCentavos)}` : ""}` })),
       el("div", { class: "pdv-num ouro" }, el("span", { text: "Dinheiro na gaveta" }), el("strong", { "data-teste": "esperado", text: reais(t.dinheiroEsperadoCentavos) }),
         el("small", { "data-teste": "composicao-gaveta", text: [`Troco ${reais(c.caixa.trocoCentavos)}`, `+ dinheiro ${reais(t.porForma.dinheiro)}`,
           t.suprimentosCentavos ? `+ suprimentos ${reais(t.suprimentosCentavos)}` : null, t.sangriasCentavos ? `− sangrias ${reais(t.sangriasCentavos)}` : null].filter(Boolean).join(" ") }))),
     el("div", { class: "pdv-formas", "data-teste": "por-forma" },
-      [["dinheiro", "Dinheiro", "em espécie"], ["pix", "Pix", "na conta"], ["debito", "Cartão de débito", "na maquininha"], ["credito", "Cartão de crédito", "na maquininha"]].map(([f, nome, onde]) =>
-        el("div", { class: `forma-card forma-${f}`, "data-forma": f }, el("span", { text: nome }), el("strong", { text: reais(t.porForma[f] || 0) }), el("small", { text: onde }))),
-      el("div", { class: "forma-card forma-promissoria", "data-forma": "promissoria", "data-teste": "notas-lancadas" },
-        el("span", { text: "Promissória" }), el("strong", { text: reais(t.notasLancadasCentavos || 0) }), el("small", { text: "a receber (não entrou)" })))
+      [["dinheiro", "Dinheiro"], ["pix", "Pix"], ["debito", "Débito"], ["credito", "Crédito"]].map(([f, nome]) =>
+        el("div", { class: `forma-card forma-${f}`, "data-forma": f }, el("span", { text: nome }), el("strong", { text: reais(t.porForma[f] || 0) }))),
+      el("div", { class: "forma-card forma-promissoria", "data-forma": "promissoria", "data-teste": "notas-lancadas", title: "Promissória: a receber (não entrou no caixa)" },
+        el("span", { text: "Promissória" }), el("strong", { text: reais(t.notasLancadasCentavos || 0) })))
   ];
 
   if (!aberto || !ehHoje) {
@@ -2804,17 +2804,21 @@ async function telaCaixa(dataHistorico = null) {
     cabecalho("Caixa", `${dataBR(c.data)} · aberto por ${c.caixa.abertoPor}`),
     topo,
     c.reaberturas?.length ? el("p", { class: "suave", text: `Reaberto ${c.reaberturas.length}x (último motivo: ${c.reaberturas[0].motivo})` }) : null,
-    el("div", { class: "pdv-barra" },
-      el("div", { class: "alterna", role: "tablist" },
-        [["cobrar", "Cobrar"], ["vender", "Vender"], ["lancamentos", "Lançamentos"]].map(([k, txt]) =>
-          botao(txt, () => trocarAba(k), `pequeno ${aba === k ? "ativo" : ""}`))),
+    // Três botões grandes (o que o caixa mais usa) e, separado, as ações do caixa com ícones.
+    el("div", { class: "pdv-barra pdv-principal" },
+      el("div", { class: "alterna pdv-abas", role: "tablist", "aria-label": "O que fazer" },
+        [["cobrar", "Cobrar", "atendimento", "recibo"], ["vender", "Vender", "produto", "sacola"], ["lancamentos", "Lançamentos", "do dia", "lista"]].map(([k, txt, sub, ic]) =>
+          el("button", { type: "button", role: "tab", "aria-selected": String(aba === k), class: `botao pdv-aba aba-${k} ${aba === k ? "ativo" : ""}`, onclick: () => trocarAba(k) },
+            icone(ic), el("span", { class: "pdv-aba-txt" }, el("strong", { text: txt }), el("small", { text: sub })))))),
+    conteudo,
+    el("section", { class: "pdv-ferramentas", "aria-label": "Ações do caixa" },
+      el("h3", { text: "Caixa" }),
       el("div", { class: "pdv-acoes" },
-        el("a", { class: "botao pequeno", href: "#/notas", text: "Notas em aberto" }),
-        botao("Sangria", () => janelaMovimento("sangria", recarregar), "pequeno"),
-        botao("Suprimento", () => janelaMovimento("suprimento", recarregar), "pequeno"),
-        botao("Fechar caixa", () => janelaFechar(c, recarregar, dataHistorico), "pequeno perigo"),
-        linkHistorico)),
-    conteudo);
+        el("a", { class: "botao ferramenta", href: "#/notas" }, icone("contas"), el("span", { text: "Notas em aberto" })),
+        el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("sangria", recarregar) }, icone("setaBaixo"), el("span", { text: "Sangria" })),
+        el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("suprimento", recarregar) }, icone("setaCima"), el("span", { text: "Suprimento" })),
+        el("button", { type: "button", class: "botao ferramenta perigo", onclick: () => janelaFechar(c, recarregar, dataHistorico) }, icone("cadeado"), el("span", { text: "Fechar caixa" })),
+        linkHistorico)));
   timerCaixa = setTimeout(() => { if (location.hash === "#/caixa" && !janela.open && estadoCaixa.aba !== "vender") telaCaixa().catch(() => {}); }, 30000);
 }
 
@@ -4529,6 +4533,12 @@ const ICONES = {
   comissao: "M19 5L5 19M7.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM16.5 18a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
   contas: "M7 3h10l3 3v15H4V3zM8 9h8M8 13h8M8 17h5",
   contador: "M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5M9 13h6M9 17h6",
+  recibo: "M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h3",
+  sacola: "M5 8h14l-1 12H6zM9 8V7a3 3 0 0 1 6 0v1",
+  lista: "M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01",
+  setaBaixo: "M12 4v14M6 12l6 6 6-6",
+  setaCima: "M12 20V6M6 12l6-6 6 6",
+  cadeado: "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3",
   lixeira: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
   estoque: "M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8",
   produtos: "M6 2h12l2 6H4zM4 8v13h16V8M9 12h6",

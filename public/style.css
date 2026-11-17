@@ -1120,3 +1120,49 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
 .slot-livre .slot-hora { margin-right: 0; color: var(--texto); min-width: 48px; }
 .slot-livre .marcar-aqui { margin-left: auto; font-weight: 700; font-size: 13px; }
 .slot-livre:hover { background: var(--ok-fundo); }
+
+/* ---------- Caixa moderno (17/11/2026): 3 botões grandes, totais compactos, ações do caixa agrupadas ---------- */
+.pdv-topo { gap: 10px; margin-bottom: 10px; }
+.pdv-num { border-radius: 14px; padding: 12px 14px; box-shadow: var(--sombra); }
+.pdv-num span { font-size: 11.5px; font-weight: 700; }
+.pdv-num strong { font-size: 26px; line-height: 1.15; margin: 2px 0; }
+.pdv-formas { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 14px; padding-bottom: 2px; scrollbar-width: thin; }
+.pdv-formas .forma-card { flex: 1 0 auto; min-width: 104px; padding: 6px 10px; border-radius: 10px; border-left-width: 3px; box-shadow: none; border: 1px solid var(--borda); border-left-width: 3px; }
+.pdv-formas .forma-card span { font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+.pdv-formas .forma-card strong { font-size: 15px; }
+.pdv-principal { margin-bottom: 14px; }
+.pdv-abas.alterna { display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; background: none; padding: 0; border-radius: 0; }
+.pdv-aba.botao { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 12px 14px; border-radius: 16px; text-align: left;
+  background: var(--cartao); border: 2px solid var(--borda); color: var(--texto); box-shadow: var(--sombra); font-weight: 600; transition: transform .12s, box-shadow .12s, border-color .12s; }
+.pdv-aba.botao:hover { transform: translateY(-1px); border-color: var(--dourado); }
+.pdv-aba .icone { width: 42px; height: 42px; padding: 9px; border-radius: 12px; background: var(--neutro-2); stroke-width: 2; flex: none; }
+.pdv-aba.aba-cobrar .icone { color: var(--ok); background: var(--ok-fundo); }
+.pdv-aba.aba-vender .icone { color: var(--serie-entrada); background: var(--info-fundo); }
+.pdv-aba.aba-lancamentos .icone { color: var(--roxo-texto); background: var(--roxo-fundo); }
+.pdv-aba-txt { display: grid; line-height: 1.15; min-width: 0; }
+.pdv-aba-txt strong { font-size: 17px; }
+.pdv-aba-txt small { font-size: 12px; color: var(--suave); font-weight: 500; }
+.pdv-aba.botao.ativo { background: var(--botao-principal); border-color: var(--botao-principal); color: var(--botao-principal-texto); box-shadow: 0 6px 16px rgba(16, 24, 40, .18); }
+.pdv-aba.botao.ativo small { color: inherit; opacity: .8; }
+.pdv-aba.botao.ativo .icone { background: rgba(255, 255, 255, .16); color: inherit; }
+.pdv-ferramentas { margin-top: 22px; background: var(--cartao); border-radius: 16px; box-shadow: var(--sombra); padding: 12px 14px 14px; }
+.pdv-ferramentas h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--suave); }
+.pdv-ferramentas .pdv-acoes { display: grid !important; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0; width: 100%; }
+.botao.ferramenta { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 76px; padding: 10px 6px; border-radius: 14px;
+  background: var(--neutro-2); border: 1px solid var(--borda); color: var(--texto); font-weight: 700; font-size: 13.5px; text-decoration: none; text-align: center; }
+.botao.ferramenta .icone { width: 24px; height: 24px; stroke-width: 2; }
+.botao.ferramenta:hover { border-color: var(--dourado); background: var(--cartao); }
+.botao.ferramenta.perigo { color: var(--erro); border-color: color-mix(in srgb, var(--erro) 40%, var(--borda)); background: var(--erro-fundo); }
+.pdv-ferramentas .pdv-acoes > a.botao:not(.ferramenta) { grid-column: 1 / -1; }
+.grande-acao { min-height: 60px; font-size: 16.5px; border-radius: 14px; }
+@media (max-width: 699px) {
+  .pdv-abas.alterna { gap: 6px; }
+  .pdv-aba.botao { flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 92px; padding: 10px 4px; text-align: center; }
+  .pdv-aba .icone { width: 38px; height: 38px; padding: 8px; }
+  .pdv-aba-txt strong { font-size: 15px; }
+  .pdv-aba-txt small { font-size: 11px; }
+  .pdv-ferramentas .pdv-acoes { grid-template-columns: 1fr 1fr; }
+  .pdv-num strong { font-size: 21px; }
+}
+@media (prefers-reduced-motion: reduce) { .pdv-aba.botao { transition: none; } .pdv-aba.botao:hover { transform: none; } }
+@media (max-width: 699px) { .pdv-formas { display: grid; grid-template-columns: repeat(3, 1fr); overflow: visible; } .pdv-formas .forma-card { min-width: 0; } }

@@ -151,6 +151,8 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 - 17/11/2026: **Marcar pela lista**: `itensDoDia(ag, data, profId, mostrarNome, livres)` insere `.slot-livre[data-livre-lista]` (livres da disponibilidade) entre os cartões; resumo do dia sem os botões de hora. Testes: `test/navegador-e2.mjs` + `test/navegador-melhorias.mjs`. Cache do sw `4blade-v23`.
   - Publicado em 17/11/2026 (autorizado, só oficial, sem migração) junto com semana em grade, mês, arrastar e finalizar com quantidade: versão 712a1b43 (forblade.com.br: sw `4blade-v23`).
 
+- 17/11/2026: **Caixa moderno**: `telaCaixa` com `.pdv-abas` (botões `.pdv-aba.aba-cobrar|vender|lancamentos`, ícones `recibo`/`sacola`/`lista`; continuam dentro de `.pdv-barra .alterna` por causa dos testes), formas compactas (`.pdv-formas`), cartão `.pdv-ferramentas` com `.botao.ferramenta` (ícones `contas`/`setaBaixo`/`setaCima`/`cadeado`). Cache do sw `4blade-v24`.
+
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.
