@@ -123,6 +123,23 @@ async function rodar(tela) {
     assert.match(await page.textContent("[data-cartao=pessoal]"), /salários pagos R\$\s?1\.500,00/);
     await sair();
 
+    passo("sangria maior que o dinheiro da gaveta: aviso de saldo negativo, aceite e saldo negativo no caixa");
+    await entrar("caixa.semana");
+    await ir(page, "Caixa");
+    await page.waitForSelector(".pdv-topo");
+    await page.click(".pdv-ferramentas button:has-text('Sangria')");
+    await page.fill("dialog[open] #c-valor", "2.000,00");
+    await page.fill("dialog[open] #c-motivo", "Fornecedor pago no Pix (fictício)");
+    await ok();
+    await page.waitForSelector("[data-teste=alerta-aceite][open]");
+    assert.match(await page.textContent("[data-teste=alerta-aceite]"), /saldo negativo/i);
+    await print("sangria-aviso-saldo-negativo", { inteira: false });
+    await page.click("[data-teste=alerta-aceite] [data-teste=aceitar]");
+    await page.waitForSelector("[data-teste=saldo-negativo]");
+    assert.match(await page.textContent("[data-teste=esperado]"), /-/);
+    await print("caixa-saldo-negativo");
+    await sair();
+
     passo("barbeiro e caixa não veem o Pagamento da equipe");
     for (const login of ["ana.semana", "caixa.semana"]) {
       await entrar(login);

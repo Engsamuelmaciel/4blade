@@ -2716,8 +2716,23 @@ function janelaMovimento(tipo, recarregar) {
     aoConfirmar: async f => {
       const v = paraCentavos(f.valor.value);
       if (!v) throw new Error("Valor inválido. Exemplo: 50,00");
-      await api("/caixa/movimento", { metodo: "POST", corpo: { tipo, valorCentavos: v, motivo: f.motivo.value } });
-      avisar(tipo === "sangria" ? "Sangria registrada." : "Suprimento registrado.");
+      const corpo = { tipo, valorCentavos: v, motivo: f.motivo.value };
+      let r;
+      try {
+        r = await api("/caixa/movimento", { metodo: "POST", corpo });
+      } catch (e) {
+        // Sem dinheiro suficiente (ou caixa ainda não aberto): avisa e só lança com o aceite. O caixa fica com saldo negativo.
+        if (e.dados?.codigo !== "saldo_negativo") throw e;
+        const sim = await alertaAceite({
+          titulo: e.dados.caixaSeraAberto ? "O caixa será aberto com saldo negativo" : "O caixa ficará com saldo negativo",
+          texto: e.dados.erro,
+          detalhe: "Use quando a despesa foi paga por fora da gaveta (ex.: Pix ou cartão). A retirada entra como saída (custo) no relatório financeiro.",
+          ok: "Lançar mesmo assim", cancelar: "Voltar"
+        });
+        if (!sim) throw new Error("Sangria não lançada.");
+        r = await api("/caixa/movimento", { metodo: "POST", corpo: { ...corpo, aceiteSaldoNegativo: true } });
+      }
+      avisar(r.mensagem || (tipo === "sangria" ? "Sangria registrada." : "Suprimento registrado."));
       recarregar();
     }
   });
@@ -2732,7 +2747,8 @@ function janelaFechar(c, recarregar, data = null) {
       el("dt", { text: "Entradas em dinheiro" }), el("dd", { text: reais(t.porForma.dinheiro) }),
       el("dt", { text: "Suprimentos" }), el("dd", { text: `+ ${reais(t.suprimentosCentavos)}` }),
       el("dt", { text: "Sangrias" }), el("dd", { text: `− ${reais(t.sangriasCentavos)}` }),
-      el("dt", { class: "forte", text: "Dinheiro esperado" }), el("dd", { class: "forte", text: reais(t.dinheiroEsperadoCentavos) })),
+      el("dt", { class: "forte", text: "Dinheiro esperado" }), el("dd", { class: "forte", text: reais(Math.max(0, t.dinheiroEsperadoCentavos)) })),
+    t.saldoNegativoCentavos ? el("p", { class: "info", "data-teste": "fechar-saldo-negativo", text: `Saldo negativo de ${reais(t.saldoNegativoCentavos)}: retiradas pagas por fora da gaveta. Já estão como saída no relatório; na gaveta deve haver R$ 0,00 de dinheiro do dia.` }) : null,
     el("p", { class: "suave", text: `Pix ${reais(t.porForma.pix)} · Débito ${reais(t.porForma.debito)} · Crédito ${reais(t.porForma.credito)} (conferir na maquininha/banco).` }),
     campo("Dinheiro contado na gaveta (R$)", { name: "contado", inputmode: "decimal", required: true }),
     dif,
@@ -2750,7 +2766,7 @@ function janelaFechar(c, recarregar, data = null) {
   const atualizar = () => {
     const v = paraCentavos(janela.querySelector("[name=contado]").value);
     if (v === null) { dif.textContent = ""; return; }
-    const d = v - t.dinheiroEsperadoCentavos;
+    const d = v - Math.max(0, t.dinheiroEsperadoCentavos);
     dif.textContent = d === 0 ? "Sem diferença" : d > 0 ? `Sobra de ${reais(d)}` : `Falta de ${reais(-d)}`;
     dif.className = `total-final ${d === 0 ? "ok-texto" : "erro-texto"}`;
   };
@@ -2800,7 +2816,9 @@ async function telaCaixa(dataHistorico = null) {
     });
     mostrar(cabecalho("Caixa", `${dataBR(c.data)} · ${usuario.barbearia.nome}`, voltar),
       el("p", { class: "info", text: "Enquanto o caixa não for aberto, ninguém consegue finalizar atendimentos nem vender." }),
-      el("section", { class: "estreito-esq", "data-tela": "caixa" }, form), linkHistorico);
+      el("section", { class: "estreito-esq", "data-tela": "caixa" }, form,
+        // Despesa antes de abrir (ex.: lanche pago no Pix): a sangria abre o caixa com troco 0 e saldo negativo (com aviso).
+        botao("Lançar uma sangria (retirada)", () => janelaMovimento("sangria", () => telaCaixa()), "pequeno largo")), linkHistorico);
     return;
   }
 
@@ -2814,7 +2832,8 @@ async function telaCaixa(dataHistorico = null) {
         el("small", { text: `Atendimentos ${reais(t.atendimentosCentavos)} · produtos ${reais(t.vendasCentavos)}${t.notasRecebidasCentavos ? ` · notas ${reais(t.notasRecebidasCentavos)}` : ""}` })),
       el("div", { class: "pdv-num ouro" }, el("span", { text: "Dinheiro na gaveta" }), el("strong", { "data-teste": "esperado", text: reais(t.dinheiroEsperadoCentavos) }),
         el("small", { "data-teste": "composicao-gaveta", text: [`Troco ${reais(c.caixa.trocoCentavos)}`, `+ dinheiro ${reais(t.porForma.dinheiro)}`,
-          t.suprimentosCentavos ? `+ suprimentos ${reais(t.suprimentosCentavos)}` : null, t.sangriasCentavos ? `− sangrias ${reais(t.sangriasCentavos)}` : null].filter(Boolean).join(" ") }))),
+          t.suprimentosCentavos ? `+ suprimentos ${reais(t.suprimentosCentavos)}` : null, t.sangriasCentavos ? `− sangrias ${reais(t.sangriasCentavos)}` : null].filter(Boolean).join(" ") }),
+        t.saldoNegativoCentavos ? el("small", { class: "saldo-negativo", "data-teste": "saldo-negativo", text: `⚠ Saldo negativo: retiradas ${reais(t.saldoNegativoCentavos)} maiores que o dinheiro` }) : null)),
     el("div", { class: "pdv-formas", "data-teste": "por-forma" },
       [["dinheiro", "Dinheiro"], ["pix", "Pix"], ["debito", "Débito"], ["credito", "Crédito"]].map(([f, nome]) =>
         el("div", { class: `forma-card forma-${f}`, "data-forma": f }, el("span", { text: nome }), el("strong", { text: reais(t.porForma[f] || 0) }))),

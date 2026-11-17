@@ -166,6 +166,8 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 
 - 17/11/2026: **Salário base no cadastro da equipe**: `lerSalario`/`comandoSalario` em usuarios.js (`salarioCentavos` opcional no POST e no alterar; GET /usuarios devolve `salarioCentavos`); tela `campoSalarioBase`/`lerSalarioBase` em `formUsuario` e `janelaUsuario` (`#c-salBase`), cartão `[data-teste=salario-base]`. Testes: `test/equipe.test.js` + `test/navegador-e1.mjs`. Cache do sw `4blade-v30`. Sem migração nova. NÃO publicado.
 
+- 17/11/2026: **Sangria com saldo negativo**: `/caixa/movimento` sangria acima do dinheiro (ou sem caixa aberto) → 409 `codigo: saldo_negativo` (`caixaSeraAberto`, `naGavetaCentavos`, `ficaCentavos`); com `aceiteSaldoNegativo: true` lança (abre o caixa com troco 0 se preciso). `resumoCaixa` devolve `saldoNegativoCentavos`; fechar compara com `max(0, esperado)`. Tela: `janelaMovimento` usa `alertaAceite`; `[data-teste=saldo-negativo]`; botão na tela de abrir caixa. Testes: `test/sangria-negativa.test.js` + `test/navegador-equipe.mjs`. `npm test` (161). Cache do sw `4blade-v31`. Sem migração. NÃO publicado.
+
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.

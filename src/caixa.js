@@ -114,7 +114,9 @@ export async function resumoCaixa(db, barbeariaId, caixa) {
       sangriasCentavos: sangrias,
       suprimentosCentavos: suprimentos,
       // dinheiro esperado na gaveta = troco + entradas em dinheiro + suprimentos − sangrias
-      dinheiroEsperadoCentavos: caixa.troco_centavos + porForma.dinheiro + suprimentos - sangrias
+      dinheiroEsperadoCentavos: caixa.troco_centavos + porForma.dinheiro + suprimentos - sangrias,
+      // Saldo negativo (17/11/2026): retiradas maiores que o dinheiro (ex.: lanche pago no Pix lançado como sangria).
+      saldoNegativoCentavos: Math.max(0, -(caixa.troco_centavos + porForma.dinheiro + suprimentos - sangrias))
     }
   };
 }
@@ -257,12 +259,35 @@ export async function rotasCaixa(ctx, path, method) {
     if (!["sangria", "suprimento"].includes(input.tipo)) return fail("Tipo inválido (sangria ou suprimento).");
     if (!validCentavos(input.valorCentavos) || input.valorCentavos <= 0) return fail("Valor inválido.");
     const motivo = exigirMotivo(input.motivo);
-    const caixa = await caixaDoDia(db, ctx.barbeariaId, hoje);
+    let caixa = await caixaDoDia(db, ctx.barbeariaId, hoje);
+    const aceite = input.aceiteSaldoNegativo === true;
+    const fmt = c => `R$ ${(c / 100).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
+    // Sangria sem dinheiro suficiente (pedido de 17/11/2026): é aceita, mas só com o aceite de quem lança (aviso na tela);
+    // o caixa fica com saldo negativo e a retirada entra como saída no relatório financeiro.
+    if (input.tipo === "sangria" && !caixa) {
+      if (!aceite) {
+        return json({ erro: `O caixa de hoje ainda não foi aberto. Ele será aberto (troco R$ 0,00) e ficará com saldo negativo de ${fmt(input.valorCentavos)}.`,
+          codigo: "saldo_negativo", caixaSeraAberto: true, naGavetaCentavos: 0, ficaCentavos: -input.valorCentavos }, 409);
+      }
+      const cid = crypto.randomUUID();
+      await db.batch([
+        db.prepare(`INSERT INTO caixas (id, barbearia_id, data, troco_centavos, aberto_por) VALUES (?, ?, ?, 0, ?) ON CONFLICT(barbearia_id, data) DO NOTHING`)
+          .bind(cid, ctx.barbeariaId, hoje, user.id),
+        auditoria(ctx, "caixa_aberto", cid, { depois: { data: hoje, troco: 0 }, motivo: "Aberto pela sangria (saldo negativo aceito)" })
+      ]);
+      caixa = await caixaDoDia(db, ctx.barbeariaId, hoje);
+    }
     if (!caixa || caixa.situacao !== "aberto") return fail("O caixa de hoje não está aberto.", 409);
+    let negativo = false;
     if (input.tipo === "sangria") {
       const { totais } = await resumoCaixa(db, ctx.barbeariaId, caixa);
       if (input.valorCentavos > totais.dinheiroEsperadoCentavos) {
-        return fail(`Sangria maior que o dinheiro na gaveta (${(totais.dinheiroEsperadoCentavos / 100).toFixed(2).replace(".", ",")}).`, 409);
+        negativo = true;
+        if (!aceite) {
+          const fica = totais.dinheiroEsperadoCentavos - input.valorCentavos;
+          return json({ erro: `Na gaveta há ${fmt(Math.max(0, totais.dinheiroEsperadoCentavos))} em dinheiro. Com esta retirada o caixa continua aberto com saldo negativo de ${fmt(-fica)}.`,
+            codigo: "saldo_negativo", caixaSeraAberto: false, naGavetaCentavos: totais.dinheiroEsperadoCentavos, ficaCentavos: fica }, 409);
+        }
       }
     }
     const id = crypto.randomUUID();
@@ -271,10 +296,10 @@ export async function rotasCaixa(ctx, path, method) {
       db.prepare(`INSERT INTO caixa_movimentos (id, barbearia_id, caixa_id, tipo, forma, valor_centavos, motivo, criado_por)
                   SELECT ?, ?, ?, ?, 'dinheiro', ?, ?, ? WHERE EXISTS (SELECT 1 FROM caixas WHERE id = ? AND situacao = 'aberto')`)
         .bind(id, ctx.barbeariaId, caixa.id, input.tipo, valor, motivo, user.id, caixa.id),
-      auditoriaSe(ctx, "EXISTS (SELECT 1 FROM caixa_movimentos WHERE id = ?)", [id], `caixa_${input.tipo}`, caixa.id, { valor: input.valorCentavos, motivo })
+      auditoriaSe(ctx, "EXISTS (SELECT 1 FROM caixa_movimentos WHERE id = ?)", [id], `caixa_${input.tipo}`, caixa.id, { valor: input.valorCentavos, motivo, ...(negativo ? { saldoNegativoAceito: true } : {}) })
     ]);
     if (!(await db.prepare("SELECT 1 FROM caixa_movimentos WHERE id = ?").bind(id).first())) return fail("O caixa foi fechado.", 409);
-    return json({ mensagem: input.tipo === "sangria" ? "Sangria registrada." : "Suprimento registrado." }, 201);
+    return json({ mensagem: input.tipo === "sangria" ? (negativo ? "Sangria registrada. O caixa está com saldo negativo." : "Sangria registrada.") : "Suprimento registrado." }, 201);
   }
 
   // Corrigir forma de pagamento antes do fechamento: sai da forma antiga e entra na nova (registrado).
@@ -305,7 +330,8 @@ export async function rotasCaixa(ctx, path, method) {
     if (!caixa) return fail("Não há caixa aberto nesse dia.", 404);
     if (caixa.situacao !== "aberto") return fail("Esse caixa já está fechado.", 409);
     const { totais } = await resumoCaixa(db, ctx.barbeariaId, caixa);
-    const diferenca = input.contadoCentavos - totais.dinheiroEsperadoCentavos;
+    // Com saldo negativo, na gaveta deveria haver R$ 0,00: a diferença é contra zero (o negativo já é saída registrada).
+    const diferenca = input.contadoCentavos - Math.max(0, totais.dinheiroEsperadoCentavos);
     const observacao = textoOpcional(input.observacao, 300);
     if (observacao === false) return fail("Observação muito longa (até 300 letras).");
     if (diferenca !== 0 && !observacao) return fail("Há diferença no caixa: escreva uma observação (ex.: troco dado errado).");

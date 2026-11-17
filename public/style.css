@@ -1363,3 +1363,4 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
   .quadro-pessoa { grid-template-columns: 1fr; gap: 0; }
   .quadro-pessoa dt { margin-top: 8px; font-size: 12.5px; }
 }
+.pdv-num .saldo-negativo { display: block; margin-top: 4px; font-weight: 800; color: var(--erro); background: var(--erro-fundo); border-radius: 8px; padding: 3px 8px; }
