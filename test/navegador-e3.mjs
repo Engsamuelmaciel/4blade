@@ -9,7 +9,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir } from "./navegacao.mjs";
+import { ir, abrirItem, abrirCadastro } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -117,6 +117,7 @@ async function rodar(tela) {
     await ir(page, "Estoque");
     await page.waitForSelector('[data-estoque="Pomada modeladora"]');
     for (const [nome, qtd, custo] of [["Pomada modeladora", "10", "20,00"], ["Óleo para barba", "6", "15,00"]]) {
+      await abrirItem(page, `[data-estoque="${nome}"]`);
       await page.click(`[data-estoque="${nome}"] button:has-text("Entrada")`);
       await page.fill("dialog[open] [name=qtd]", qtd);
       await page.fill("dialog[open] [name=custo]", custo);
@@ -125,6 +126,7 @@ async function rodar(tela) {
       await ok();
       await page.waitForSelector(`[data-estoque="${nome}"] [data-teste=saldo]:has-text("${qtd} un.")`);
     }
+    await abrirItem(page, '[data-estoque="Óleo para barba"]');
     await page.click('[data-estoque="Óleo para barba"] button:has-text("Ajuste")');
     await page.selectOption("dialog[open] [name=motivoAj]", "quebra");
     await page.fill("dialog[open] [name=qtd]", "1");
@@ -245,6 +247,7 @@ async function rodar(tela) {
     await print("gerente-inventario");
     await ok();
     await page.waitForSelector('[data-estoque="Pomada modeladora"] [data-teste=saldo]:has-text("7 un.")');
+    await abrirItem(page, '[data-estoque="Pomada modeladora"]');
     await page.click('[data-estoque="Pomada modeladora"] button:has-text("Histórico")');
     await page.waitForSelector("dialog[open] >> text=Inventário");
     const hist = await page.locator("dialog[open]").innerText();

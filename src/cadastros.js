@@ -105,8 +105,11 @@ const CADASTROS = {
     },
     unico: { col: "telefone", msg: "Já existe um cliente com esse telefone." },
     ordem: "ativo DESC, nome",
+    // Apelido fica em clientes_apelidos (migração 0016); a lista já traz junto.
+    selectLista: "SELECT clientes.*, (SELECT ap.apelido FROM clientes_apelidos ap WHERE ap.cliente_id = clientes.id) AS apelido FROM clientes WHERE barbearia_id = ?",
+    ativoCol: "ativo",
     publico: r => ({
-      id: r.id, nome: r.nome, telefone: telefoneReal(r.telefone), observacao: r.observacao || null,
+      id: r.id, nome: r.nome, apelido: r.apelido || null, telefone: telefoneReal(r.telefone), observacao: r.observacao || null,
       aceiteLgpd: Boolean(r.aceite_lgpd), aceiteLgpdEm: r.aceite_lgpd_em || null,
       ativo: Boolean(r.ativo), motivoDesativacao: r.motivo_desativacao || null, criadoEm: r.criado_em
     }),
@@ -127,6 +130,16 @@ async function conferirUnico(ctx, def, valores, idIgnorar = null) {
   if (r) throw new HttpError(u.msg, 409);
 }
 
+// Apelido: opcional, até 40 letras (vazio = sem apelido).
+function lerApelido(v) {
+  if (v === undefined || v === null || String(v).trim() === "") return null;
+  const t = textoLimpo(v, 1, 40);
+  if (!t) throw new HttpError("Apelido muito longo (até 40 letras).", 400);
+  return t;
+}
+// Um registro com as colunas da lista (clientes: com o apelido).
+const lerRegistro = (ctx, nome, def, id) => ctx.db.prepare(`${def.selectLista || `SELECT * FROM ${def.tabela} WHERE barbearia_id = ?`} AND ${nome === "produtos" ? "p.id" : "id"} = ?`).bind(ctx.barbeariaId, id).first();
+
 async function rotasCadastro(ctx, nome, def, path, method) {
   const { db, request, user } = ctx;
   const base = `/${nome}`;
@@ -138,16 +151,17 @@ async function rotasCadastro(ctx, nome, def, path, method) {
     const url = new URL(request.url);
     let sql = def.selectLista || `SELECT * FROM ${def.tabela} WHERE barbearia_id = ?`;
     const params = [ctx.barbeariaId];
-    if (!gestao) sql += def.selectLista ? " AND p.ativo = 1" : " AND ativo = 1";
+    if (!gestao) sql += ` AND ${def.ativoCol || (def.selectLista ? "p.ativo" : "ativo")} = 1`;
     // Material de uso da barbearia (lâminas, cremes…) não aparece para quem vende.
     if (!gestao && nome === "produtos") sql += " AND NOT EXISTS (SELECT 1 FROM produtos_uso_interno ui WHERE ui.produto_id = p.id)";
     if (nome === "clientes") { sql += " AND id NOT IN (SELECT cliente_id FROM clientes_excluidos WHERE barbearia_id = ?)"; params.push(ctx.barbeariaId); }
     const busca = (url.searchParams.get("busca") || "").trim().slice(0, 60);
     if (busca && nome === "clientes") {
       const digitos = busca.replace(/\D/g, "");
-      sql += digitos.length >= 3 ? " AND ((telefone LIKE ? AND telefone NOT LIKE 'sem:%') OR nome LIKE ?)" : " AND nome LIKE ?";
+      const apelido = "EXISTS (SELECT 1 FROM clientes_apelidos ap WHERE ap.cliente_id = clientes.id AND ap.apelido LIKE ?)";
+      sql += digitos.length >= 3 ? ` AND ((telefone LIKE ? AND telefone NOT LIKE 'sem:%') OR nome LIKE ? OR ${apelido})` : ` AND (nome LIKE ? OR ${apelido})`;
       if (digitos.length >= 3) params.push(`%${digitos}%`);
-      params.push(`%${busca.replace(/[%_]/g, "")}%`);
+      params.push(`%${busca.replace(/[%_]/g, "")}%`, `%${busca.replace(/[%_]/g, "")}%`);
     }
     sql += ` ORDER BY ${def.ordem} LIMIT 500`;
     const r = await db.prepare(sql).bind(...params).all();
@@ -173,12 +187,14 @@ async function rotasCadastro(ctx, nome, def, path, method) {
     const extras = nome === "clientes" ? { aceite_lgpd_em: new Date().toISOString(), aceite_lgpd_por: user.id } : {};
     const cols = ["id", "barbearia_id", ...Object.keys(valores), ...Object.keys(extras)];
     const vals = [id, ctx.barbeariaId, ...Object.values(valores), ...Object.values(extras)];
+    const apelido = nome === "clientes" ? lerApelido(input.apelido) : null;
     await db.batch([
       db.prepare(`INSERT INTO ${def.tabela} (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`).bind(...vals),
-      auditoria(ctx, `${def.singular}_criado`, id, { depois: valores }),
+      auditoria(ctx, `${def.singular}_criado`, id, { depois: apelido ? { ...valores, apelido } : valores }),
+      ...(apelido ? [db.prepare("INSERT INTO clientes_apelidos (cliente_id, barbearia_id, apelido) VALUES (?, ?, ?)").bind(id, ctx.barbeariaId, apelido)] : []),
       ...(estoqueInicial ? comandosEntrada(ctx, { id }, { q: estoqueInicial.q, c: estoqueInicial.c, validade: valores.validade ?? null }) : [])
     ]);
-    const novo = await db.prepare(`SELECT * FROM ${def.tabela} WHERE id = ? AND barbearia_id = ?`).bind(id, ctx.barbeariaId).first();
+    const novo = await lerRegistro(ctx, nome, def, id);
     return json({ [def.singular]: def.publico(novo) }, 201);
   }
 
@@ -236,6 +252,12 @@ async function rotasCadastro(ctx, nome, def, path, method) {
       novo.ativo = input.ativo ? 1 : 0;
     }
     const dif = diferenca(antes, novo);
+    // Apelido (só clientes): muda à parte, em clientes_apelidos.
+    let apelidoNovo;
+    const apelidoAntes = nome === "clientes" ? ((await db.prepare("SELECT apelido FROM clientes_apelidos WHERE cliente_id = ?").bind(atual.id).first())?.apelido || null) : null;
+    if (nome === "clientes" && input.apelido !== undefined) apelidoNovo = lerApelido(input.apelido);
+    const mudaApelido = apelidoNovo !== undefined && apelidoNovo !== apelidoAntes;
+    if (mudaApelido) { dif.mudou = true; dif.antes.apelido = apelidoAntes; dif.depois.apelido = apelidoNovo; }
     if (!dif.mudou) return fail("Nada foi alterado.");
     const desativando = antes.ativo === 1 && novo.ativo === 0;
     const motivo = desativando ? exigirMotivo(input.motivo) : (textoLimpo(input.motivo, 3, 300) || null);
@@ -254,9 +276,11 @@ async function rotasCadastro(ctx, nome, def, path, method) {
         WHERE id = ? AND barbearia_id = ?
       `).bind(...Object.values(sets), atual.id, ctx.barbeariaId),
       auditoria(ctx, desativando ? `${def.singular}_desativado` : `${def.singular}_alterado`, atual.id,
-        { motivo, antes: dif.antes, depois: dif.depois })
+        { motivo, antes: dif.antes, depois: dif.depois }),
+      ...(mudaApelido ? [db.prepare(`INSERT INTO clientes_apelidos (cliente_id, barbearia_id, apelido) VALUES (?, ?, ?)
+        ON CONFLICT(cliente_id) DO UPDATE SET apelido = excluded.apelido, atualizado_em = CURRENT_TIMESTAMP`).bind(atual.id, ctx.barbeariaId, apelidoNovo)] : [])
     ]);
-    const depois = await db.prepare(`SELECT * FROM ${def.tabela} WHERE id = ? AND barbearia_id = ?`).bind(atual.id, ctx.barbeariaId).first();
+    const depois = await lerRegistro(ctx, nome, def, atual.id);
     return json({ [def.singular]: def.publico(depois) });
   }
 

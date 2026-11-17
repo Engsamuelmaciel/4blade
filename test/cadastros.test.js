@@ -188,3 +188,28 @@ describe("painel da plataforma", () => {
     assert.equal((await login("dono.alfa", rs.dados.senhaProvisoria)).dados.usuario.trocaObrigatoria, true);
   });
 });
+
+describe("apelido do cliente (pedido de 17/11/2026)", () => {
+  test("cadastra, aparece na lista, busca pelo apelido (lista e agenda), altera só o apelido; outra barbearia não acha", async () => {
+    const amb = await cenario();
+    const { post, get, ger } = amb;
+    const c = await post("/api/clientes", ger, { nome: "José Fictício da Silva", apelido: "Zezinho", telefone: "11 97777-1212", aceiteLgpd: true });
+    assert.equal(c.status, 201, JSON.stringify(c.dados));
+    assert.equal(c.dados.cliente.apelido, "Zezinho");
+    assert.equal((await post("/api/clientes", ger, { nome: "Outro", apelido: "x".repeat(41), telefone: "11 97777-1313", aceiteLgpd: true })).status, 400);
+    assert.equal((await get("/api/clientes", ger)).dados.clientes.find(x => x.id === c.dados.cliente.id).apelido, "Zezinho");
+    assert.deepEqual((await get("/api/clientes?busca=zezi", ger)).dados.clientes.map(x => x.nome), ["José Fictício da Silva"]);
+    assert.deepEqual((await get("/api/agenda/clientes?busca=Zezi", ger)).dados.clientes.map(x => [x.nome, x.apelido]), [["José Fictício da Silva", "Zezinho"]]);
+    const alt = await post("/api/clientes/alterar", ger, { id: c.dados.cliente.id, apelido: "Zé" });
+    assert.equal(alt.status, 200, JSON.stringify(alt.dados));
+    assert.equal(alt.dados.cliente.apelido, "Zé");
+    assert.equal((await post("/api/clientes/alterar", ger, { id: c.dados.cliente.id, apelido: "Zé" })).status, 400, "nada mudou");
+    assert.ok(amb.env.DB.raw.prepare("SELECT 1 FROM auditoria WHERE alvo = ? AND detalhes LIKE '%Zezinho%'").get(c.dados.cliente.id), "auditado (antes/depois)");
+    // tirar o apelido
+    assert.equal((await post("/api/clientes/alterar", ger, { id: c.dados.cliente.id, apelido: "" })).dados.cliente.apelido, null);
+    // isolamento
+    const b = await amb.criarBarbearia(amb.p, "beta");
+    assert.equal((await get("/api/clientes?busca=Fict", b.prop)).dados.clientes.length, 0);
+    assert.equal((await get("/api/agenda/clientes?busca=Jos", b.prop)).dados.clientes.length, 0);
+  });
+});

@@ -704,10 +704,12 @@ async function buscarClientes(ctx) {
   if (busca.length < 2) return json({ clientes: [] });
   const digitos = busca.replace(/\D/g, "");
   const nome = `%${busca.replace(/[%_]/g, "")}%`;
-  const r = await ctx.db.prepare(`SELECT id, nome, telefone FROM clientes WHERE barbearia_id = ? AND ativo = 1
-      AND (nome LIKE ? ${digitos.length >= 3 ? "OR (telefone LIKE ? AND telefone NOT LIKE 'sem:%')" : ""}) ORDER BY nome LIMIT 8`)
-    .bind(ctx.barbeariaId, nome, ...(digitos.length >= 3 ? [`%${digitos}%`] : [])).all();
-  return json({ clientes: r.results.map(c => ({ id: c.id, nome: c.nome, telefone: telefoneReal(c.telefone) })) });
+  // Busca por nome, apelido (migração 0016) ou telefone.
+  const r = await ctx.db.prepare(`SELECT c.id, c.nome, c.telefone, ap.apelido FROM clientes c LEFT JOIN clientes_apelidos ap ON ap.cliente_id = c.id
+      WHERE c.barbearia_id = ? AND c.ativo = 1
+      AND (c.nome LIKE ? OR ap.apelido LIKE ? ${digitos.length >= 3 ? "OR (c.telefone LIKE ? AND c.telefone NOT LIKE 'sem:%')" : ""}) ORDER BY c.nome LIMIT 8`)
+    .bind(ctx.barbeariaId, nome, nome, ...(digitos.length >= 3 ? [`%${digitos}%`] : [])).all();
+  return json({ clientes: r.results.map(c => ({ id: c.id, nome: c.nome, apelido: c.apelido || null, telefone: telefoneReal(c.telefone) })) });
 }
 
 // ---------- DISPONIBILIDADE DE UM DIA (para quem vai marcar): situação de cada profissional, ocupados e horários livres ----------

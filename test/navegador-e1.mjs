@@ -10,7 +10,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir } from "./navegacao.mjs";
+import { ir, abrirItem, abrirCadastro } from "./navegacao.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright");
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -208,6 +208,7 @@ async function rodar(tela) {
     await primeiroAcesso("gabriel.navalha", senhaGer, "Senha-Gabriel-2026");
     await page.waitForSelector("[data-cartao=bruto]");
     await ir(page, "Serviços");
+    await abrirCadastro(page);
     // formatação de dinheiro: ponto vira vírgula, milhar com ponto, no máximo 2 casas, letras ignoradas
     for (const [digitado, esperado] of [["38.5", "38,50"], ["1234,5", "1.234,50"], ["12,345", "12,34"], ["4a0", "40,00"]]) {
       await page.fill("#c-preco", "");
@@ -216,6 +217,7 @@ async function rodar(tela) {
       assert.equal(await page.inputValue("#c-preco"), esperado, `preço digitado ${digitado}`);
     }
     for (const [nome, preco, dur] of [["Corte masculino", "40,00", "30"], ["Barba completa", "30,00", "20"]]) {
+      await abrirCadastro(page);
       await page.fill("#c-nome", nome);
       await page.fill("#c-preco", preco.replace(",00", ""));   // digita "40" → vira "40,00" ao sair do campo
       await page.fill("#c-duracao", dur);
@@ -228,6 +230,7 @@ async function rodar(tela) {
 
     await ir(page, "Produtos");
     for (const [nome, preco, cod] of [["Pomada modeladora", "45,00", "7890000000011"], ["Óleo para barba", "38,50", ""]]) {
+      await abrirCadastro(page);
       await page.fill("#c-nome", nome);
       await page.fill("#c-preco", preco);
       await page.fill("#c-minimo", "");
@@ -241,7 +244,9 @@ async function rodar(tela) {
     await print("gerente-produtos-com-custo-e-margem");
 
     await ir(page, "Clientes");
+    await abrirCadastro(page);
     await page.fill("#c-nome", "Diego Cliente Fictício");
+    await page.fill("#c-apelido", "Diegão");
     await page.locator("#c-telefone").pressSequentially("11900001234");
     assert.equal(await page.inputValue("#c-telefone"), "(11) 90000-1234");
     // sem o aceite LGPD o servidor recusa
@@ -251,9 +256,18 @@ async function rodar(tela) {
     await page.click("form.cartao button:has-text('Salvar')");
     await page.waitForSelector('[data-cliente="Diego Cliente Fictício"]');
     assert.match(await page.textContent('[data-cliente="Diego Cliente Fictício"]'), /\(11\) 90000-1234/);
+    assert.match(await page.textContent('[data-cliente="Diego Cliente Fictício"]'), /Diegão/, "apelido na lista");
+    // busca pelo apelido filtra na hora; tocar abre as opções
+    await page.fill(".busca-viva", "dieg");
+    await page.waitForSelector('[data-cliente="Diego Cliente Fictício"]');
+    await abrirItem(page, '[data-cliente="Diego Cliente Fictício"]');
+    await page.waitForSelector('[data-cliente="Diego Cliente Fictício"] button:has-text("Marcar horário")');
     await print("gerente-clientes");
+    await page.fill(".busca-viva", "");
 
     await ir(page, "Mensagens");
+    await page.waitForSelector("[data-teste=enviar-mensagem] .zap-topo");
+    await page.click("[data-teste=painel-modelos] summary");   // os textos dos botões da agenda ficam recolhidos
     await page.waitForSelector("#modelo-escolha");
     await page.selectOption("#modelo-escolha", "lembrete");   // um quadro só: escolhe o modelo na lista
     await page.waitForSelector("#texto-lembrete");

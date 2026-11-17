@@ -10,7 +10,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir } from "./navegacao.mjs";
+import { ir, abrirItem, abrirCadastro } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -191,6 +191,7 @@ async function rodar(tela) {
     await ir(page, "Estoque");
     assert.match(await texto('[data-estoque="Creme para progressiva"] [data-teste=saldo]'), /10 un\./);
     assert.match(await texto('[data-estoque="Creme para progressiva"]'), /Custo médio R\$\s?15,00/);
+    await abrirItem(page, '[data-estoque="Creme para progressiva"]');
     await page.click('[data-estoque="Creme para progressiva"] button:has-text("Usei (dar baixa)")');
     await page.fill("dialog[open] #c-qtd", "1");
     await ok();

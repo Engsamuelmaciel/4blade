@@ -38,3 +38,17 @@ export async function abrirHorarios(page, nome = null) {
     await r.click();
   }
 }
+
+// Listas limpas: abre o item (toca no resumo) se estiver fechado. sel = seletor do item (ex.: '[data-cliente="Ana"]').
+export async function abrirItem(page, sel) {
+  const item = page.locator(sel).first();
+  await item.waitFor();
+  if ((await item.getAttribute("class") || "").includes("aberto")) return;
+  await item.locator(".item-x-resumo").click();
+}
+// Painel "+ Novo …" (no celular vem recolhido).
+export async function abrirCadastro(page) {
+  const p = page.locator("details.painel-novo").first();
+  await p.waitFor();
+  if (await p.getAttribute("open") === null) await p.locator("summary").click();
+}

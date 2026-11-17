@@ -153,6 +153,8 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 
 - 17/11/2026: **Caixa moderno**: `telaCaixa` com `.pdv-abas` (botões `.pdv-aba.aba-cobrar|vender|lancamentos`, ícones `recibo`/`sacola`/`lista`; continuam dentro de `.pdv-barra .alterna` por causa dos testes), formas compactas (`.pdv-formas`), cartão `.pdv-ferramentas` com `.botao.ferramenta` (ícones `contas`/`setaBaixo`/`setaCima`/`cadeado`). Cache do sw `4blade-v24`.
 
+- 17/11/2026: **Telas limpas + apelido + mensagens WhatsApp**: `migrations/0016_clientes_apelido.sql` (clientes_apelidos; cadastros.js: `selectLista`/`ativoCol` de clientes, `lerApelido`, `lerRegistro`; busca por apelido em /clientes e /agenda/clientes). Tela: componentes `itemExpansivel` (`.item-x`, `itensAbertos`), `barraBusca` (`.busca-viva`, `.chip-filtro`), `painelCadastro` (`details.painel-novo`), `acoesItem`, `botaoDesativar`, `telaLista`; telaClientes/Serviços/Produtos(gestão)/Estoque reescritas. Mensagens: `.zap` (topo, passos, `.zap-contatos`, `[data-teste=previa]`, `.zap-enviar` submit), modelos em `[data-teste=painel-modelos]`. Testes: helpers `abrirItem`/`abrirCadastro` em `test/navegacao.mjs`; `test/cadastros.test.js` (apelido). `npm test` (142). Cache do sw `4blade-v25`. **Migração 0016 ainda NÃO aplicada no banco real.**
+
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.

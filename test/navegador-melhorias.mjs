@@ -9,7 +9,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir, abrirHorarios } from "./navegacao.mjs";
+import { ir, abrirHorarios, abrirItem, abrirCadastro } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -382,6 +382,7 @@ async function rodar(tela) {
     await ir(page, "Clientes");
     await page.waitForSelector('[data-cliente="Ivo Recepção Fictício"]');
     // excluir um cadastro duplicado (sem histórico): pede motivo e some da lista
+    await abrirItem(page, '[data-cliente="Duplicado Fictício"]');
     await page.click('[data-cliente="Duplicado Fictício"] button:has-text("Excluir")');
     await page.fill("dialog[open] #c-motivo", "Cadastro duplicado");
     await print("excluir-cliente", false);
@@ -390,6 +391,7 @@ async function rodar(tela) {
     assert.equal(await page.locator('[data-cliente="Duplicado Fictício"]').count(), 0);
     assert.equal(await page.locator('[data-cliente="Ivo Recepção Fictício"] button:has-text("Desativar")').count(), 0);
     // da tela Clientes direto para a agenda, já com o cliente escolhido
+    await abrirItem(page, '[data-cliente="Ivo Recepção Fictício"]');
     await page.click('[data-cliente="Ivo Recepção Fictício"] button:has-text("Marcar horário")');
     await page.waitForSelector('dialog[open] [data-teste=cli-escolhido] >> text=Ivo Recepção Fictício');
     await page.selectOption("dialog[open] #c-prof", { label: "Ana Barbeira" });
@@ -405,7 +407,7 @@ async function rodar(tela) {
     await page.waitForSelector('[data-prof="Ana Barbeira"] [data-livre-lista]');
     await print("agenda-dia-horarios-livres");
     await ir(page, "Mensagens");
-    await page.waitForSelector("h3:has-text('Modelos da agenda')");
+    await page.waitForSelector("[data-teste=painel-modelos] summary");
     await ir(page, "Serviços");
     await page.waitForSelector("h2:has-text('Serviços')");
     await print("caixa-catalogo-servicos");
@@ -490,11 +492,13 @@ async function rodar(tela) {
 
     passo("gerente cadastra produto já com estoque e edita uma conta lançada");
     await ir(page, "Produtos");
+    await abrirCadastro(page);
     await page.fill("#c-nome", "Cera Fictícia");
     await page.fill("#c-preco", "35,00");
     await page.fill("#c-qtdInicial", "10");
     await page.fill("#c-custoInicial", "18,00");
     await page.click("form.cartao button:has-text('Salvar')");
+    await abrirItem(page, '[data-produto="Cera Fictícia"]');
     await page.waitForSelector('[data-produto="Cera Fictícia"] >> text=Custo médio: R$ 18,00');
     await ir(page, "Estoque");
     await page.waitForSelector('[data-estoque="Cera Fictícia"] [data-teste=saldo]:has-text("10 un.")');
