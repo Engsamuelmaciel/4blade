@@ -402,7 +402,7 @@ async function rodar(tela) {
     await page.click('dialog[open] [data-hora-livre="11:00"]');
     await ok();
     await page.waitForSelector('[data-prof="Ana Barbeira"] [data-agendamento="Ivo Recepção Fictício"]');
-    await page.waitForSelector("[data-teste=resumo-dia] [data-livre]");
+    await page.waitForSelector('[data-prof="Ana Barbeira"] [data-livre-lista]');
     await print("agenda-dia-horarios-livres");
     await ir(page, "Mensagens");
     await page.waitForSelector("h3:has-text('Modelos da agenda')");

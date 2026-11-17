@@ -342,6 +342,14 @@ async function rodar(tela) {
     await page.waitForSelector('.grade-agenda:not(.grade-semana) [data-evento="Elias Cliente Fictício"]');
     await page.click(".modo-dia button:has-text('Lista')");
     await page.waitForSelector('.coluna-prof [data-agendamento="Elias Cliente Fictício"]');
+    // Lista: os horários livres aparecem no meio dos atendimentos; tocar marca ali
+    const livreLista = page.locator('[data-prof="Bruno Barbeiro"] [data-livre-lista]').first();
+    const hLista = await livreLista.getAttribute("data-livre-lista");
+    await livreLista.scrollIntoViewIfNeeded();
+    await print("gerente-agenda-lista-com-livres");
+    await livreLista.click();
+    await page.waitForFunction(h => document.querySelector("dialog[open] #c-hora")?.value === h, hLista);
+    await page.keyboard.press("Escape");
 
     passo("gerente fecha amanhã e recebe a lista para remarcar");
     await ir(page, "Funcionamento");

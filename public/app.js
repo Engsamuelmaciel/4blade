@@ -1396,14 +1396,11 @@ async function telaAgenda() {
       const rotulo = { fechado: "Fechado", folga: "Folga", bloqueado: "Dia bloqueado", sem_funcionamento: "Sem funcionamento" }[x.situacao];
       return el("div", { class: "resumo-dia fechado", "data-teste": "resumo-dia" }, el("strong", { text: rotulo }), x.motivo ? ` · ${x.motivo}` : "");
     }
-    const mostrar = x.livres.slice(0, 12);
     return el("div", { class: `resumo-dia ${x.livres.length ? "livre" : "cheio"}`, "data-teste": "resumo-dia" },
       el("div", { class: "resumo-topo" },
         el("strong", { text: x.livres.length ? `${x.livres.length} horário(s) livre(s)` : "Agenda cheia" }),
         el("span", { class: "suave", text: `${x.janela.ini}–${x.janela.fim}` })),
-      x.livres.length ? el("div", { class: "chips-hora" }, mostrar.map(h => el("button", { type: "button", class: "chip-hora", "data-livre": h, text: h,
-        onclick: () => janelaMarcar(ag, { barbeiroId: p.id, hora: h, data: d0 }) })),
-        x.livres.length > mostrar.length ? el("span", { class: "suave mais", text: `+${x.livres.length - mostrar.length}` }) : null) : null);
+      x.livres.length ? el("p", { class: "suave", text: "Toque num horário livre da lista para marcar." }) : null);
   };
 
   const irPara = (d, visao = v) => { estadoAgenda.data = d; estadoAgenda.visao = visao; comCarga(telaAgenda).catch(e => avisar(e.message, "erro")); };
@@ -1441,7 +1438,8 @@ async function telaAgenda() {
     corpo = estadoAgenda.modoDia === "grade"
       ? el("div", {}, modo, gradeAgenda(ag, d0, profs, disp))
       : el("div", {}, modo, el("div", { class: `agenda-colunas ${profs.length > 1 ? "varias" : ""}` }, profs.map(p => {
-        const itens = itensDoDia(ag, d0, p.id);
+        const x = dispDe(p.id);
+        const itens = itensDoDia(ag, d0, p.id, false, x && !disp.passado && x.situacao === "aberto" ? x.livres : null);
         return el("section", { class: "coluna-prof", "data-prof": p.nome },
           el("h3", { text: p.nome }),
           resumoDia(p),
@@ -1850,8 +1848,12 @@ function alternaModoAgenda() {
     }, `pequeno ${estadoAgenda.modoDia === k ? "ativo" : ""}`)));
 }
 
-function itensDoDia(ag, data, profId, mostrarNome = false) {
+function itensDoDia(ag, data, profId, mostrarNome = false, livres = null) {
   const lista = [
+    // Horários livres na própria lista (pedido de 17/11/2026): tocar marca já com profissional, dia e hora.
+    ...(livres || []).map(h => ({ ordem: h, el: el("button", { type: "button", class: "slot slot-livre", "data-livre-lista": h,
+      "aria-label": `Marcar às ${h}`, onclick: () => janelaMarcar(ag, { barbeiroId: profId, hora: h, data }) },
+      el("strong", { class: "slot-hora", text: h }), el("span", { text: "Livre" }), el("span", { class: "marcar-aqui", text: "+ Marcar" })) })),
     ...ag.agendamentos.filter(a => a.data === data && a.barbeiroId === profId).map(a => ({ ordem: a.inicio, el: cartaoAgendamento(a, mostrarNome, { recolhivel: true }) })),
     ...ag.bloqueios.filter(b => b.barbeiroId === profId && b.inicio.slice(0, 10) <= data && b.fim.slice(0, 10) >= data).map(b => {
       const ini = b.inicio.slice(0, 10) === data ? b.inicio.slice(11) : "00:00";
