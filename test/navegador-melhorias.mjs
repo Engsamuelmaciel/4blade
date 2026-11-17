@@ -259,6 +259,10 @@ async function rodar(tela) {
     const beto = (await chamar("/auth/login", { login: "beto.semana", senha: SENHA })).token;
     const servs = (await chamar("/servicos", null, beto)).servicos;
     const corte = servs.find(s => s.nome === "Corte");
+    // mais pomadas no estoque (uma sai junto com o corte do Gil)
+    const gerT = (await chamar("/auth/login", { login: "gerente.semana", senha: SENHA })).token;
+    const pomadaId = (await chamar("/estoque", null, gerT)).produtos.find(p => p.nome === "Pomada").id;
+    await chamar("/estoque/entrada", { produtoId: pomadaId, quantidade: 1, custoUnitCentavos: 2000 }, gerT);
     await chamar("/agenda", { data: HOJE, hora: "18:00", servicoIds: [corte.id], cliente: { telefone: "11 96666-5555", nome: "Gil Fila Fictício", aceiteLgpd: true } }, beto);
     await entrar("caixa.semana");
     await ir(page, "Caixa");
@@ -273,13 +277,20 @@ async function rodar(tela) {
     await page.click('dialog[open] [data-concluir="Gil Fila Fictício"]');
     await page.waitForSelector("dialog[open] >> text=Concluir atendimento de Gil Fila Fictício");
     await page.waitForSelector("dialog[open] [data-teste=total]:has-text('40,00')");
+    // 17/11/2026: o cliente leva uma pomada junto — entra no mesmo pagamento (sem abrir outra venda)
+    await page.click("dialog[open] [data-teste=adicionar-produto]");
+    await page.click('dialog[open] [data-produto-opcao="Pomada"]');
+    await page.waitForSelector('dialog[open] [data-produto-final="Pomada"]');
+    await page.waitForSelector("dialog[open] [data-teste=total]:has-text('85,00')");
     await page.selectOption("dialog[open] #c-forma1", "dinheiro");
-    // troco: cliente entrega 50,00 para pagar 40,00
-    await page.locator("dialog[open] [data-teste=recebido-dinheiro]").fill("50,00");
+    // troco: cliente entrega 100,00 para pagar 85,00
+    await page.locator("dialog[open] [data-teste=recebido-dinheiro]").fill("100,00");
     await page.locator("dialog[open] [data-teste=recebido-dinheiro]").dispatchEvent("input");
-    assert.match(await page.textContent("dialog[open] [data-teste=troco]"), /Troco: R\$\s?10,00/);
-    await print("cobrar-dinheiro-com-troco", false);
+    assert.match(await page.textContent("dialog[open] [data-teste=troco]"), /Troco: R\$\s?15,00/);
+    await page.locator('dialog[open] [data-produto-final="Pomada"]').scrollIntoViewIfNeeded();
+    await print("cobrar-com-produto-e-troco", false);
     await ok();
+    await page.waitForSelector("text=Atendimento e produtos cobrados");
     await page.waitForSelector('[data-cobrar="Gil Fila Fictício"] >> text=Pago');
     assert.notEqual(await page.textContent("[data-teste=entradas]"), entradas0);
 

@@ -8,6 +8,7 @@ import {
 import { isGestao, atende, veTodasAgendas } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
 import { conferirClienteParaMarcar, sinaisClientes } from "./notificacoes.js";
+import { montarVenda } from "./estoque.js";
 import {
   horaParaMin, exigirData, exigirMomento, somarDias, regrasDoDia, conferirHorario, momento, carregarRegras, diaSemana, janelaDoDia, livreNaJanela,
   carregarModelos, linksWhatsapp, lerPagamentos, formaEfetiva, FORMAS,
@@ -378,8 +379,30 @@ export async function finalizarDados(ctx, input) {
   });
   const total = itens.reduce((t, i) => t + i.cobrado, 0);
 
-  // Até 2 formas de pagamento; a soma tem de bater com o total. "Promissória" = o cliente paga depois (nota em aberto).
-  const pagIn = lerPagamentos(input.pagamentos, total, { promissoria: true });
+  // Produtos levados junto (pedido de 17/11/2026: corte + pomada no mesmo pagamento). Vira uma venda ligada ao horário,
+  // em nome do profissional que atendeu (comissão de produto dele), gravada no MESMO lote da finalização.
+  // O pagamento informado vale para o total (serviços + produtos): primeiro cobre os serviços, o resto vai para a venda.
+  let venda = null, pagIn;
+  if (Array.isArray(input.produtos) && input.produtos.length) {
+    const vendedor = await db.prepare("SELECT id, perfil, comissao_produto_bp FROM usuarios WHERE id = ? AND barbearia_id = ?").bind(a.barbeiro_id, ctx.barbeariaId).first();
+    venda = await montarVenda(ctx, { caixa, vendedor, clienteId: a.cliente_id, agendamentoId: a.id, itens: input.produtos,
+      pagamentosDe: totalProdutos => {
+        const todos = lerPagamentos(input.pagamentos, total + totalProdutos, { promissoria: true });
+        const servico = [], produto = [];
+        let falta = total;
+        for (const pg of todos) {
+          const parte = Math.min(falta, pg.valorCentavos);
+          if (parte > 0) servico.push({ ...pg, valorCentavos: parte });
+          if (pg.valorCentavos - parte > 0) produto.push({ ...pg, valorCentavos: pg.valorCentavos - parte });
+          falta -= parte;
+        }
+        pagIn = servico;
+        return produto;
+      } });
+  } else {
+    // Até 2 formas de pagamento; a soma tem de bater com o total. "Promissória" = o cliente paga depois (nota em aberto).
+    pagIn = lerPagamentos(input.pagamentos, total, { promissoria: true });
+  }
   const nota = pagIn.find(p => p.forma === "promissoria") || null;
   const pagCaixa = pagIn.filter(p => p.forma !== "promissoria");
   if (nota) await exigirClienteDaNota(ctx, a.cliente_id);
@@ -419,14 +442,19 @@ export async function finalizarDados(ctx, input) {
     auditoriaSe(ctx, ...existeFin, "atendimento_finalizado", a.id, {
       finalizacao: fid, total, totalAnterior, valorAlterado,
       itens: itens.map(i => ({ nome: i.nome, tabela: i.tabela, cobrado: i.cobrado })),
-      pagamentos: pagIn.map(p => ({ forma: p.forma, valor: p.valorCentavos }))
-    })
+      pagamentos: pagIn.map(p => ({ forma: p.forma, valor: p.valorCentavos })), venda: venda ? venda.id : undefined
+    }),
+    ...(venda ? venda.comandos : [])
   ]);
   if (!(await db.prepare("SELECT 1 FROM finalizacoes WHERE id = ?").bind(fid).first())) {
     erro("Não foi possível finalizar: o horário mudou ou o caixa foi fechado. Atualize a tela.", 409);
   }
+  if (venda && !(await db.prepare("SELECT 1 FROM vendas WHERE id = ?").bind(venda.id).first())) {
+    erro("O atendimento foi cobrado, mas os produtos não: o estoque acabou ou mudou. Registre a venda dos produtos em Vender.", 409);
+  }
   // O caixa nunca vê comissão.
-  return json({ finalizacao: { id: fid, totalCentavos: total, valorAlterado, ...(user.perfil === "caixa" ? {} : { comissaoCentavos: comissao }) } }, 201);
+  return json({ finalizacao: { id: fid, totalCentavos: total, valorAlterado, ...(user.perfil === "caixa" ? {} : { comissaoCentavos: comissao }) },
+    ...(venda ? { venda: { id: venda.id, totalCentavos: venda.total } } : {}) }, 201);
 }
 
 // ---------- REABRIR (finalizado por engano) ----------
@@ -846,7 +874,9 @@ export async function atendimentoAvulso(ctx) {
   const itens = Array.isArray(input.itens) ? input.itens : erro("Escolha os serviços.");
   const servs = await servicosEscolhidos(ctx, itens.map(i => i?.servicoId));
   const total = itens.reduce((t, i) => t + (validCentavos(i.precoCobradoCentavos) ? i.precoCobradoCentavos : erro("Valor cobrado inválido.")) * (i.quantidade ?? 1), 0);
-  const pagConf = lerPagamentos(input.pagamentos, total, { promissoria: true });   // confere antes de gravar
+  // confere antes de gravar (com produtos, a soma é conferida na cobrança: serviços + produtos)
+  const temProdutos = Array.isArray(input.produtos) && input.produtos.length > 0;
+  const pagConf = temProdutos ? (Array.isArray(input.pagamentos) ? input.pagamentos : []) : lerPagamentos(input.pagamentos, total, { promissoria: true });
   // Promissória no atendimento sem horário: só com cliente escolhido da base (não cria cliente na hora).
   if (pagConf.some(p => p.forma === "promissoria") && !(input.cliente && input.cliente.id !== undefined)) erro(MSG_NOTA_CADASTRO);
   const caixa = await caixaDeHoje(ctx);
@@ -869,7 +899,7 @@ export async function atendimentoAvulso(ctx) {
   );
   await db.batch(comandos);
   try {
-    return await finalizarDados(ctx, { id, itens, pagamentos: input.pagamentos });
+    return await finalizarDados(ctx, { id, itens, pagamentos: input.pagamentos, ...(temProdutos ? { produtos: input.produtos } : {}) });
   } catch (e) {
     // não deixa um "agendado" solto se a cobrança falhar
     await db.prepare("UPDATE agendamentos SET situacao = 'cancelado', motivo = ? WHERE id = ? AND situacao = 'agendado'").bind("Cobrança não concluída no caixa", id).run();

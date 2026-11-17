@@ -2334,6 +2334,46 @@ function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaA
   botaoMais.addEventListener("click", () => { painelMais.hidden = !painelMais.hidden; });
   for (const s of a.servicos) novaLinha(catalogo.find(x => x.id === s.id));
   desenharMais();
+
+  // Produtos levados junto (17/11/2026): corte + pomada no mesmo pagamento, sem abrir outra venda.
+  const prodLinhas = [];   // { p, q, linha, qtdEl }
+  const caixaProdutos = el("div", { class: "lista-servicos", "data-teste": "produtos-cobranca" });
+  const painelProd = el("div", { class: "mais-servicos", hidden: true, "data-teste": "mais-produtos" });
+  const botaoProd = el("button", { type: "button", class: "botao pequeno botao-mais", "data-teste": "adicionar-produto", text: "+ Adicionar produto" });
+  let produtosDisp = null;
+  const totalProdutos = () => prodLinhas.reduce((t, l) => t + l.p.precoCentavos * l.q, 0);
+  const saldoP = p => p.saldo ?? (p.disponivel === false ? 0 : 999);   // barbeiro não vê o saldo, só "disponível"
+  function desenharProdutos() {
+    const restantes = (produtosDisp || []).filter(p => !prodLinhas.some(l => l.p.id === p.id));
+    painelProd.replaceChildren(...(produtosDisp === null ? [el("p", { class: "suave", text: "Carregando produtos…" })]
+      : restantes.length ? restantes.map(p => el("button", { type: "button", class: "chip-modelo", "data-produto-opcao": p.nome, disabled: saldoP(p) < 1 || null,
+        text: `${p.nome} · ${reais(p.precoCentavos)}${saldoP(p) < 1 ? " · sem estoque" : ""}`,
+        onclick: () => { novoProduto(p); painelProd.hidden = true; desenharProdutos(); atualizar(); } }))
+      : [el("p", { class: "suave", text: "Nenhum outro produto disponível." })]));
+  }
+  function novoProduto(p) {
+    const qtdEl = el("span", { class: "qtd-num", text: "1" });
+    const l = { p, q: 1, qtdEl };
+    const mudar = d => { const n = l.q + d; if (n < 1) return; if (n > saldoP(p)) { avisar(`Só há ${saldoP(p)} em estoque.`, "erro"); return; } l.q = n; qtdEl.textContent = String(n); atualizar(); };
+    l.linha = el("div", { class: "linha-servico linha-final linha-produto", "data-produto-final": p.nome },
+      el("div", { class: "nome-servico" }, el("strong", { text: p.nome }), el("small", { class: "suave", text: `produto · ${reais(p.precoCentavos)} cada` })),
+      el("div", { class: "qtd" },
+        el("button", { type: "button", class: "qtd-btn", "aria-label": `Menos ${p.nome}`, text: "−", onclick: () => mudar(-1) }), qtdEl,
+        el("button", { type: "button", class: "qtd-btn", "aria-label": `Mais ${p.nome}`, text: "+", onclick: () => mudar(1) })),
+      el("strong", { class: "valor-produto" }),
+      el("button", { type: "button", class: "tirar-servico", "aria-label": `Tirar ${p.nome}`, title: "Tirar este produto", text: "×",
+        onclick: () => { prodLinhas.splice(prodLinhas.indexOf(l), 1); l.linha.remove(); desenharProdutos(); atualizar(); } }));
+    prodLinhas.push(l);
+    caixaProdutos.append(l.linha);
+  }
+  botaoProd.addEventListener("click", async () => {
+    painelProd.hidden = !painelProd.hidden;
+    if (produtosDisp === null) {
+      desenharProdutos();
+      try { produtosDisp = (await api("/produtos")).produtos.filter(p => p.ativo !== false && !p.usoInterno); } catch (e) { produtosDisp = []; avisar(e.message, "erro"); }
+      desenharProdutos();
+    }
+  });
   const forma1 = campo("Forma de pagamento", { tag: "select", name: "forma1", valor: "pix", opcoes: Object.entries(NOME_FORMA) });
   const dividir = caixaMarcar("Dividir em 2 formas", { name: "dividir" });
   const valor1 = campo("Valor na 1ª forma (R$)", { name: "valor1", inputmode: "decimal" });
@@ -2343,7 +2383,7 @@ function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaA
   valor1.hidden = true;
   segunda.hidden = true;
 
-  const total = () => linhas.reduce((t, l) => t + (paraCentavos(l.valor.value) ?? 0) * l.qtd, 0);
+  const total = () => linhas.reduce((t, l) => t + (paraCentavos(l.valor.value) ?? 0) * l.qtd, 0) + totalProdutos();
   const troco = campoTroco(() => {
     const t = total();
     const f1 = forma1.querySelector("select").value;
@@ -2354,7 +2394,8 @@ function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaA
   const atualizar = () => {
     troco.atualizar();
     for (const l of linhas) l.aviso.hidden = paraCentavos(l.valor.value) === Number(l.valor.dataset.tabela);
-    totalEl.textContent = `Total: ${reais(total())}`;
+    for (const l of prodLinhas) l.linha.querySelector(".valor-produto").textContent = reais(l.p.precoCentavos * l.q);
+    totalEl.textContent = prodLinhas.length ? `Total: ${reais(total())} (produtos ${reais(totalProdutos())})` : `Total: ${reais(total())}`;
     const dividindo = dividir.querySelector("input").checked;
     valor1.hidden = !dividindo;
     segunda.hidden = !dividindo;
@@ -2364,6 +2405,7 @@ function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaA
   const conteudo = [
     el("p", { class: "suave", text: `${a.cliente.nome} · ${a.inicio} · o valor pode ser alterado (fica registrado e aparece para o gerente).` }),
     caixaLinhas, botaoMais, painelMais,
+    caixaProdutos, botaoProd, painelProd,
     totalEl, forma1, dividir, valor1, segunda, troco.el
   ];
   const promessa = abrirJanela(titulo, conteudo, {
@@ -2376,15 +2418,16 @@ function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaA
         itens.push({ servicoId: l.s.id, precoCobradoCentavos: v, ...(l.qtd > 1 ? { quantidade: l.qtd } : {}) });
       }
       if (!itens.length) throw new Error("Deixe pelo menos um serviço.");
-      const t = itens.reduce((s, i) => s + i.precoCobradoCentavos * (i.quantidade || 1), 0);
+      const t = itens.reduce((s, i) => s + i.precoCobradoCentavos * (i.quantidade || 1), 0) + totalProdutos();
+      const produtos = prodLinhas.map(l => ({ produtoId: l.p.id, quantidade: l.q }));
       let pagamentos = t > 0 ? [{ forma: f.forma1.value, valorCentavos: t }] : [];
       if (f.dividir.checked && t > 0) {
         const v1 = paraCentavos(f.valor1.value);
         if (v1 === null || v1 <= 0 || v1 >= t) throw new Error("Valor da 1ª forma inválido: precisa ser maior que zero e menor que o total.");
         pagamentos = [{ forma: f.forma1.value, valorCentavos: v1 }, { forma: f.forma2.value, valorCentavos: t - v1 }];
       }
-      await api(endpoint, { metodo: "POST", corpo: { id: a.id, itens, pagamentos } });
-      avisar("Atendimento finalizado. Entrada lançada no caixa.");
+      await api(endpoint, { metodo: "POST", corpo: { id: a.id, itens, pagamentos, ...(produtos.length ? { produtos } : {}) } });
+      avisar(produtos.length ? "Atendimento e produtos cobrados. Entrada lançada no caixa." : "Atendimento finalizado. Entrada lançada no caixa.");
       aoTerminar();
     }
   });

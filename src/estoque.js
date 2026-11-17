@@ -223,39 +223,17 @@ async function caixaAbertoDeHoje(ctx) {
   return c;
 }
 
-async function vender(ctx) {
-  const { db, user, request } = ctx;
-  const input = await readJson(request);
-  const caixa = await caixaAbertoDeHoje(ctx);
-
-  // Quem vendeu: barbeiro = ele mesmo; caixa/gestão podem indicar o barbeiro (comissão de produto vai para ele).
-  let vendedor = { id: user.id, perfil: user.perfil, comissao_produto_bp: user.comissao_produto_bp };
-  if (input.vendedorId && input.vendedorId !== user.id) {
-    if (user.perfil === "barbeiro") erro("Você só registra venda em seu nome.", 403);
-    if (!validId(input.vendedorId)) erro("Vendedor inválido.");
-    const v = await db.prepare("SELECT id, perfil, ativo, comissao_produto_bp FROM usuarios WHERE id = ? AND barbearia_id = ?").bind(input.vendedorId, ctx.barbeariaId).first();
-    if (!v) erro("Vendedor não encontrado.", 404);
-    if (!atende(v.perfil) || !v.ativo) erro("Vendedor deve ser um gerente ou barbeiro ativo.");
-    vendedor = v;
-  }
+// Monta os comandos de uma venda (sem gravar): usada na venda avulsa e na cobrança do atendimento com produto (17/11/2026).
+// pagamentosDe(total) devolve as formas de pagamento da venda (a soma bate com o total).
+export async function montarVenda(ctx, { caixa, vendedor, clienteId = null, agendamentoId = null, itens: itensIn, descontoBp: descontoIn, pagamentosDe }) {
+  const { db, user } = ctx;
   const vendedorId = vendedor.id;
-  let clienteId = null;
-  let agendamentoId = null;
-  if (input.agendamentoId) {
-    if (!validId(input.agendamentoId)) erro("Horário inválido.");
-    const a = await db.prepare("SELECT id, cliente_id, barbeiro_id FROM agendamentos WHERE id = ? AND barbearia_id = ?").bind(input.agendamentoId, ctx.barbeariaId).first();
-    if (!a) erro("Horário não encontrado.", 404);
-    if (user.perfil === "barbeiro" && a.barbeiro_id !== user.id) erro("Esse horário é de outro profissional.", 403);
-    clienteId = a.cliente_id;
-    agendamentoId = a.id;
-  }
-
-  if (!Array.isArray(input.itens) || input.itens.length < 1 || input.itens.length > 20) erro("Escolha de 1 a 20 produtos.");
-  const ids = input.itens.map(i => i?.produtoId);
+  if (!Array.isArray(itensIn) || itensIn.length < 1 || itensIn.length > 20) erro("Escolha de 1 a 20 produtos.");
+  const ids = itensIn.map(i => i?.produtoId);
   if (!ids.every(validId) || new Set(ids).size !== ids.length) erro("Produtos inválidos.");
   const r = await db.prepare(`${SELECT_PRODUTOS} AND p.id IN (${ids.map(() => "?").join(",")})`).bind(ctx.barbeariaId, ...ids).all();
   const porId = Object.fromEntries(r.results.map(p => [p.id, p]));
-  const itens = input.itens.map(i => {
+  const itens = itensIn.map(i => {
     const p = porId[i.produtoId];
     if (!p || !p.ativo) erro("Produto não encontrado ou desativado.", 404);
     if (p.uso_interno) erro(`${p.nome} é material de uso da barbearia: não é vendido.`, 409);
@@ -266,20 +244,13 @@ async function vender(ctx) {
   const bruto = itens.reduce((t, i) => t + i.preco * i.q, 0);
   // Desconto em % (centésimos: 1000 = 10%), calculado aqui no servidor; o total final é o que entra no caixa.
   let descontoBp = 0;
-  if (input.descontoBp !== undefined && input.descontoBp !== null && input.descontoBp !== 0) {
-    if (!Number.isInteger(input.descontoBp) || input.descontoBp < 1 || input.descontoBp > 9999) erro("Desconto inválido: de 0,01% a 99,99%.");
-    descontoBp = input.descontoBp;
+  if (descontoIn !== undefined && descontoIn !== null && descontoIn !== 0) {
+    if (!Number.isInteger(descontoIn) || descontoIn < 1 || descontoIn > 9999) erro("Desconto inválido: de 0,01% a 99,99%.");
+    descontoBp = descontoIn;
   }
   const descontoCentavos = Math.round((bruto * descontoBp) / 10000);
   const total = bruto - descontoCentavos;
-  const pagamentos = lerPagamentos(input.pagamentos, total, { promissoria: true });
-  // Cliente da venda: do horário (agenda) ou escolhido no caixa (obrigatório na promissória).
-  if (input.clienteId !== undefined && input.clienteId !== null) {
-    if (!validId(input.clienteId)) erro("Cliente inválido.");
-    const c = await db.prepare("SELECT id FROM clientes WHERE id = ? AND barbearia_id = ?").bind(input.clienteId, ctx.barbeariaId).first();
-    if (!c) erro("Cliente não encontrado.", 404);
-    clienteId = c.id;
-  }
+  const pagamentos = pagamentosDe(total);
   const nota = pagamentos.find(p => p.forma === "promissoria") || null;
   const pagCaixa = pagamentos.filter(p => p.forma !== "promissoria");
   if (nota) await exigirClienteDaNota(ctx, clienteId);
@@ -287,7 +258,7 @@ async function vender(ctx) {
   const id = crypto.randomUUID();
   const existe = ["EXISTS (SELECT 1 FROM vendas WHERE id = ?)", [id]];
   const comSaldo = itens.map(() => "COALESCE((SELECT saldo FROM produto_estoque WHERE produto_id = ?), 0) >= ?").join(" AND ");
-  await lote(db, [
+  const comandos = [
     // A venda só nasce se o caixa estiver aberto e houver saldo de todos os itens.
     db.prepare(`INSERT INTO vendas (id, barbearia_id, caixa_id, vendedor_id, cliente_id, agendamento_id, total_centavos, criado_por)
                 SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM caixas WHERE id = ? AND situacao = 'aberto') AND ${comSaldo}`)
@@ -321,7 +292,48 @@ async function vender(ctx) {
     auditoriaSe(ctx, ...existe, "venda_registrada", id, {
       total, ...(descontoBp ? { bruto, descontoBp, descontoCentavos } : {}), vendedor: vendedorId, itens: itens.map(i => ({ produto: i.p.nome, quantidade: i.q, preco: i.preco })), pagamentos
     })
-  ], "Estoque insuficiente (outra venda acabou de usar o saldo). Peça ao gerente para ajustar.");
+  ];
+  return { id, total, bruto, descontoBp, descontoCentavos, comandos, itens };
+}
+
+async function vender(ctx) {
+  const { db, user, request } = ctx;
+  const input = await readJson(request);
+  const caixa = await caixaAbertoDeHoje(ctx);
+
+  // Quem vendeu: barbeiro = ele mesmo; caixa/gestão podem indicar o barbeiro (comissão de produto vai para ele).
+  let vendedor = { id: user.id, perfil: user.perfil, comissao_produto_bp: user.comissao_produto_bp };
+  if (input.vendedorId && input.vendedorId !== user.id) {
+    if (user.perfil === "barbeiro") erro("Você só registra venda em seu nome.", 403);
+    if (!validId(input.vendedorId)) erro("Vendedor inválido.");
+    const v = await db.prepare("SELECT id, perfil, ativo, comissao_produto_bp FROM usuarios WHERE id = ? AND barbearia_id = ?").bind(input.vendedorId, ctx.barbeariaId).first();
+    if (!v) erro("Vendedor não encontrado.", 404);
+    if (!atende(v.perfil) || !v.ativo) erro("Vendedor deve ser um gerente ou barbeiro ativo.");
+    vendedor = v;
+  }
+  const vendedorId = vendedor.id;
+  let clienteId = null;
+  let agendamentoId = null;
+  if (input.agendamentoId) {
+    if (!validId(input.agendamentoId)) erro("Horário inválido.");
+    const a = await db.prepare("SELECT id, cliente_id, barbeiro_id FROM agendamentos WHERE id = ? AND barbearia_id = ?").bind(input.agendamentoId, ctx.barbeariaId).first();
+    if (!a) erro("Horário não encontrado.", 404);
+    if (user.perfil === "barbeiro" && a.barbeiro_id !== user.id) erro("Esse horário é de outro profissional.", 403);
+    clienteId = a.cliente_id;
+    agendamentoId = a.id;
+  }
+
+  // Cliente da venda: do horário (agenda) ou escolhido no caixa (obrigatório na promissória).
+  if (input.clienteId !== undefined && input.clienteId !== null) {
+    if (!validId(input.clienteId)) erro("Cliente inválido.");
+    const c = await db.prepare("SELECT id FROM clientes WHERE id = ? AND barbearia_id = ?").bind(input.clienteId, ctx.barbeariaId).first();
+    if (!c) erro("Cliente não encontrado.", 404);
+    clienteId = c.id;
+  }
+  const v = await montarVenda(ctx, { caixa, vendedor, clienteId, agendamentoId, itens: input.itens, descontoBp: input.descontoBp,
+    pagamentosDe: total => lerPagamentos(input.pagamentos, total, { promissoria: true }) });
+  const { id, total, bruto, descontoBp, descontoCentavos } = v;
+  await lote(db, v.comandos, "Estoque insuficiente (outra venda acabou de usar o saldo). Peça ao gerente para ajustar.");
   if (!(await db.prepare("SELECT 1 FROM vendas WHERE id = ?").bind(id).first())) {
     erro("Não foi possível registrar: o caixa foi fechado ou o estoque acabou. Atualize a tela.", 409);
   }

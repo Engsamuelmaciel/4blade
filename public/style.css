@@ -1358,3 +1358,4 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
 .fin-secao[open] > summary::after { transform: rotate(90deg); }
 .fin-secao-tit { font-weight: 800; font-size: 16px; }
 .fin-secao-res { color: var(--suave); font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; margin-left: auto; }
+.linha-produto .valor-produto { justify-self: end; white-space: nowrap; }
