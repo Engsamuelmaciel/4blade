@@ -228,12 +228,22 @@ async function rodar(tela) {
     passo("gerente vê o histórico, reabre o caixa com motivo e faz inventário");
     await entrar("gabriel.navalha", "Senha-Gabriel-2026");
     await ir(page, "Caixa");
+    // Gerente lança mesmo com o caixa fechado (17/11/2026): vê o aviso e vende.
+    await page.waitForSelector("[data-teste=aviso-gerente-caixa]");
+    assert.match(await texto("[data-teste=aviso-gerente-caixa]"), /já foi fechado/);
+    await page.click(".pdv-barra .alterna button:has-text('Vender')");
+    await page.waitForSelector('[data-produto-pdv="Pomada modeladora"]');
+    await page.click('[data-produto-pdv="Pomada modeladora"]');
+    await page.selectOption("[data-teste=carrinho] #c-forma1", "pix");
+    await page.click("[data-teste=carrinho] button:has-text('Finalizar venda')");
+    await page.waitForSelector("text=Venda registrada");
+    await print("gerente-vende-com-caixa-fechado");
     await page.click("a:has-text('Caixas de outros dias')");
     await page.waitForSelector(`[data-caixa-dia="${HOJE}"]`);
     assert.match(await texto(`[data-caixa-dia="${HOJE}"]`), /falta R\$\s?5,00/);
     await print("gerente-historico-de-caixas");
     await page.click(`[data-caixa-dia="${HOJE}"] a`);
-    await page.waitForSelector("button:has-text('Reabrir caixa')");
+    await page.click("summary:has-text('Ver o fechamento e reabrir')");
     await page.click("button:has-text('Reabrir caixa')");
     await page.fill("dialog[open] #c-motivo", "Conferir venda lançada");
     await ok();
@@ -243,11 +253,11 @@ async function rodar(tela) {
 
     await ir(page, "Estoque");
     await page.click("button:has-text('Inventário')");
-    await page.fill("[aria-label='Contado de Pomada modeladora']", "7");
+    await page.fill("[aria-label='Contado de Pomada modeladora']", "6");
     await page.waitForSelector('dialog[open] [data-inventario="Pomada modeladora"] >> text=diferença -1');
     await print("gerente-inventario");
     await ok();
-    await page.waitForSelector('[data-estoque="Pomada modeladora"] [data-teste=saldo]:has-text("7 un.")');
+    await page.waitForSelector('[data-estoque="Pomada modeladora"] [data-teste=saldo]:has-text("6 un.")');
     await abrirItem(page, '[data-estoque="Pomada modeladora"]');
     await page.click('[data-estoque="Pomada modeladora"] button:has-text("Histórico")');
     await page.waitForSelector("dialog[open] >> text=Inventário");

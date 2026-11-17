@@ -9,6 +9,7 @@ import { isGestao, atende, veTodasAgendas } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
 import { conferirClienteParaMarcar, sinaisClientes } from "./notificacoes.js";
 import { montarVenda } from "./estoque.js";
+import { caixaParaLancar, sqlCaixaOk } from "./caixa.js";
 import {
   horaParaMin, exigirData, exigirMomento, somarDias, regrasDoDia, conferirHorario, momento, carregarRegras, diaSemana, janelaDoDia, livreNaJanela,
   carregarModelos, linksWhatsapp, lerPagamentos, formaEfetiva, FORMAS,
@@ -356,8 +357,7 @@ export async function finalizarDados(ctx, input) {
   if (a.situacao !== "agendado") erro(`Esse horário está "${a.situacao}"; só dá para finalizar um horário agendado.`, 409);
   const hoje = hojeBrasil();
   if (a.data > hoje) erro("Não dá para finalizar um horário de um dia que ainda não chegou.", 409);
-  const caixa = await caixaDeHoje(ctx);
-  if (!caixa || caixa.situacao !== "aberto") erro("O caixa de hoje não está aberto. Peça para abrir o caixa.", 409);
+  const caixa = await caixaParaLancar(ctx);   // gerente/dono: também com o caixa fechado (17/11/2026)
 
   // Serviços e valores (o valor de tabela vem do cadastro; o cobrado pode ser alterado e fica registrado).
   const itensIn = input.itens;
@@ -421,7 +421,7 @@ export async function finalizarDados(ctx, input) {
   await db.batch([
     db.prepare(`UPDATE agendamentos SET situacao = 'finalizado', motivo = NULL, atualizado_em = CURRENT_TIMESTAMP
                 WHERE id = ? AND barbearia_id = ? AND situacao = 'agendado'
-                  AND EXISTS (SELECT 1 FROM caixas WHERE id = ? AND situacao = 'aberto')`).bind(a.id, ctx.barbeariaId, caixa.id),
+                  AND ${sqlCaixaOk(ctx)}`).bind(a.id, ctx.barbeariaId, caixa.id),
     db.prepare(`INSERT INTO finalizacoes (id, barbearia_id, agendamento_id, barbeiro_id, caixa_id, total_centavos, valor_alterado, total_anterior_centavos, criado_por)
                 SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
                 WHERE EXISTS (SELECT 1 FROM agendamentos WHERE id = ? AND situacao = 'finalizado')
@@ -879,8 +879,7 @@ export async function atendimentoAvulso(ctx) {
   const pagConf = temProdutos ? (Array.isArray(input.pagamentos) ? input.pagamentos : []) : lerPagamentos(input.pagamentos, total, { promissoria: true });
   // Promissória no atendimento sem horário: só com cliente escolhido da base (não cria cliente na hora).
   if (pagConf.some(p => p.forma === "promissoria") && !(input.cliente && input.cliente.id !== undefined)) erro(MSG_NOTA_CADASTRO);
-  const caixa = await caixaDeHoje(ctx);
-  if (!caixa || caixa.situacao !== "aberto") erro("O caixa de hoje não está aberto.", 409);
+  await caixaParaLancar(ctx, "O caixa de hoje não está aberto.");
   // horário = agora (Brasília), arredondado para 5 min
   const agora = new Date(Date.now() - 3 * 3600000);
   const dur = servs.reduce((t, x) => t + x.duracao_min, 0);

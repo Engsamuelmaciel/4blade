@@ -1500,7 +1500,9 @@ async function telaAgenda() {
   mostrar(
     cabecalho(veTodas() ? "Agenda" : "Minha agenda", subtitulo),
     barra,
-    !ag.caixaAberto && (v === "dia" || v === "semana") ? el("p", { class: "info", text: ehCaixa() ? "O caixa de hoje ainda não foi aberto: abra o caixa para cobrar os atendimentos." : "O caixa de hoje ainda não foi aberto: para finalizar atendimentos, peça para abrir o caixa." }) : null,
+    !ag.caixaAberto && (v === "dia" || v === "semana") ? el("p", { class: "info", text: ehCaixa() ? "O caixa de hoje ainda não foi aberto: abra o caixa para cobrar os atendimentos."
+      : gestao() ? "O caixa de hoje ainda não foi aberto. Como gerente, você pode finalizar assim mesmo (o caixa abre sozinho)."
+      : "O caixa de hoje ainda não foi aberto: para finalizar atendimentos, peça para abrir o caixa." }) : null,
     corpo);
 }
 
@@ -2802,6 +2804,7 @@ async function telaCaixa(dataHistorico = null) {
   const voltar = dataHistorico ? "#/caixa-historico" : null;
   const linkHistorico = gestao() && !dataHistorico ? el("a", { class: "botao pequeno", href: "#/caixa-historico", text: "Caixas de outros dias" }) : null;
 
+  let formAbrirGerente = null;
   if (!c.caixa) {
     if (dataHistorico) { mostrar(cabecalho("Caixa", dataBR(dataHistorico), voltar), el("p", { class: "vazio", text: "Não houve caixa nesse dia." })); return; }
     const form = el("form", { class: "cartao" },
@@ -2818,12 +2821,22 @@ async function telaCaixa(dataHistorico = null) {
         telaCaixa();
       });
     });
+    if (gestao()) {
+      // Gerente/dono (17/11/2026): lança mesmo sem abrir; o caixa do dia abre sozinho (troco R$ 0,00) no 1º lançamento.
+      formAbrirGerente = el("details", { class: "cartao abrir-gerente", "data-teste": "abrir-gerente" },
+        el("summary", { text: "Abrir o caixa com troco (opcional para o gerente)" }), form);
+      c.caixa = { situacao: "nao_aberto", trocoCentavos: 0, abertoPor: null };
+      c.totais = { porForma: { dinheiro: 0, pix: 0, debito: 0, credito: 0 }, atendimentosCentavos: 0, vendasCentavos: 0, entradasCentavos: 0, notasLancadasCentavos: 0,
+        notasRecebidasCentavos: 0, sangriasCentavos: 0, suprimentosCentavos: 0, dinheiroEsperadoCentavos: 0, saldoNegativoCentavos: 0 };
+      c.lancamentos = []; c.vendas = [];
+    } else {
     mostrar(cabecalho("Caixa", `${dataBR(c.data)} · ${usuario.barbearia.nome}`, voltar),
       el("p", { class: "info", text: "Enquanto o caixa não for aberto, ninguém consegue finalizar atendimentos nem vender." }),
       el("section", { class: "estreito-esq", "data-tela": "caixa" }, form,
         // Despesa antes de abrir (ex.: lanche pago no Pix): a sangria abre o caixa com troco 0 e saldo negativo (com aviso).
         botao("Lançar uma sangria (retirada)", () => janelaMovimento("sangria", () => telaCaixa()), "pequeno largo")), linkHistorico);
     return;
+    }
   }
 
   const t = c.totais;
@@ -2845,7 +2858,9 @@ async function telaCaixa(dataHistorico = null) {
         el("span", { text: "Promissória" }), el("strong", { text: reais(t.notasLancadasCentavos || 0) })))
   ];
 
-  if (!aberto || !ehHoje) {
+  // Gerente/dono lança no caixa de hoje mesmo fechado ou ainda não aberto (17/11/2026).
+  const gerenteLivre = ehHoje && !aberto && gestao();
+  if ((!aberto || !ehHoje) && !gerenteLivre) {
     mostrar(
       cabecalho(dataHistorico ? `Caixa de ${dataBR(dataHistorico)}` : "Caixa", `${dataBR(c.data)} · aberto por ${c.caixa.abertoPor}`, voltar),
       topo,
@@ -2868,8 +2883,19 @@ async function telaCaixa(dataHistorico = null) {
   else if (aba === "vender") conteudo = await abaVender(recarregar);
   else conteudo = listaCaixa(c, recarregar);
 
+  const situacaoTxt = c.caixa.situacao === "nao_aberto" ? "ainda não aberto" : c.caixa.situacao === "fechado" ? `fechado · aberto por ${c.caixa.abertoPor}` : `aberto por ${c.caixa.abertoPor}`;
   mostrar(
-    cabecalho("Caixa", `${dataBR(c.data)} · aberto por ${c.caixa.abertoPor}`),
+    cabecalho("Caixa", `${dataBR(c.data)} · ${situacaoTxt}`),
+    gerenteLivre ? el("p", { class: "info aviso-gerente-caixa", "data-teste": "aviso-gerente-caixa",
+      text: c.caixa.situacao === "fechado"
+        ? "O caixa de hoje já foi fechado. Como gerente, você pode continuar cobrando, vendendo e recebendo: os lançamentos entram depois do fechamento."
+        : "O caixa de hoje ainda não foi aberto. Como gerente, você pode cobrar, vender e receber assim mesmo: o caixa abre sozinho (troco R$ 0,00) no primeiro lançamento." }) : null,
+    formAbrirGerente,
+    c.caixa.situacao === "fechado" && gerenteLivre ? el("details", { class: "cartao" }, el("summary", { text: "Ver o fechamento e reabrir" }), blocoFechamento(c),
+      botao("Reabrir caixa", () => pedirMotivo("Reabrir o caixa", "Permite corrigir lançamentos deste dia. Depois, feche de novo.", async motivo => {
+        await api("/caixa/reabrir", { metodo: "POST", corpo: { data: c.data, motivo } });
+        avisar("Caixa reaberto."); recarregar();
+      }, "Reabrir"), "pequeno")) : null,
     topo,
     c.reaberturas?.length ? el("p", { class: "suave", text: `Reaberto ${c.reaberturas.length}x (último motivo: ${c.reaberturas[0].motivo})` }) : null,
     // Três botões grandes (o que o caixa mais usa) e, separado, as ações do caixa com ícones.
@@ -2885,7 +2911,7 @@ async function telaCaixa(dataHistorico = null) {
         el("a", { class: "botao ferramenta", href: "#/notas" }, icone("contas"), el("span", { text: "Notas em aberto" })),
         el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("sangria", recarregar) }, icone("setaBaixo"), el("span", { text: "Sangria" })),
         el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("suprimento", recarregar) }, icone("setaCima"), el("span", { text: "Suprimento" })),
-        el("button", { type: "button", class: "botao ferramenta perigo", onclick: () => janelaFechar(c, recarregar, dataHistorico) }, icone("cadeado"), el("span", { text: "Fechar caixa" })),
+        aberto ? el("button", { type: "button", class: "botao ferramenta perigo", onclick: () => janelaFechar(c, recarregar, dataHistorico) }, icone("cadeado"), el("span", { text: "Fechar caixa" })) : null,
         linkHistorico)));
   timerCaixa = setTimeout(() => { if (location.hash === "#/caixa" && !janela.open && estadoCaixa.aba !== "vender") telaCaixa().catch(() => {}); }, 30000);
 }

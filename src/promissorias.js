@@ -5,6 +5,7 @@ import { json, HttpError, readJson, validId, exigirMotivo, auditoriaSe, hojeBras
 import { isGestao } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
 import { lerPagamentos, telefoneReal, linkWhatsapp, somarDias } from "./agenda-util.js";
+import { caixaParaLancar, sqlCaixaOk } from "./caixa.js";
 
 const erro = (msg, status = 400) => { throw new HttpError(msg, status); };
 const reais = c => `R$ ${(c / 100).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
@@ -110,8 +111,7 @@ export async function rotasPromissorias(ctx, path, method) {
     if (!validId(input.clienteId)) erro("Cliente inválido.");
     const ids = input.promissoriaIds;
     if (!Array.isArray(ids) || ids.length < 1 || ids.length > 200 || !ids.every(validId) || new Set(ids).size !== ids.length) erro("Escolha as notas a quitar.");
-    const caixa = await db.prepare("SELECT id, situacao FROM caixas WHERE barbearia_id = ? AND data = ?").bind(ctx.barbeariaId, hojeBrasil()).first();
-    if (!caixa || caixa.situacao !== "aberto") erro("Abra o caixa de hoje para receber a nota.", 409);
+    const caixa = await caixaParaLancar(ctx, "Abra o caixa de hoje para receber a nota.");   // gerente: também com o caixa fechado
     const notas = (await db.prepare(`SELECT id, valor_centavos FROM promissorias WHERE barbearia_id = ? AND cliente_id = ? AND situacao = 'aberta'
                                      AND id IN (${ids.map(() => "?").join(",")})`).bind(ctx.barbeariaId, input.clienteId, ...ids).all()).results;
     if (notas.length !== ids.length) erro("Alguma nota não está mais em aberto (ou é de outro cliente). Atualize a tela.", 409);
@@ -123,7 +123,7 @@ export async function rotasPromissorias(ctx, path, method) {
     await db.batch([
       // O recebimento só nasce se TODAS as notas ainda estão em aberto e o caixa está aberto (sem pagar duas vezes).
       db.prepare(`INSERT INTO promissoria_recebimentos (id, barbearia_id, cliente_id, caixa_id, total_centavos, criado_por)
-                  SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM caixas WHERE id = ? AND situacao = 'aberto')
+                  SELECT ?, ?, ?, ?, ?, ? WHERE ${sqlCaixaOk(ctx)}
                     AND (SELECT COUNT(*) FROM promissorias WHERE barbearia_id = ? AND cliente_id = ? AND situacao = 'aberta' AND id IN (${marcas})) = ?`)
         .bind(id, ctx.barbeariaId, input.clienteId, caixa.id, total, user.id, caixa.id, ctx.barbeariaId, input.clienteId, ...ids, ids.length),
       db.prepare(`UPDATE promissorias SET situacao = 'quitada', recebimento_id = ? WHERE barbearia_id = ? AND situacao = 'aberta' AND id IN (${marcas}) AND ${existe[0]}`)

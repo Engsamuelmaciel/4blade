@@ -8,6 +8,7 @@ import { isGestao, atende } from "./perfis.js";
 import { exigirBarbearia, exigirGestao } from "./usuarios.js";
 import { lerPagamentos, formaEfetiva, somarDias } from "./agenda-util.js";
 import { exigirClienteDaNota } from "./agenda.js";
+import { caixaParaLancar, sqlCaixaOk } from "./caixa.js";
 
 const erro = (msg, status = 400) => { throw new HttpError(msg, status); };
 export const MOTIVOS_AJUSTE = { perda: "Perda", vencimento: "Vencimento", quebra: "Quebra", uso_interno: "Uso interno", correcao: "Correção de contagem" };
@@ -217,11 +218,8 @@ export async function rotasEstoque(ctx, path, method) {
 }
 
 // ---------- VENDAS ----------
-async function caixaAbertoDeHoje(ctx) {
-  const c = await ctx.db.prepare("SELECT * FROM caixas WHERE barbearia_id = ? AND data = ?").bind(ctx.barbeariaId, hojeBrasil()).first();
-  if (!c || c.situacao !== "aberto") erro("O caixa de hoje não está aberto. Peça para abrir o caixa.", 409);
-  return c;
-}
+// Equipe: só com o caixa aberto; gerente/dono: também com ele fechado (17/11/2026).
+const caixaAbertoDeHoje = ctx => caixaParaLancar(ctx);
 
 // Monta os comandos de uma venda (sem gravar): usada na venda avulsa e na cobrança do atendimento com produto (17/11/2026).
 // pagamentosDe(total) devolve as formas de pagamento da venda (a soma bate com o total).
@@ -261,7 +259,7 @@ export async function montarVenda(ctx, { caixa, vendedor, clienteId = null, agen
   const comandos = [
     // A venda só nasce se o caixa estiver aberto e houver saldo de todos os itens.
     db.prepare(`INSERT INTO vendas (id, barbearia_id, caixa_id, vendedor_id, cliente_id, agendamento_id, total_centavos, criado_por)
-                SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM caixas WHERE id = ? AND situacao = 'aberto') AND ${comSaldo}`)
+                SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ${sqlCaixaOk(ctx)} AND ${comSaldo}`)
       .bind(id, ctx.barbeariaId, caixa.id, vendedorId, clienteId, agendamentoId, total, user.id, caixa.id, ...itens.flatMap(i => [i.p.id, i.q])),
     ...itens.flatMap(i => [
       db.prepare(`UPDATE produto_estoque SET saldo = saldo - ?, atualizado_em = CURRENT_TIMESTAMP WHERE produto_id = ? AND barbearia_id = ? AND ${existe[0]}`)
