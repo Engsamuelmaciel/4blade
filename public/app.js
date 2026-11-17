@@ -1353,7 +1353,7 @@ const NOME_SITUACAO = { agendado: "Agendado", finalizado: "Finalizado", faltou: 
 const COR_SITUACAO = { agendado: "", finalizado: "verde", faltou: "amarela", cancelado: "vermelha" };
 
 // ---------- AGENDA ----------
-const estadoAgenda = { data: null, visao: "dia", barbeiroId: "", diasAbertos: new Set() };
+const estadoAgenda = { data: null, visao: "dia", barbeiroId: "", diasAbertos: new Set(), modoDia: (() => { try { return localStorage.getItem("4blade.agendaModo") || "grade"; } catch { return "grade"; } })() };
 let marcarParaCliente = null;
 let ultimaAgenda = null;   // profissionais da agenda aberta (usados ao remarcar)   // cliente escolhido na tela Clientes → abre o "Novo horário" já com ele
 let servicosCache = null;
@@ -1378,8 +1378,12 @@ async function telaAgenda() {
     : v === "semana" ? [d0, somaDias(d0, 6)] : null;   // semana: livres por dia na barra de cada dia
   const qo = periodo ? new URLSearchParams({ inicio: periodo[0], fim: periodo[1], ...(veTodas() && estadoAgenda.barbeiroId ? { barbeiroId: estadoAgenda.barbeiroId } : {}) }) : null;
   const qd = new URLSearchParams({ data: d0, ...(veTodas() && estadoAgenda.barbeiroId ? { barbeiroId: estadoAgenda.barbeiroId } : {}) });
-  const [ag, oc, , disp] = await Promise.all([api(`/agenda?${q}`), qo ? api(`/agenda/ocupacao?${qo}`) : null, carregarServicos(),
-    v === "dia" ? api(`/agenda/disponibilidade?${qd}`) : null]);
+  // Semana: os dias abertos mostram a grade do dia (precisa do expediente e dos livres de cada profissional).
+  const diasGrade = v === "semana" ? [...estadoAgenda.diasAbertos].filter(x => x >= d0 && x <= somaDias(d0, 6)) : [];
+  const qDia = x => new URLSearchParams({ data: x, ...(veTodas() && estadoAgenda.barbeiroId ? { barbeiroId: estadoAgenda.barbeiroId } : {}) });
+  const [ag, oc, , disp, ...dispsSemana] = await Promise.all([api(`/agenda?${q}`), qo ? api(`/agenda/ocupacao?${qo}`) : null, carregarServicos(),
+    v === "dia" ? api(`/agenda/disponibilidade?${qd}`) : null, ...diasGrade.map(x => api(`/agenda/disponibilidade?${qDia(x)}`))]);
+  const dispDoDia = Object.fromEntries(diasGrade.map((x, i) => [x, dispsSemana[i]]));
   ultimaAgenda = ag;
   // Dia: situação de cada profissional e horários livres (tocar abre o "Novo horário" já preenchido).
   const dispDe = id => disp?.profissionais.find(x => x.id === id);
@@ -1431,14 +1435,21 @@ async function telaAgenda() {
   if ((v === "dia" || v === "semana") && !profs.length) {
     corpo = el("p", { class: "vazio", "data-teste": "sem-profissionais", text: "Nenhum profissional com agenda. Cadastre gerente ou barbeiro em Equipe e ajustes → Equipe." });
   } else if (v === "dia") {
-    // Dia: um profissional por coluna (gerente vê todos lado a lado).
-    corpo = el("div", { class: `agenda-colunas ${profs.length > 1 ? "varias" : ""}` }, profs.map(p => {
-      const itens = itensDoDia(ag, d0, p.id);
-      return el("section", { class: "coluna-prof", "data-prof": p.nome },
-        el("h3", { text: p.nome }),
-        resumoDia(p),
-        itens.length ? itens : el("p", { class: "vazio", text: "Nenhum horário." }));
-    }));
+    // Dia: grade (horas × profissionais) ou lista (cartões por profissional). A escolha fica guardada no aparelho.
+    const modo = el("div", { class: "alterna modo-dia", role: "group", "aria-label": "Jeito de ver o dia" },
+      [["grade", "Grade"], ["lista", "Lista"]].map(([k, t]) => botao(t, () => {
+        estadoAgenda.modoDia = k; try { localStorage.setItem("4blade.agendaModo", k); } catch { /* sem espaço */ }
+        telaAgenda();
+      }, `pequeno ${estadoAgenda.modoDia === k ? "ativo" : ""}`)));
+    corpo = estadoAgenda.modoDia === "grade"
+      ? el("div", {}, modo, gradeAgenda(ag, d0, profs, disp))
+      : el("div", {}, modo, el("div", { class: `agenda-colunas ${profs.length > 1 ? "varias" : ""}` }, profs.map(p => {
+        const itens = itensDoDia(ag, d0, p.id);
+        return el("section", { class: "coluna-prof", "data-prof": p.nome },
+          el("h3", { text: p.nome }),
+          resumoDia(p),
+          itens.length ? itens : el("p", { class: "vazio", text: "Nenhum horário." }));
+      })));
   } else if (v === "semana") {
     // Semana (pedido de 16/11/2026): cada dia é só uma barra com "marcados" e "livres" (horários ocultos).
     // Tocar na barra abre a lista do dia (hora · cliente · serviço); tocar num horário abre a ficha com todas as opções.
@@ -1462,14 +1473,7 @@ async function telaAgenda() {
             : !passado && o ? el("span", { class: `etiqueta ${o.livres ? "verde" : "vermelha"}`, "data-livres": String(o.livres), text: o.livres ? `${o.livres} livre${o.livres === 1 ? "" : "s"}` : "cheio" }) : null),
         svg("svg", { viewBox: "0 0 24 24", class: "icone seta", "aria-hidden": "true" }, svg("path", { d: ICONES.seta })));
       const conteudo = !aberto ? [] : [
-        doDia.length
-          ? el("ul", { class: "mini-lista" }, doDia.map(a => el("li", {},
-            el("button", { type: "button", class: `mini-horario ${a.situacao}`, "data-mini": a.cliente.nome, onclick: () => janelaAtendimento(a, varios) },
-              el("strong", { text: `${a.inicio}–${a.fim}` }),
-              el("span", { text: [a.cliente.nome, varios ? a.barbeiroNome?.split(" ")[0] : null, a.servicos.map(s => s.nome).join(" + ")].filter(Boolean).join(" · ") }),
-              a.situacao !== "agendado" ? el("span", { class: `etiqueta ${COR_SITUACAO[a.situacao]}`, text: NOME_SITUACAO[a.situacao] }) : null,
-              svg("svg", { viewBox: "0 0 24 24", class: "icone seta-mini", "aria-hidden": "true" }, svg("path", { d: ICONES.seta })))))) 
-          : el("p", { class: "suave", text: fechado ? "Fechado neste dia." : "Nenhum horário marcado." }),
+        fechado && !doDia.length ? el("p", { class: "suave", text: "Fechado neste dia." }) : gradeAgenda(ag, d, profs, dispDoDia[d]),
         el("div", { class: "acoes-dia-semana" },
           !passado && !fechado ? botao("+ Marcar neste dia", () => janelaMarcar(ag, { data: d }), "pequeno") : null,
           botao("Ver o dia completo", () => irPara(d, "dia"), "pequeno"))
@@ -1542,6 +1546,86 @@ function calendarioAno(oc, ano, irPara) {
 }
 
 // Horários e bloqueios de um profissional num dia, em ordem.
+// ---------- AGENDA EM GRADE (17/11/2026): horas à esquerda, uma coluna por profissional ----------
+// Cada linha da grade = 5 minutos. Posição dos blocos pela grade CSS (definida via CSSOM, sem style="" no HTML).
+const MIN_LINHA = 5;
+const iniciais = nome => nome.trim().split(/\s+/).slice(0, 2).map(x => x[0]).join("").toUpperCase();
+const minDe = h => { const [a, b] = h.split(":").map(Number); return a * 60 + b; };
+function posicionar(e, linha, linhas, coluna) {
+  e.style.gridRow = `${linha} / span ${Math.max(1, linhas)}`;
+  e.style.gridColumn = String(coluna);
+  return e;
+}
+function gradeAgenda(ag, d, profs, disp) {
+  const dispDe = id => disp?.profissionais.find(x => x.id === id);
+  const doDia = ag.agendamentos.filter(a => a.data === d && profs.some(p => p.id === a.barbeiroId));
+  const ativos = doDia.filter(a => a.situacao === "agendado" || a.situacao === "finalizado");
+  const outros = doDia.filter(a => a.situacao === "faltou" || a.situacao === "cancelado");
+  // Faixa de horas: do primeiro início ao último fim (expediente e horários marcados), em horas cheias; padrão 08–20.
+  const marcas = [...profs.flatMap(p => { const j = dispDe(p.id)?.janela; return j ? [minDe(j.ini), minDe(j.fim)] : []; }),
+    ...ativos.flatMap(a => [minDe(a.inicio), minDe(a.fim)])];
+  let ini = marcas.length ? Math.min(...marcas) : 8 * 60, fim = marcas.length ? Math.max(...marcas) : 20 * 60;
+  ini = Math.floor(ini / 60) * 60; fim = Math.min(24 * 60, Math.max(ini + 60, Math.ceil(fim / 60) * 60));
+  const linhas = (fim - ini) / MIN_LINHA;
+  const linha = t => (Math.max(ini, Math.min(fim, t)) - ini) / MIN_LINHA + 2;   // linha 1 = cabeçalho
+  const grade = el("div", { class: "grade-agenda", "data-grade": d });
+  grade.style.setProperty("--cols", String(profs.length));
+  grade.style.setProperty("--linhas", String(linhas));
+  const filhos = [el("div", { class: "grade-canto", text: "" })];
+  for (let h = ini; h < fim; h += 60) filhos.push(posicionar(el("div", { class: "grade-hora", text: minParaHoraTela(h) }), linha(h), 60 / MIN_LINHA, 1));
+  const hoje = d === ag.hoje;
+  profs.forEach((p, i) => {
+    const col = i + 2;
+    const x = dispDe(p.id);
+    const meus = ativos.filter(a => a.barbeiroId === p.id);
+    const livres = x?.livres || [];
+    filhos.push(posicionar(el("div", { class: "grade-cab", "data-prof": p.nome },
+      el("span", { class: "grade-avatar", text: iniciais(p.nome) }),
+      el("span", { class: "grade-cab-txt" },
+        el("strong", { text: p.nome.split(" ")[0] }),
+        el("small", { class: "grade-cab-info", text: x && x.situacao !== "aberto" ? { fechado: "Fechado", folga: "Folga", bloqueado: "Bloqueado", sem_funcionamento: "Sem funcionamento" }[x.situacao]
+          : `${meus.length} marcado${meus.length === 1 ? "" : "s"}${disp && !disp.passado ? ` · ${livres.length} livre${livres.length === 1 ? "" : "s"}` : ""}` }))), 1, 1, col));
+    filhos.push(posicionar(el("div", { class: `grade-fundo ${i % 2 ? "par" : ""}` }), 2, linhas, col));
+    // Fora do expediente, intervalo e bloqueios: faixas cinzas.
+    const j = x?.janela;
+    const faixas = !x || x.situacao !== "aberto" ? [[ini, fim, x ? ({ fechado: "Fechado", folga: "Folga", bloqueado: x.motivo || "Bloqueado", sem_funcionamento: "Sem funcionamento" }[x.situacao]) : ""]]
+      : [[ini, minDe(j.ini), ""], [minDe(j.fim), fim, ""], ...x.ocupados.filter(o => o.tipo !== "horario").map(o => [minDe(o.ini), minDe(o.fim), o.texto])];
+    for (const [a, b, txt] of faixas) if (b > a) filhos.push(posicionar(el("div", { class: "grade-fora", text: b - a >= 30 ? txt : "" }), linha(a), (Math.min(b, fim) - Math.max(a, ini)) / MIN_LINHA, col));
+    // Horários livres: tocar marca já com o profissional e a hora.
+    const inicios = livres.map(minDe);
+    const fimsMarcados = meus.map(a => minDe(a.inicio));
+    inicios.forEach((t, k) => {
+      const prox = Math.min(t + 30, ...[inicios[k + 1], ...fimsMarcados.filter(s => s > t)].filter(v => v !== undefined));
+      filhos.push(posicionar(el("button", { type: "button", class: "grade-livre", "data-livre-grade": `${p.nome}|${minParaHoraTela(t)}`, "aria-label": `Marcar ${minParaHoraTela(t)} com ${p.nome}`,
+        "data-hora": minParaHoraTela(t), onclick: () => janelaMarcar(ag, { barbeiroId: p.id, hora: minParaHoraTela(t), data: d }) }, el("span", { class: "mais", text: "+" })), linha(t), (prox - t) / MIN_LINHA, col));
+    });
+    // Atendimentos: bloco do tamanho da duração; tocar abre a ficha com todas as opções.
+    for (const a of meus) {
+      const dur = minDe(a.fim) - minDe(a.inicio);
+      const curto = dur < 30, medio = dur >= 30 && dur < 45;
+      const hora = el("span", { class: "ev-hora", text: `${medio || curto ? a.inicio : `${a.inicio}–${a.fim}`}${a.situacao === "finalizado" ? " ✓" : ""}` });
+      const cliente = el("strong", { class: "ev-cliente", text: a.cliente.nome });
+      filhos.push(posicionar(el("button", { type: "button", class: `grade-evento ${a.situacao} ${curto ? "curto" : medio ? "medio" : ""} ${gestao() && a.finalizacao?.valorAlterado ? "alterado" : ""}`, "data-evento": a.cliente.nome,
+        title: `${a.inicio}–${a.fim} · ${a.cliente.nome} · ${a.servicos.map(s => s.nome).join(" + ")}`, onclick: () => janelaAtendimento(a, profs.length > 1) },
+        medio || curto ? el("span", { class: "ev-linha" }, hora, cliente) : [hora, cliente],
+        curto ? null : el("span", { class: "ev-servico", text: a.servicos.map(s => s.nome).join(" + ") })), linha(minDe(a.inicio)), dur / MIN_LINHA, col));
+    }
+  });
+  // Linha de "agora" (hoje).
+  if (hoje) {
+    const agora = new Date(Date.now() - 3 * 3600 * 1000);
+    const m = agora.getUTCHours() * 60 + agora.getUTCMinutes();
+    if (m >= ini && m <= fim) { const l = posicionar(el("div", { class: "grade-agora", "aria-hidden": "true" }), linha(m), 1, 2); l.style.gridColumn = "2 / -1"; filhos.push(l); }
+  }
+  grade.append(...filhos);
+  return el("div", { class: "grade-envolve" },
+    el("div", { class: "grade-rolagem" }, grade),
+    outros.length ? el("div", { class: "grade-outros" }, el("span", { class: "suave", text: "Faltas e cancelados:" }),
+      outros.map(a => el("button", { type: "button", class: `chip-outro ${a.situacao}`, "data-mini": a.cliente.nome, onclick: () => janelaAtendimento(a, profs.length > 1) },
+        `${a.inicio} ${a.cliente.nome} · ${NOME_SITUACAO[a.situacao]}`))) : null);
+}
+const minParaHoraTela = m => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
 function itensDoDia(ag, data, profId, mostrarNome = false) {
   const lista = [
     ...ag.agendamentos.filter(a => a.data === data && a.barbeiroId === profId).map(a => ({ ordem: a.inicio, el: cartaoAgendamento(a, mostrarNome, { recolhivel: true }) })),

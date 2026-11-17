@@ -5,7 +5,7 @@
 // Roda em computador (1366 px) e celular (390 px); prints em docs/prints/e2/.  Uso: node test/navegador-e2.mjs
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
@@ -76,6 +76,14 @@ async function rodar(tela) {
   });
   // O WhatsApp de verdade não é aberto no teste: a aba nova é interceptada e conferida.
   await contexto.route(/wa\.me/, r => r.fulfill({ status: 200, contentType: "text/html", body: "<p>WhatsApp (simulado no teste)</p>" }));
+  // Agenda do dia: os testes antigos usam o modo "Lista" (a grade é testada à parte em navegador-e2).
+  await contexto.addInitScript(() => { try { if (!localStorage.getItem("4blade.agendaModo")) localStorage.setItem("4blade.agendaModo", "lista"); } catch { /* about:blank */ } });
+  // Mesma política de segurança (CSP) da versão publicada: qualquer bloqueio aparece como erro no console.
+  const CSP = readFileSync(join(RAIZ, "public", "_headers"), "utf8").match(/Content-Security-Policy:\s*(.+)/)[1].trim();
+  await contexto.route(u => new URL(u).pathname === "/", async r => {
+    const resp = await r.fetch();
+    await r.fulfill({ response: resp, headers: { ...resp.headers(), "content-security-policy": CSP } });
+  });
   const page = await contexto.newPage();
   const problemas = [];
   page.on("console", m => {
@@ -256,17 +264,19 @@ async function rodar(tela) {
     await page.click("button:has-text('Semana')");
     // semana: cada dia só com a barra "marcados · livres"; os horários ficam ocultos
     await page.waitForSelector(`[data-dia="${AMANHA}"]`);
-    assert.equal(await page.locator('[data-mini="Elias Cliente Fictício"]').count(), 0, "horários ocultos até tocar no dia");
+    assert.equal(await page.locator('[data-evento="Elias Cliente Fictício"]').count(), 0, "horários ocultos até tocar no dia");
     assert.match(await page.textContent(`[data-dia="${AMANHA}"]`), /1 marcado/);
     assert.match(await page.textContent(`[data-dia="${AMANHA}"] [data-livres]`), /\d+ livres?/);
     await print("gerente-agenda-semana");
     // tocar no dia: lista do dia (hora · cliente · serviço) + atalhos
     await page.click(`[data-dia="${AMANHA}"]`);
-    await page.waitForSelector('[data-mini="Elias Cliente Fictício"]');
+    // dia aberto = grade: horas à esquerda e uma coluna por profissional
+    await page.waitForSelector('.grade-agenda [data-evento="Elias Cliente Fictício"]');
+    assert.ok(await page.locator(".grade-agenda .grade-cab").count() >= 1);
     assert.ok(await page.locator("button:has-text('Ver o dia completo')").count());
     await print("gerente-agenda-semana-dia-aberto");
     // tocar no horário abre a ficha com todas as opções
-    await page.click('[data-mini="Elias Cliente Fictício"]');
+    await page.click('[data-evento="Elias Cliente Fictício"]');
     await page.waitForSelector('dialog[open] [data-agendamento="Elias Cliente Fictício"]');
     assert.match(await page.textContent("dialog[open]"), /Remarcar/);
     assert.ok(await page.locator("dialog[open] button:has-text('Editar')").count(), "ficha tem Editar");
@@ -274,6 +284,28 @@ async function rodar(tela) {
     await page.click("dialog[open] button[type=submit]");
     // "Ver o dia completo" leva para a visão Dia daquela data
     await page.click(`[data-dia="${AMANHA}"] ~ .acoes-dia-semana button:has-text('Ver o dia completo')`);
+    await page.waitForSelector('.coluna-prof [data-agendamento="Elias Cliente Fictício"]');
+    // visão Dia em grade: bloco do tamanho da duração, livres tocáveis, cabeçalho por profissional
+    await page.click(".modo-dia button:has-text('Grade')");
+    await page.waitForSelector('.grade-agenda [data-evento="Elias Cliente Fictício"]');
+    const pos = await page.$eval('[data-evento="Elias Cliente Fictício"]', e => [getComputedStyle(e).gridRowStart, getComputedStyle(e).gridRowEnd, getComputedStyle(e).gridColumnStart]);
+    assert.ok(/^\d+$/.test(pos[0]) && pos[0] !== "1", `bloco posicionado pela hora (${pos})`);
+    assert.match(pos[1], /span 6|^\d+$/, "30 min = 6 linhas de 5 min");
+    assert.match(await page.textContent('[data-evento="Elias Cliente Fictício"]'), /09:00/);
+    assert.match(await page.getAttribute('[data-evento="Elias Cliente Fictício"]', "title"), /09:00–09:30/);
+    const cabs = await page.locator(".grade-cab").allInnerTexts();
+    assert.ok(cabs.some(t => /Bruno/.test(t) && /1 marcado/.test(t) && /livres?/.test(t)), cabs.join(" | "));
+    await print("gerente-agenda-grade");
+    const livre = page.locator("[data-livre-grade^='Bruno']").first();
+    const horaLivre = (await livre.getAttribute("data-livre-grade")).split("|")[1];
+    await livre.click();
+    await page.waitForSelector("dialog[open] #c-hora");
+    assert.equal(await page.inputValue("dialog[open] #c-hora"), horaLivre, "tocar no livre já preenche a hora");
+    await page.keyboard.press("Escape");
+    await page.click('[data-evento="Elias Cliente Fictício"]');
+    await page.waitForSelector('dialog[open] [data-agendamento="Elias Cliente Fictício"]');
+    await page.click("dialog[open] button[type=submit]");
+    await page.click(".modo-dia button:has-text('Lista')");
     await page.waitForSelector('.coluna-prof [data-agendamento="Elias Cliente Fictício"]');
 
     passo("gerente fecha amanhã e recebe a lista para remarcar");

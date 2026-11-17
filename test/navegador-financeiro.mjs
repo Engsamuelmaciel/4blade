@@ -43,6 +43,8 @@ async function rodar(tela) {
     viewport: { width: tela.largura, height: tela.altura },
     deviceScaleFactor: 2, isMobile: tela.movel, hasTouch: tela.movel, locale: "pt-BR", timezoneId: "America/Sao_Paulo"
   });
+  // Agenda do dia: os testes antigos usam o modo "Lista" (a grade é testada à parte em navegador-e2).
+  await contexto.addInitScript(() => { try { if (!localStorage.getItem("4blade.agendaModo")) localStorage.setItem("4blade.agendaModo", "lista"); } catch { /* about:blank */ } });
   const page = await contexto.newPage();
   const problemas = [];
   page.on("console", m => { if (m.type() === "error") problemas.push(m.text()); });

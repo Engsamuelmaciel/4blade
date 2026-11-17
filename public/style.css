@@ -973,3 +973,58 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
 .acoes-dia-semana { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 8px; border-top: 1px solid var(--borda); }
 @media (max-width: 699px) { .mini-horario strong { min-width: 0; } .acoes-dia-semana .botao { flex: 1; } }
 .etiqueta.roxa { background: var(--roxo-fundo); color: var(--roxo-texto); }
+
+/* ---------- Agenda em grade (17/11/2026): horas à esquerda, uma coluna por profissional ---------- */
+.modo-dia { margin-bottom: 10px; }
+.grade-envolve { display: grid; gap: 8px; margin-bottom: 8px; }
+.grade-rolagem { overflow-x: auto; background: var(--cartao); border-radius: 14px; box-shadow: var(--sombra); -webkit-overflow-scrolling: touch; }
+.grade-agenda { --altura: 8px; display: grid; position: relative; min-width: 100%;
+  grid-template-columns: 50px repeat(var(--cols), minmax(136px, 1fr));
+  grid-template-rows: 60px repeat(var(--linhas), var(--altura)); }
+.grade-canto { grid-row: 1; grid-column: 1; border-bottom: 1px solid var(--borda); }
+.grade-cab { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--borda); border-left: 1px solid var(--borda); min-width: 0; }
+.grade-avatar { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 13px;
+  background: var(--dourado); color: var(--sobre-dourado); }
+.grade-cab-txt { display: grid; min-width: 0; line-height: 1.2; }
+.grade-cab-txt strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grade-cab-txt small { font-size: 11.5px; color: var(--suave); white-space: nowrap; }
+.grade-hora { font-size: 11px; color: var(--suave); text-align: right; padding-right: 7px; transform: translateY(-7px); font-variant-numeric: tabular-nums; }
+.grade-fundo { border-left: 1px solid var(--borda);
+  background-image: linear-gradient(to bottom, var(--borda) 1px, transparent 1px), linear-gradient(to bottom, var(--neutro) 1px, transparent 1px);
+  background-size: 100% calc(var(--altura) * 12), 100% calc(var(--altura) * 6); }
+.grade-fundo.par { background-color: var(--neutro-2); }
+.grade-fora { z-index: 1; margin: 0 1px; display: grid; place-items: center; font-size: 11.5px; color: var(--suave); text-align: center; overflow: hidden;
+  background: repeating-linear-gradient(135deg, var(--neutro-2) 0 6px, var(--neutro) 6px 12px); opacity: .85; }
+.grade-livre { z-index: 2; margin: 1px 5px; border: 1px dashed transparent; border-radius: 8px; background: transparent; padding: 0 6px;
+  display: flex; align-items: flex-start; font: inherit; font-size: 11px; color: var(--suave); cursor: pointer; overflow: hidden; }
+.grade-livre { justify-content: flex-end; }
+.grade-livre .mais { opacity: .28; font-size: 14px; line-height: 1; padding-top: 3px; }
+.grade-livre:hover, .grade-livre:focus-visible { background: var(--ok-fundo); border-color: var(--ok); color: var(--ok); justify-content: space-between; }
+.grade-livre:hover::before, .grade-livre:focus-visible::before { content: attr(data-hora); font-weight: 700; padding-top: 2px; }
+.grade-livre:hover .mais, .grade-livre:focus-visible .mais { opacity: 1; font-weight: 700; }
+.grade-evento { z-index: 3; margin: 1px 5px; padding: 4px 8px; border: 0; border-left: 4px solid var(--serie-entrada); border-radius: 10px;
+  background: var(--info-fundo); color: var(--info-texto); text-align: left; font: inherit; cursor: pointer; overflow: hidden;
+  display: flex; flex-direction: column; gap: 1px; min-height: 0; box-shadow: 0 1px 2px rgba(16, 24, 40, .08); transition: transform .12s, box-shadow .12s; }
+.grade-evento:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(16, 24, 40, .14); }
+.grade-evento.finalizado { background: var(--ok-fundo); color: var(--ok); border-left-color: var(--ok); }
+.grade-evento.alterado { border-left-color: var(--laranja-texto); }
+.grade-evento .ev-hora { font-size: 11px; font-weight: 700; opacity: .85; font-variant-numeric: tabular-nums; }
+.grade-evento .ev-cliente { font-size: 13px; color: var(--texto); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grade-evento .ev-servico { font-size: 11.5px; color: var(--suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grade-evento .ev-linha { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.grade-evento .ev-linha .ev-cliente { flex: 1; min-width: 0; }
+.grade-evento.medio { padding-top: 3px; padding-bottom: 3px; }
+.grade-evento.curto { justify-content: center; padding-top: 1px; padding-bottom: 1px; }
+.grade-agora { z-index: 4; align-self: start; height: 2px; background: var(--erro); position: relative; pointer-events: none; }
+.grade-agora::before { content: ""; position: absolute; left: -5px; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--erro); }
+.grade-outros { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.chip-outro { border: 1px solid var(--borda); border-radius: 999px; background: var(--cartao); color: var(--suave); font: inherit; font-size: 12.5px; padding: 4px 10px; cursor: pointer; text-decoration: line-through; }
+.dia-semana.aberto .grade-envolve { margin-top: 4px; }
+@media (prefers-reduced-motion: reduce) { .grade-evento { transition: none; } .grade-evento:hover { transform: none; } }
+@media (max-width: 699px) {
+  .grade-agenda { grid-template-columns: 42px repeat(var(--cols), minmax(112px, 1fr)); grid-template-rows: 64px repeat(var(--linhas), var(--altura)); }
+  .grade-cab { flex-direction: column; align-items: flex-start; justify-content: center; padding: 6px 8px; gap: 2px; }
+  .grade-avatar { display: none; }
+  .grade-cab-txt small { white-space: normal; }
+  .grade-evento { margin: 1px 3px; padding-left: 6px; padding-right: 6px; }
+}

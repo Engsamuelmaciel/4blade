@@ -60,6 +60,8 @@ await api("/plataforma/chamados/responder", { id: ch.chamado.id, mensagem: "Em C
 const navegador = await chromium.launch();
 const contexto = await navegador.newContext({ viewport: { width: 390, height: 760 }, deviceScaleFactor: 1.5, isMobile: true, hasTouch: true, locale: "pt-BR", timezoneId: "America/Sao_Paulo" });
 await contexto.route(/wa\.me/, r => r.fulfill({ status: 200, contentType: "text/html", body: "<p>WhatsApp (simulado)</p>" }));
+// Agenda do dia: os testes antigos usam o modo "Lista" (a grade é testada à parte em navegador-e2).
+await contexto.addInitScript(() => { try { if (!localStorage.getItem("4blade.agendaModo")) localStorage.setItem("4blade.agendaModo", "lista"); } catch { /* about:blank */ } });
 const page = await contexto.newPage();
 const problemas = [];
 page.on("pageerror", e => problemas.push(e.message));
@@ -115,6 +117,9 @@ try {
   await ir(page, "Serviços"); await foto("servicos");
   await ir(page, "Agenda");
   await page.waitForSelector(".barra-agenda");
+  await page.click(".modo-dia button:has-text('Grade')");
+  await page.waitForSelector(".grade-agenda");
+  await pronto();
   await foto("agenda-dia");
   await page.click("button:has-text('+ Novo horário')");
   await page.waitForSelector("dialog[open]");
@@ -135,6 +140,8 @@ try {
 
   await entrar("barbeiro.demo", DEMO);
   await ir(page, "Minha agenda");
+  await page.click(".modo-dia button:has-text('Lista')");
+  await pronto();
   await abrirHorarios(page);
   await page.click("button:has-text('Finalizar') >> nth=0");
   await page.waitForSelector("dialog[open]");
