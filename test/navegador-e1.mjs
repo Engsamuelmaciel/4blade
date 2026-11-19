@@ -44,9 +44,9 @@ async function rodar(tela) {
   const page = await contexto.newPage();
   const problemas = [];
   // Recusas esperadas do servidor (limite do plano 409, falta de aceite LGPD 400, barbearia bloqueada 403) aparecem
-  // no console como "Failed to load resource"; qualquer outro erro (CSP, JavaScript) reprova o teste.
+  // no console como "Failed to load resource"; qualquer outro erro (CSP, JavaScript) reprova o teste. (401 = login com a senha antiga, de propósito)
   page.on("console", m => {
-    if (m.type() === "error" && !/^Failed to load resource: the server responded with a status of (400|403|409)\b/.test(m.text())) problemas.push(m.text());
+    if (m.type() === "error" && !/^Failed to load resource: the server responded with a status of (400|401|403|409)\b/.test(m.text())) problemas.push(m.text());
   });
   page.on("pageerror", e => problemas.push(e.message));
   let n = 0;
@@ -290,6 +290,25 @@ async function rodar(tela) {
     await print("barbeiro-produtos-sem-custo");
     // tentar abrir a tela da equipe pelo endereço leva de volta ao início
     await page.goto(`${base}/#/equipe`);
+    await page.waitForSelector("h2:has-text('Minha agenda')");
+    passo("barbeiro troca a própria senha pela \"Minha conta\" (vale em todas as telas)");
+    await page.click("#btn-conta");
+    await page.click("[data-teste=trocar-senha]");
+    await page.waitForSelector("h3:has-text('Trocar minha senha')");
+    await page.fill("#c-atual", "Senha-errada-1");
+    await page.fill("#c-nova", "Senha-Bruno-2027");
+    await page.fill("#c-nova2", "Senha-Bruno-2027");
+    await page.click("dialog button:has-text('Salvar nova senha')");
+    await page.waitForSelector("dialog >> text=Senha atual incorreta");   // senha atual errada: avisa e não troca
+    await page.fill("#c-atual", "Senha-Bruno-2026");
+    await print("barbeiro-trocar-senha");
+    await page.click("dialog button:has-text('Salvar nova senha')");
+    await page.waitForSelector("text=Senha alterada com sucesso.");
+    await page.waitForSelector("h2:has-text('Minha agenda')");   // continua no sistema, sem pedir login
+    await sair();
+    await entrar("bruno.navalha", "Senha-Bruno-2026");
+    await page.waitForSelector("text=Usuário ou senha incorretos");
+    await entrar("bruno.navalha", "Senha-Bruno-2027");
     await page.waitForSelector("h2:has-text('Minha agenda')");
     await sair();
 

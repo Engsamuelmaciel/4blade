@@ -6074,8 +6074,28 @@ function janelaConta() {
         el("span", { text: `${NOME_PERFIL[usuario.perfil]} · usuário ${usuario.login}` }),
         b ? el("span", { text: `${b.nome} · Plano ${NOME_PLANO[b.plano] || b.plano}` }) : null)),
     blocoAparencia(),
+    el("button", { type: "button", class: "botao largo", id: "btn-trocar-senha", "data-teste": "trocar-senha", text: "Trocar minha senha", onclick: () => janelaTrocarMinhaSenha() }),
     el("button", { type: "button", class: "botao perigo largo", id: "btn-sair", text: "Sair do sistema", onclick: sairDoSistema })
   ], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
+}
+
+// Trocar a própria senha a qualquer momento (botão em "Minha conta", no topo de todas as telas).
+function janelaTrocarMinhaSenha() {
+  return abrirJanela("Trocar minha senha", [
+    campo("Senha atual", { name: "atual", type: "password", autocomplete: "current-password", required: true }),
+    campo("Nova senha", { name: "nova", type: "password", autocomplete: "new-password", required: true, minlength: "8" }, "Mínimo de 8 caracteres, diferente do seu usuário."),
+    campo("Repita a nova senha", { name: "nova2", type: "password", autocomplete: "new-password", required: true, minlength: "8" })
+  ], { ok: "Salvar nova senha", aoConfirmar: async form => {
+    if (form.nova.value !== form.nova2.value) throw new Error("As duas senhas novas não são iguais.");
+    if (form.nova.value === form.atual.value) throw new Error("A nova senha precisa ser diferente da atual.");
+    await api("/auth/trocar-senha", { metodo: "POST", corpo: { senhaAtual: form.atual.value, novaSenha: form.nova.value } });
+    // A troca encerra a sessão: entra de novo com a senha nova, sem sair da tela.
+    const r = await api("/auth/login", { metodo: "POST", corpo: { login: usuario.login, senha: form.nova.value } });
+    localStorage.setItem(CHAVE_TOKEN, r.token);
+    usuario = r.usuario;
+    avisar("Senha alterada com sucesso.");
+    return true;
+  } });
 }
 
 // Aparência (paleta de cores + claro/escuro/sistema): muda na hora e fica guardada neste aparelho (public/tema.js).
