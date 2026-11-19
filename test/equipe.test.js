@@ -4,6 +4,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { ambiente } from "./ambiente.js";
 import { hojeBrasil } from "../src/util.js";
+import { semanaSimulada, emDia, voltar, SEMANA } from "./semana-gestao.js";
 
 const HOJE = hojeBrasil();
 const MES = HOJE.slice(0, 7);
@@ -134,5 +135,26 @@ describe("pagamento da equipe", () => {
     assert.ok(!(await get(`/api/equipe/pagamento?mes=${MES}`, outra.ger.token)).dados.pessoas.some(x => x.id === barb.id));
     assert.equal((await post("/api/equipe/pagar", outra.ger.token, { usuarioId: barb.id, mes: MES })).status, 404);
     assert.equal((await post("/api/equipe/salario", outra.ger.token, { usuarioId: barb.id, salarioCentavos: 1 })).status, 404);
+  });
+});
+
+describe("minha produção (barbeiro vê só a própria)", () => {
+  test("barbeiro vê produção e comissão dele; caixa não; ninguém vê a de outro", async () => {
+    const s = await semanaSimulada();
+    const { get, A, B, cx } = s;
+    const mes = SEMANA[0].slice(0, 7);
+    emDia(SEMANA[6]);
+    const a = await get(`/api/equipe/minha-producao?mes=${mes}`, A.token);
+    assert.equal(a.status, 200, JSON.stringify(a.dados));
+    assert.equal(a.dados.pessoa.id, A.id);
+    assert.equal(a.dados.pessoa.custoCentavos, undefined, "sem custo para a barbearia");
+    assert.ok(a.dados.pessoa.producao.totalCentavos > 0 && a.dados.pessoa.comissao.totalCentavos > 0);
+    // pedir de outra pessoa não funciona: a rota ignora id e sempre devolve o próprio
+    const b = await get(`/api/equipe/minha-producao?mes=${mes}&id=${A.id}`, B.token);
+    assert.equal(b.dados.pessoa.id, B.id);
+    assert.notEqual(b.dados.pessoa.producao.totalCentavos, a.dados.pessoa.producao.totalCentavos);
+    assert.equal((await get(`/api/equipe/minha-producao?mes=${mes}`, cx.token)).status, 403);
+    assert.equal((await get(`/api/equipe/pessoa?id=${A.id}&mes=${mes}`, A.token)).status, 403, "panorama de outros é só da gestão");
+    voltar();
   });
 });

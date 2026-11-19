@@ -168,6 +168,38 @@ async function rodar(tela) {
     for (const nome of ["Lote Um Fictício", "Lote Dois Fictício"]) assert.equal(await page.locator(`.grade-agenda [data-evento='${nome}']`).count(), 1, nome);
     await print("lote-na-agenda");
 
+    passo("caixa: cobra no crédito em 3x (mostra o valor da parcela) e depois corrige o valor do lançamento");
+    await ir(page, "Caixa");
+    await page.waitForSelector(".pdv-topo");
+    await page.waitForSelector('button[data-cobrar="Diego Cliente Fictício"]');
+    await page.click('button[data-cobrar="Diego Cliente Fictício"]');
+    await page.waitForSelector("dialog[open] [data-teste=total]");
+    await page.selectOption("dialog[open] #c-forma1", "credito");
+    await page.waitForSelector("dialog[open] [data-teste=parcelas]:not([hidden])");
+    await page.selectOption("dialog[open] #c-parcelas", "3");
+    await page.waitForFunction(() => /3x de R\$\s?13,34/.test(document.querySelector("dialog[open] [data-teste=parcelas-valor]")?.textContent || ""));
+    assert.match(await page.textContent("dialog[open] [data-teste=parcelas-valor]"), /no caixa entra R\$\s?40,00 no crédito/);
+    await page.locator("dialog[open] [data-teste=parcelas]").screenshot({ path: join(PRINTS, `${tela.nome}-${String(++n).padStart(2, "0")}-credito-3x.png`) });
+    await page.click("dialog[open] button[type=submit]");
+    await page.waitForSelector("text=Entrada lançada no caixa");
+    await page.click(".pdv-barra .alterna button:has-text('Lançamentos')");
+    await page.waitForSelector('[data-lancamento="Diego Cliente Fictício"] button:has-text("Corrigir")');
+    await page.click('[data-lancamento="Diego Cliente Fictício"] button:has-text("Corrigir")');
+    await page.click("dialog[open] [data-correcao=valor]");
+    await page.waitForSelector("dialog[open] [data-teste=correcao-antes]");
+    const valor = page.locator("dialog[open] [data-servico-final] input[inputmode=decimal]").first();
+    await valor.fill("35,00"); await valor.dispatchEvent("input");
+    await page.selectOption("dialog[open] #c-forma1", "dinheiro");
+    await page.fill("dialog[open] #c-motivoCorrecao", "Valor combinado era 35");
+    await print("caixa-corrigir-valor");
+    await page.click("dialog[open] button[type=submit]");
+    await page.waitForSelector("text=Atendimento corrigido");
+    await pronto();
+    const lancs = await page.locator("[data-lancamento='Diego Cliente Fictício']").allInnerTexts();
+    assert.ok(lancs.some(t => /-R\$\s?40,00|R\$\s?-40,00/.test(t)), `estorno aparece: ${lancs.join(" | ")}`);
+    assert.ok(lancs.some(t => /R\$\s?35,00/.test(t) && /Dinheiro/.test(t)), `cobrança certa aparece: ${lancs.join(" | ")}`);
+    await print("caixa-lancamento-corrigido");
+
     const reais = problemas.filter(p => !/status of 40[039]/.test(p));   // 400 esperado: linha do lote sem o aceite LGPD
     assert.deepEqual(reais, [], `erros no console: ${reais.join(" | ")}`);
     passo("OK — nenhum erro no console (inclui bloqueios de CSP)");

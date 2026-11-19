@@ -10,7 +10,7 @@ import { exigirGestao } from "./usuarios.js";
 import { somarDias } from "./agenda-util.js";
 import { dadosPeriodo, somarMes } from "./gestao.js";
 import { sangriaAutomatica } from "./caixa.js";
-import { podeGerenciarPerfil } from "./perfis.js";
+import { podeGerenciarPerfil, atende } from "./perfis.js";
 
 const erro = (msg, status = 400) => { throw new HttpError(msg, status); };
 const reais = c => `R$ ${(c / 100).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
@@ -211,6 +211,14 @@ async function pagar(ctx) {
 
 export async function rotasEquipe(ctx, path, method) {
   if (!path.startsWith("/equipe/")) return null;
+  // Minha produção (19/11/2026): quem atende vê SÓ a própria produção e comissão do mês (sempre o usuário da sessão).
+  if (path === "/equipe/minha-producao" && method === "GET") {
+    if (!atende(ctx.user.perfil)) erro("Sem permissão", 403);
+    const r = await panoramaPessoa(ctx, ctx.user.id, lerMes(new URL(ctx.request.url).searchParams.get("mes")));
+    const { custoCentavos, ...pessoa } = r.pessoa;   // custo para a barbearia é assunto da gestão
+    void custoCentavos;
+    return json({ ...r, pessoa });
+  }
   exigirGestao(ctx);
   if (path === "/equipe/pagamento" && method === "GET") {
     const mes = lerMes(new URL(ctx.request.url).searchParams.get("mes"));

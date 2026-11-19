@@ -4,7 +4,7 @@ export async function ir(page, nome) {
   await page.waitForFunction(() => document.querySelector("#nav-topo:not([hidden]) .nav-aba") || document.querySelector("#menu:not([hidden]) .grupo"));
   for (let tentativa = 0; ; tentativa++) {
     try {
-      const aba = page.locator(`#nav-topo [data-nav-topo="${nome}"], #nav-topo [data-nav="${nome}"]`).first();
+      const aba = page.locator(`#nav-topo:not([hidden]) [data-nav-topo="${nome}"], #nav-topo:not([hidden]) [data-nav="${nome}"]`).first();
       let item = aba;
       let pelo = "topo";
       if (!(await aba.count())) {

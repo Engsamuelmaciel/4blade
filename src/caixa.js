@@ -5,7 +5,7 @@ import { json, fail, HttpError, readJson, validCentavos, validDate, textoOpciona
 import { isGestao } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
 import { FORMAS, formaEfetiva, telefoneReal, somarDias } from "./agenda-util.js";
-import { finalizarDados, atendimentoAvulso } from "./agenda.js";
+import { finalizarDados, atendimentoAvulso, reabrirDados } from "./agenda.js";
 
 const erro = (msg, status = 400) => { throw new HttpError(msg, status); };
 const NOME_FORMA = { dinheiro: "dinheiro", pix: "Pix", debito: "débito", credito: "crédito" };
@@ -16,7 +16,7 @@ export async function resumoCaixa(db, barbeariaId, caixa) {
     db.prepare(`
       SELECT l.id, l.tipo, l.forma, l.valor_centavos, l.criado_em, l.finalizacao_id, f.estornada,
         ${formaEfetiva("l.id", "l.forma")} AS forma_atual,
-        a.inicio, c.nome AS cliente, u.nome AS barbeiro,
+        a.inicio, a.id AS agendamento_id, c.nome AS cliente, u.nome AS barbeiro,
         (SELECT group_concat(nome, ' + ') FROM (SELECT i.nome FROM finalizacao_itens i WHERE i.finalizacao_id = l.finalizacao_id ORDER BY i.rowid)) AS descricao
       FROM caixa_lancamentos l
       LEFT JOIN finalizacoes f ON f.id = l.finalizacao_id
@@ -71,7 +71,7 @@ export async function resumoCaixa(db, barbeariaId, caixa) {
     itens.push({
       id: l.id, tipo: l.tipo, em: l.criado_em, forma: l.forma, formaAtual: l.forma_atual, valorCentavos: l.valor_centavos,
       hora: l.inicio ? l.inicio.slice(11) : null, cliente: l.cliente, barbeiro: l.barbeiro, descricao: l.descricao,
-      corrigido: l.forma_atual !== l.forma,
+      corrigido: l.forma_atual !== l.forma, agendamentoId: l.tipo === "atendimento" && !l.estornada ? l.agendamento_id : null,
       podeCorrigir: l.tipo === "atendimento" && !l.estornada && caixa.situacao === "aberto"
     });
   }
@@ -238,6 +238,21 @@ export async function rotasCaixa(ctx, path, method) {
     });
   }
   if (path === "/caixa/cobrar" && method === "POST") return finalizarDados(ctx, await readJson(request));
+  // Corrigir um atendimento já cobrado (19/11/2026): valor, serviços e forma. Por baixo é "reabrir" (estorno da entrada e da
+  // comissão, com motivo) + cobrar de novo com os valores certos — nada é apagado e tudo fica registrado.
+  if (path === "/caixa/corrigir-atendimento" && method === "POST") {
+    const input = await readJson(request);
+    const motivo = typeof input.motivo === "string" ? input.motivo.trim() : "";
+    if (motivo.length < 3) return fail("Informe o motivo da correção.");
+    if (!Array.isArray(input.itens) || !input.itens.length) return fail("Informe os serviços.");
+    await reabrirDados(ctx, { id: input.id, motivo: `Correção no caixa: ${motivo}` });
+    try {
+      return await finalizarDados(ctx, { id: input.id, itens: input.itens, pagamentos: input.pagamentos, produtos: input.produtos });
+    } catch (e) {
+      // estornou mas não cobrou de novo: o atendimento voltou para a fila "Cobrar"
+      throw new HttpError(`A cobrança antiga foi estornada, mas a nova não entrou (${e.message}). O atendimento voltou para a fila: cobre de novo.`, e.status || 409);
+    }
+  }
   if (path === "/caixa/atendimento-avulso" && method === "POST") return atendimentoAvulso(ctx);
 
   // Histórico de caixas de outros dias: só gestão.

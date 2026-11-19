@@ -122,7 +122,16 @@ async function rodar(tela) {
     passo("menu superior: abas das telas mais usadas + \"Mais\" com o resto por assunto (19/11/2026)");
     await entrar("ana.semana");
     await page.waitForSelector("h2:has-text('Minha agenda')");
-    assert.deepEqual(await page.locator("#nav-topo [data-nav-topo]").allInnerTexts(), ["Agenda", "Serviços", "Produtos"], "barbeiro: abas do topo");
+    assert.deepEqual(await page.locator("#nav-topo [data-nav-topo]").allInnerTexts(), ["Agenda", "Produção", "Serviços", "Produtos"], "barbeiro: abas do topo");
+    // Minha produção (19/11/2026): produção e comissão do mês, só dela
+    await page.click("#nav-topo [data-nav-topo='Produção']");
+    await page.waitForSelector("[data-teste=minha-producao]");
+    assert.match(await page.textContent("[data-teste=minha-comissao]"), /R\$\s?\d/);
+    assert.match(await page.textContent("[data-teste=minha-conta-comissao]"), /Serviços.*Produtos.*A receber/s);
+    assert.ok(!/Beto/.test(await page.locator("main").innerText()), "não mostra dados de outro barbeiro");
+    await print("barbeira-minha-producao");
+    await page.click("#nav-topo [data-nav-topo='Agenda']");
+    await page.waitForSelector("h2:has-text('Minha agenda')");
     assert.equal(await page.locator("#menu.aberto").count(), 0, "o painel Mais começa fechado");
     assert.ok(!(await page.locator("#menu").isVisible()), "sem menu lateral fixo");
     await page.click("#btn-menu");

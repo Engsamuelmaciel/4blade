@@ -459,8 +459,13 @@ export async function finalizarDados(ctx, input) {
 
 // ---------- REABRIR (finalizado por engano) ----------
 async function reabrir(ctx) {
-  const { db, user, request } = ctx;
-  const input = await readJson(request);
+  await reabrirDados(ctx, await readJson(ctx.request));
+  return json({ mensagem: "Atendimento reaberto: entrada e comissão estornadas. O horário voltou para agendado." });
+}
+// Estorna a finalização (entrada, comissão e nota em aberto), com motivo; o horário volta para "agendado".
+// Usado por "Reabrir" (agenda) e por "Corrigir" (caixa: estorna e cobra de novo com o valor certo).
+export async function reabrirDados(ctx, input) {
+  const { db, user } = ctx;
   const a = await agendamentoPermitido(ctx, input.id);
   if (a.situacao !== "finalizado") erro("Só dá para reabrir um atendimento finalizado.", 409);
   const motivo = exigirMotivo(input.motivo);
@@ -504,7 +509,6 @@ async function reabrir(ctx) {
   if (!(await db.prepare(`SELECT 1 FROM finalizacoes WHERE id = ? AND estorno_id = ?`).bind(f.id, estornoId).first())) {
     erro("Não foi possível reabrir: o caixa foi fechado ou o atendimento já foi reaberto.", 409);
   }
-  return json({ mensagem: "Atendimento reaberto: entrada e comissão estornadas. O horário voltou para agendado." });
 }
 
 // ---------- REMARCAR (remanejar um horário agendado: outra hora, outro dia e/ou outro profissional) ----------

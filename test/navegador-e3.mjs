@@ -185,7 +185,9 @@ async function rodar(tela) {
     await ok();
     await page.waitForSelector('[data-lancamento="Troco extra (Camila Caixa)"]');
 
-    await page.click('[data-lancamento="Elias Cliente Fictício"] button:has-text("Corrigir forma")');
+    await page.click('[data-lancamento="Elias Cliente Fictício"] button:has-text("Corrigir")');
+    await page.click("dialog[open] [data-correcao=forma]");   // 19/11/2026: "Corrigir" pergunta se é só a forma ou o valor
+    await page.waitForSelector("dialog[open] [name=nova]");
     await page.selectOption("dialog[open] [name=nova]", "debito");
     await page.fill("dialog[open] [name=motivo]", "Cliente pagou no débito");
     await ok();

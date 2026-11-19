@@ -2451,7 +2451,7 @@ function janelaBloquear(ag) {
 }
 
 // Finalizar: serviços com valor de tabela (alterável), até 2 formas de pagamento com soma conferida.
-function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaAgenda, titulo = "Finalizar atendimento" } = {}) {
+function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaAgenda, titulo = "Finalizar atendimento", correcao = null } = {}) {
   // Começa só com o(s) serviço(s) do horário; "Adicionar outro serviço" abre a lista dos demais (sem repetir:
   // serviço repetido = quantidade). Pedido de 17/11/2026.
   const catalogo = [...(servicosCache || [])];
@@ -2547,8 +2547,10 @@ function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaA
     const v1 = Math.min(t, Math.max(0, paraCentavos(valor1.querySelector("input").value) ?? 0));
     return (f1 === "dinheiro" ? v1 : 0) + (segunda.querySelector("select").value === "dinheiro" ? t - v1 : 0);
   });
+  const parcelas = calculoParcelas({ forma1, dividir, valor1, segunda, totalAtual: () => total() });
   const atualizar = () => {
     troco.atualizar();
+    parcelas.atualizar();
     for (const l of linhas) l.aviso.hidden = paraCentavos(l.valor.value) === Number(l.valor.dataset.tabela);
     for (const l of prodLinhas) l.linha.querySelector(".valor-produto").textContent = reais(l.p.precoCentavos * l.q);
     totalEl.textContent = prodLinhas.length ? `Total: ${reais(total())} (produtos ${reais(totalProdutos())})` : `Total: ${reais(total())}`;
@@ -2559,10 +2561,13 @@ function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaA
     segunda.querySelector(".valor2").textContent = reais(total() - v1);
   };
   const conteudo = [
+    // Correção (19/11/2026): a cobrança antiga é estornada e esta entra no lugar; o motivo fica registrado.
+    correcao ? el("p", { class: "info", "data-teste": "correcao-antes", text: `Cobrado antes: ${correcao.antes}. Ajuste os serviços, os valores e a forma certos — a cobrança antiga é estornada (fica registrada) e esta entra no lugar.` }) : null,
+    correcao ? campo("Motivo da correção", { name: "motivoCorrecao", required: true, minlength: "3", placeholder: "Ex.: cobrei o valor errado" }) : null,
     el("p", { class: "suave", text: `${a.cliente.nome} · ${a.inicio} · o valor pode ser alterado (fica registrado e aparece para o gerente).` }),
     caixaLinhas, botaoMais, painelMais,
     caixaProdutos, botaoProd, painelProd,
-    totalEl, forma1, dividir, valor1, segunda, troco.el
+    totalEl, forma1, dividir, valor1, segunda, parcelas.el, troco.el
   ];
   const promessa = abrirJanela(titulo, conteudo, {
     ok: "Confirmar",
@@ -2582,8 +2587,9 @@ function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaA
         if (v1 === null || v1 <= 0 || v1 >= t) throw new Error("Valor da 1ª forma inválido: precisa ser maior que zero e menor que o total.");
         pagamentos = [{ forma: f.forma1.value, valorCentavos: v1 }, { forma: f.forma2.value, valorCentavos: t - v1 }];
       }
-      await api(endpoint, { metodo: "POST", corpo: { id: a.id, itens, pagamentos, ...(produtos.length ? { produtos } : {}) } });
-      avisar(produtos.length ? "Atendimento e produtos cobrados. Entrada lançada no caixa." : "Atendimento finalizado. Entrada lançada no caixa.");
+      await api(endpoint, { metodo: "POST", corpo: { id: a.id, itens, pagamentos, ...(produtos.length ? { produtos } : {}), ...(correcao ? { motivo: f.motivoCorrecao.value } : {}) } });
+      avisar(correcao ? "Atendimento corrigido: a cobrança antiga foi estornada e a certa entrou no caixa."
+        : produtos.length ? "Atendimento e produtos cobrados. Entrada lançada no caixa." : "Atendimento finalizado. Entrada lançada no caixa.");
       aoTerminar();
     }
   });
@@ -2738,6 +2744,36 @@ function campoTroco(valorEmDinheiro) {
   return { el: bloco, atualizar };
 }
 
+// Crédito parcelado (19/11/2026): mostra o valor de cada parcela para dizer ao cliente (1x a 12x). No caixa entra o total no
+// crédito — é a operadora do cartão que repassa à barbearia. Usado na cobrança, no atendimento sem horário e na venda.
+function calculoParcelas({ forma1, dividir, valor1, segunda, totalAtual }) {
+  const emCredito = () => {
+    const t = totalAtual();
+    const f1 = forma1.querySelector("select").value;
+    if (!dividir.querySelector("input").checked) return f1 === "credito" ? t : 0;
+    const v1 = Math.min(t, Math.max(0, paraCentavos(valor1.querySelector("input").value) ?? 0));
+    return (f1 === "credito" ? v1 : 0) + (segunda.querySelector("select").value === "credito" ? t - v1 : 0);
+  };
+  const sel = el("select", { name: "parcelas", id: "c-parcelas", "aria-label": "Parcelas no crédito" },
+    Array.from({ length: 12 }, (_, i) => el("option", { value: String(i + 1), text: i ? `${i + 1}x` : "À vista (1x)" })));
+  const texto = el("p", { class: "texto-parcelas", "data-teste": "parcelas-valor", role: "status" });
+  const bloco = el("div", { class: "bloco-parcelas", "data-teste": "parcelas", hidden: true },
+    el("div", { class: "campo" }, el("label", { for: "c-parcelas", text: "Parcelas no crédito" }), sel), texto);
+  const atualizar = () => {
+    const c = emCredito();
+    bloco.hidden = c <= 0;
+    if (c <= 0) return;
+    const n = Number(sel.value) || 1;
+    const base = Math.floor(c / n), sobra = c - base * n;
+    texto.textContent = n === 1 ? `À vista no crédito: ${reais(c)}.`
+      : `${n}x de ${reais(base + (sobra ? 1 : 0))}${sobra ? ` (${sobra} de ${reais(base + 1)} e ${n - sobra} de ${reais(base)})` : ""} · no caixa entra ${reais(c)} no crédito.`;
+  };
+  for (const e of [sel, forma1.querySelector("select"), segunda.querySelector("select"), valor1.querySelector("input"), dividir.querySelector("input")]) {
+    e.addEventListener("change", atualizar); e.addEventListener("input", atualizar);
+  }
+  return { el: bloco, atualizar };
+}
+
 function blocoPagamento(totalAtual, { nota = true } = {}) {
   const opcoes = nota ? Object.entries(NOME_FORMA) : OPCOES_FORMA;
   const forma1 = campo("Forma de pagamento", { tag: "select", name: "forma1", valor: "pix", opcoes });
@@ -2754,6 +2790,7 @@ function blocoPagamento(totalAtual, { nota = true } = {}) {
     return (f1 === "dinheiro" ? v1 : 0) + (segunda.querySelector("select").value === "dinheiro" ? t - v1 : 0);
   };
   const troco = campoTroco(emDinheiro);
+  const parcelas = calculoParcelas({ forma1, dividir, valor1, segunda, totalAtual });
   const avisoNota = el("p", { class: "aviso-nota", "data-teste": "aviso-nota", hidden: true, text: "Para lançar promissória, o cliente precisa estar cadastrado na base de clientes (escolha o cliente da lista). Cliente avulso não pode ficar na nota." });
   const atualizar = () => {
     avisoNota.hidden = !temNota();
@@ -2762,6 +2799,7 @@ function blocoPagamento(totalAtual, { nota = true } = {}) {
     segunda.hidden = !d;
     segunda.querySelector(".valor2").textContent = reais(totalAtual() - (paraCentavos(valor1.querySelector("input").value) ?? 0));
     troco.atualizar();
+    parcelas.atualizar();
   };
   const ler = f => {
     const t = totalAtual();
@@ -2773,7 +2811,7 @@ function blocoPagamento(totalAtual, { nota = true } = {}) {
   };
   // Alguma das formas escolhidas é promissória? (exige cliente identificado)
   const temNota = () => forma1.querySelector("select").value === "promissoria" || (dividir.querySelector("input").checked && segunda.querySelector("select").value === "promissoria");
-  return { elementos: [forma1, dividir, valor1, segunda, avisoNota, troco.el], atualizar, ler, temNota };
+  return { elementos: [forma1, dividir, valor1, segunda, parcelas.el, avisoNota, troco.el], atualizar, ler, temNota };
 }
 
 // ---------- VENDA DE PRODUTO (caixa, gestão ou barbeiro) ----------
@@ -2846,7 +2884,8 @@ function listaCaixa(c, recarregar) {
     l.tipo === "promissoria" ? el("span", { class: `etiqueta ${{ aberta: "amarela", quitada: "verde", estornada: "" }[l.notaSituacao]}`, "data-teste": "nota-situacao",
       text: { aberta: "Nota em aberto", quitada: "Nota paga", estornada: "Nota estornada" }[l.notaSituacao] }) : null,
     l.podeCorrigir || l.podeCancelarVenda ? el("div", { class: "item-acoes" },
-      l.podeCorrigir ? botao("Corrigir forma", () => abrirJanela("Corrigir forma de pagamento", [
+      l.podeCorrigir && l.agendamentoId ? botao("Corrigir", () => janelaCorrigirLancamento(l, recarregar), "pequeno") : null,
+      l.podeCorrigir && !l.agendamentoId ? botao("Corrigir forma", () => abrirJanela("Corrigir forma de pagamento", [
         el("p", { text: `${reais(l.valorCentavos)} está em ${NOME_FORMA[l.formaAtual]}. Qual a forma certa?` }),
         campo("Forma certa", { tag: "select", name: "nova", opcoes: OPCOES_FORMA.filter(([f]) => f !== l.formaAtual) }),
         campo("Motivo", { name: "motivo", required: true, minlength: "3" })
@@ -2861,6 +2900,35 @@ function listaCaixa(c, recarregar) {
         await api("/vendas/cancelar", { metodo: "POST", corpo: { id: l.vendaId, motivo } });
         avisar("Venda cancelada."); recarregar();
       }, "Cancelar venda"), "pequeno perigo") : null) : null)));
+}
+
+// Corrigir um atendimento cobrado (19/11/2026): só a forma (rápido) ou valor/serviços (estorna e cobra de novo, com motivo).
+function janelaCorrigirLancamento(l, recarregar) {
+  const soForma = () => abrirJanela("Corrigir forma de pagamento", [
+    el("p", { text: `${reais(l.valorCentavos)} está em ${NOME_FORMA[l.formaAtual]}. Qual a forma certa?` }),
+    campo("Forma certa", { tag: "select", name: "nova", opcoes: OPCOES_FORMA.filter(([f]) => f !== l.formaAtual) }),
+    campo("Motivo", { name: "motivo", required: true, minlength: "3" })
+  ], {
+    ok: "Corrigir",
+    aoConfirmar: async f => {
+      await api("/caixa/corrigir-forma", { metodo: "POST", corpo: { id: l.id, novaForma: f.nova.value, motivo: f.motivo.value } });
+      avisar("Forma corrigida."); recarregar();
+    }
+  });
+  const valor = async () => {
+    const [{ atendimentos }] = await Promise.all([api("/caixa/atendimentos"), carregarServicos()]);
+    const a = atendimentos.find(x => x.id === l.agendamentoId);
+    if (!a) { avisar("Não achei esse atendimento para corrigir. Peça ao gerente para reabrir pela agenda.", "erro"); return; }
+    janelaFinalizar(a, { endpoint: "/caixa/corrigir-atendimento", aoTerminar: recarregar, titulo: `Corrigir atendimento de ${a.cliente.nome}`,
+      correcao: { antes: `${reais(l.valorCentavos)} em ${NOME_FORMA[l.formaAtual]} (${l.descricao || "serviços"})` } });
+  };
+  return abrirJanela(`Corrigir ${l.cliente || "atendimento"}`, [
+    el("p", { text: `${[l.hora, l.cliente].filter(Boolean).join(" ")} · ${l.descricao || ""} · ${reais(l.valorCentavos)} em ${NOME_FORMA[l.formaAtual]}` }),
+    el("p", { class: "suave", text: "O que está errado?" }),
+    el("div", { class: "escolha-correcao" },
+      el("button", { type: "button", class: "botao largo", "data-correcao": "forma", text: "Só a forma de pagamento", onclick: () => { janela.close(); setTimeout(soForma); } }),
+      el("button", { type: "button", class: "botao principal largo", "data-correcao": "valor", text: "Valor ou serviços (e forma)", onclick: () => { janela.close(); setTimeout(() => valor().catch(e => avisar(e.message, "erro"))); } }))
+  ], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
 }
 
 function janelaMovimento(tipo, recarregar) {
@@ -3915,6 +3983,52 @@ function blocoExtratoProfissional(aberto = false) {
   return el("details", { class: "cartao fin-secao", "data-secao-fin": "extrato", "data-teste": "extrato-profissional", open: aberto || null },
     el("summary", {}, el("span", { class: "fin-secao-tit", text: "Extrato do profissional" }), el("span", { class: "fin-secao-res", text: "PDF e planilha" })),
     form);
+}
+
+// ---------- MINHA PRODUÇÃO (barbeiro, 19/11/2026) ----------
+// Quanto produzi e quanto já ganhei de comissão no mês (com o dia de hoje em destaque). Só os próprios números.
+const estadoMinhaProd = { mes: null };
+async function telaMinhaProducao() {
+  estadoMinhaProd.mes ||= hojeLocal().slice(0, 7);
+  const mes = estadoMinhaProd.mes;
+  const r = await api(`/equipe/minha-producao?mes=${mes}`);
+  const p = r.pessoa, pr = p.producao, co = p.comissao;
+  const irMes = n => { estadoMinhaProd.mes = mesMais(mes, n); comCarga(telaMinhaProducao).catch(e => avisar(e.message, "erro")); };
+  const hoje = r.porDia.find(d => d.data === hojeLocal());
+  // comissão de hoje: pela % atual (estimativa; o valor certo é o gravado em cada atendimento, que soma no mês)
+  const comHoje = hoje ? Math.round((hoje.servicosCentavos * p.comissaoServicoBp + hoje.produtosCentavos * p.comissaoProdutoBp) / 10000) : 0;
+  const ant = r.anterior;
+  const nomeAnt = ant ? NOME_MES[Number(ant.mes.slice(5)) - 1] : "";
+  mostrar(
+    cabecalho("Minha produção", "O que você produziu e a sua comissão"),
+    navegaMes(mes, r.titulo, irMes),
+    el("section", { class: "equipe-hero minha-prod-hero", "data-teste": "minha-producao" },
+      el("div", { class: "equipe-hero-linha" },
+        el("div", {}, el("small", { text: "Minha comissão no mês" }), el("strong", { class: "equipe-hero-valor", "data-teste": "minha-comissao", text: reais(co.totalCentavos) }),
+          el("span", { class: "hero-sub", text: `${pct(p.comissaoServicoBp)} dos serviços · ${pct(p.comissaoProdutoBp)} dos produtos` })),
+        el("div", { class: "equipe-hero-dir" }, el("small", { text: "Produção" }), el("strong", { "data-teste": "minha-producao-total", text: reais(pr.totalCentavos) }),
+          ant ? variacaoMes(pr.totalCentavos, ant.producaoCentavos, nomeAnt) : null)),
+      mes === hojeLocal().slice(0, 7) ? el("div", { class: "minha-prod-hoje", "data-teste": "producao-hoje" },
+        el("span", { text: "Hoje" }),
+        el("strong", { text: reais(hoje ? hoje.servicosCentavos + hoje.produtosCentavos : 0) }),
+        el("span", { text: `${hoje?.atendimentos || 0} atendimento(s) · comissão ≈ ${reais(comHoje)}` })) : null),
+    el("div", { class: "mini-grade", "data-teste": "minha-grade" },
+      mini("Atendimentos", String(pr.atendimentosQtd), ant ? variacaoMes(pr.atendimentosQtd, ant.atendimentosQtd, nomeAnt) : null),
+      mini("Dias trabalhados", String(pr.diasTrabalhados)),
+      mini("Ticket médio", reais(pr.ticketMedioCentavos)),
+      mini("Média por dia", reais(pr.mediaPorDiaCentavos))),
+    el("section", { class: "cartao" },
+      el("h3", { text: "Minha comissão" }),
+      el("dl", { class: "dados-item quadro-pessoa", "data-teste": "minha-conta-comissao" },
+        el("dt", { text: `Serviços (${reais(pr.servicosCentavos)} × ${pct(p.comissaoServicoBp)})` }), el("dd", { text: reais(co.servicoCentavos) }),
+        el("dt", { text: `Produtos (${reais(pr.produtosCentavos)} × ${pct(p.comissaoProdutoBp)})` }), el("dd", { text: reais(co.produtoCentavos) }),
+        p.salario.valorCentavos ? [el("dt", { text: "Salário fixo" }), el("dd", { text: reais(p.salario.valorCentavos) })] : null,
+        p.vales.totalCentavos ? [el("dt", { text: "Vales (adiantamentos)" }), el("dd", { text: `− ${reais(p.vales.totalCentavos)}` })] : null,
+        co.pagaCentavos || p.salario.pago ? [el("dt", { text: "Já recebido" }), el("dd", { text: reais(co.pagaCentavos + (p.salario.pago?.valorCentavos || 0)) })] : null,
+        el("dt", { class: "forte", text: "A receber" }), el("dd", { class: "forte", "data-teste": "a-receber", text: reais(Math.max(0, p.aPagar.totalCentavos)) }))),
+    el("section", { class: "cartao" }, el("h3", { text: "Produção por dia" }), graficoDiasPessoa(r.porDia)),
+    r.servicos.length ? el("section", { class: "cartao" }, el("h3", { text: "Serviços que mais fiz" }),
+      el("ul", { class: "lista-simples" }, r.servicos.map(x => el("li", { class: "linha-servico-top" }, el("span", { text: `${x.nome} · ${x.qtd}x` }), el("strong", { text: reais(x.totalCentavos) }))))) : null);
 }
 
 // ---------- PAGAMENTO DA EQUIPE (17/11/2026) ----------
@@ -5480,7 +5594,7 @@ setInterval(() => { if (document.visibilityState === "visible" && Date.now() - u
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Date.now() - ultimoSinalUso > 55000) enviarUso(); });
 
 const NOME_TELA = {
-  "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", "agenda-lote": "Subir horários em lote", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
+  "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", "agenda-lote": "Subir horários em lote", "minha-producao": "Minha produção", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
   clientes: "Clientes", mensagens: "Mensagens", notas: "Notas", notificacoes: "Notificações", financeiro: "Relatório financeiro",
   "pagamento-equipe": "Pagamento da equipe", comissoes: "Comissões e vales", contas: "Despesas", contador: "Contador e dados",
   servicos: "Serviços", produtos: "Produtos", estoque: "Estoque", equipe: "Equipe", funcionamento: "Funcionamento", assinatura: "Meu plano",
@@ -5702,7 +5816,7 @@ function gruposDoPerfil(p) {
     { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
   ];
   if (p === "barbeiro") return [
-    { id: "atendimento", titulo: "Meu trabalho", icone: "agenda", itens: [["agenda", "Minha agenda", "agenda"], ["agenda-lote", "Subir horários em lote", "lista"], ["notificacoes", "Notificações", "sino"]] },
+    { id: "atendimento", titulo: "Meu trabalho", icone: "agenda", itens: [["agenda", "Minha agenda", "agenda"], ["minha-producao", "Minha produção", "grafico"], ["agenda-lote", "Subir horários em lote", "lista"], ["notificacoes", "Notificações", "sino"]] },
     { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
   ];
   // Gerente/dono: menu lateral (organização de antes); Financeiro reúne tudo o que é financeiro.
@@ -5724,7 +5838,7 @@ function navPrincipal() {
   if (p === "plataforma") return [["plataforma", "Barbearias", "loja"], ["pedidos", "Pedidos", "clientes"], ["chamados", "Chamados", "suporte"]];
   if (usuario.assinatura?.bloqueada) return [["assinatura", "Assinatura", "dinheiro"], ["suporte", "Suporte", "suporte"]];
   if (p === "caixa") return [["visao-dia", "Hoje", "painel"], ["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["clientes", "Clientes", "clientes"], ["notas", "Notas", "contas"]];
-  if (p === "barbeiro") return [["agenda", "Agenda", "agenda"], ["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]];
+  if (p === "barbeiro") return [["agenda", "Agenda", "agenda"], ["minha-producao", "Produção", "grafico"], ["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]];
   return [["painel", "Início", "painel"], ["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"],
     ["contas", "Despesas", "contas"], ["financeiro", "Relatórios", "grafico"]];
 }
@@ -5746,7 +5860,9 @@ function montarMenuLateral() {
   btnMenu.setAttribute("aria-label", "Abrir menu");
   btnMenu.classList.remove("ativo");
   btnMenu.hidden = false;
-  document.getElementById("nav-topo").hidden = true;
+  const navTopo = document.getElementById("nav-topo");
+  navTopo.hidden = true;
+  navTopo.replaceChildren();   // tira as abas de quem estava antes (ex.: caixa saiu e o gerente entrou no mesmo aparelho)
   document.body.classList.add("com-lateral"); document.body.classList.remove("com-topo");
   for (const g of grupos) if (g.itens.some(([r]) => r === atual)) gruposAbertos.add(g.id);
   aside.replaceChildren(
@@ -5864,6 +5980,7 @@ const ROTAS = {
   mensagens: { perfis: ["proprietario", "gerente", "caixa"], tela: telaMensagens },
   agenda: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgenda },
   "agenda-lote": { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgendaLote },
+  "minha-producao": { perfis: ["barbeiro"], tela: telaMinhaProducao },
   notas: { perfis: ["proprietario", "gerente", "caixa"], tela: telaNotas },
   "pagamento-equipe": { perfis: ["proprietario", "gerente"], tela: telaPagamentoEquipe },
   notificacoes: { perfis: ["proprietario", "gerente", "caixa", "barbeiro"], tela: telaNotificacoes },
