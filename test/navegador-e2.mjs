@@ -249,6 +249,7 @@ async function rodar(tela) {
     passo("caixa vê a entrada com valor bruto e sem comissão");
     await entrar("camila.navalha", "Senha-Camila-2026");
     await ir(page, "Caixa");
+    await page.evaluate(() => document.querySelectorAll('.pagos-hoje').forEach(d => { d.open = true; }));
     await page.waitForSelector('[data-cobrar="Diego Cliente Fictício"] >> text=Pago');   // aba Cobrar: já pago
     await page.click(".pdv-barra .alterna button:has-text('Lançamentos')");
     await page.waitForSelector('[data-lancamento="Diego Cliente Fictício"]');

@@ -66,7 +66,7 @@ async function rodar(tela) {
     await page.fill("#c-login", login);
     await page.fill("#c-senha", SENHA);
     await page.click("button:has-text('Entrar')");
-    await page.waitForSelector("#menu:not([hidden]) .grupo");
+    await page.waitForSelector("#nav-topo:not([hidden]) .nav-aba");
     await pronto();
   };
   const sair = async () => { await page.click("#btn-conta"); await page.click("#btn-sair"); await page.waitForSelector("text=Você saiu do sistema."); };
@@ -144,9 +144,10 @@ async function rodar(tela) {
     await page.click(".fin-controles .alterna button:has-text('Mês')");
     await pronto();
     assert.match(await page.textContent("[data-parte='Salários (equipe)']"), /R\$\s?1\.500,00/);
+    await page.click("[data-aba-fin=equipe]");   // relatórios em abas (19/11/2026)
+    await pronto();
     assert.match(await page.textContent('[data-pessoa-fin="Beto Barbeiro"]'), /1\.500,00/);
     const d = page.locator("[data-secao-fin=profissionais]");
-    if (await d.getAttribute("open") === null) await d.locator(":scope > summary").click();
     await d.scrollIntoViewIfNeeded();
     await page.screenshot({ path: join(PRINTS, `${tela.nome}-${String(++n).padStart(2, "0")}-financeiro-equipe.png`) });
     await ir(page, "Painel");

@@ -269,8 +269,8 @@ async function rodar(tela) {
 
     passo("gerente baixa o extrato da Ana no Relatório financeiro (antes ficava em Meu desempenho)");
     await ir(page, "Relatório financeiro");
-    await page.waitForSelector("[data-teste=extrato-profissional]");
-    await page.click("[data-teste=extrato-profissional] > summary");
+    await page.click("[data-aba-fin=equipe]");   // 19/11/2026: relatórios em abas; o extrato fica na aba Equipe (já aberto)
+    await page.waitForSelector("[data-teste=extrato-profissional][open]");
     await page.waitForSelector("#extrato-pessoa option:has-text('Ana Barbeira')", { state: "attached" });
     await page.selectOption("#extrato-pessoa", { label: "Ana Barbeira" });
     await page.fill("#mes-extrato", dia(4).slice(0, 7));

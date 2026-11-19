@@ -151,7 +151,7 @@ async function rodar(tela) {
     await page.waitForSelector('[data-situacao="bloqueada"]');
     await pronto();
     assert.equal(await page.evaluate(() => location.hash), "#/assinatura");
-    assert.deepEqual(await page.locator("#menu .nav-item").allInnerTexts(), ["Minha assinatura", "Suporte"], "menu só com a assinatura e o suporte");
+    assert.deepEqual(await page.locator("#nav-topo [data-nav-topo]").allInnerTexts(), ["Assinatura", "Suporte"], "menu só com a assinatura e o suporte");
     await print("bloqueada");
     passo("bloqueio: o dono só vê a assinatura para pagar");
 
@@ -160,7 +160,7 @@ async function rodar(tela) {
     await page.reload();
     await page.waitForSelector('[data-situacao="em_dia"]');
     assert.equal(await page.locator("#faixa-assinatura").isHidden(), true);
-    assert.ok(await page.locator("#menu .nav-item").count() > 5);
+    assert.ok(await page.locator("#menu .nav-item, #nav-topo [data-nav-topo]").count() > 5);
     await print("paga-em-dia");
     passo("pagamento confirmado: liberado na hora");
 

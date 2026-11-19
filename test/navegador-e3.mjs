@@ -206,10 +206,12 @@ async function rodar(tela) {
     await page.fill("dialog[open] [name=obs]", "Troco dado a mais (fictício)");
     await print("caixa-fechamento-esperado-x-contado");
     await ok();
-    await page.waitForSelector("[data-tela=caixa-fechado]");
+    // 19/11/2026: o caixa continua na tela de PDV (pode seguir lançando); o fechamento fica num aviso que abre ao tocar
+    await page.waitForSelector("[data-teste=aviso-gerente-caixa]");
+    await page.click("[data-teste=aviso-gerente-caixa] > summary");
     assert.match(await texto("[data-teste=diferenca-fechada]"), /Falta de R\$\s?5,00/);
-    assert.equal(await page.locator("button:has-text('Vender produto')").count(), 0, "fechado não muda");
     assert.equal(await page.locator("button:has-text('Reabrir caixa')").count(), 0, "caixa não reabre");
+    assert.equal(await page.locator(".pdv-ferramentas button:has-text('Fechar caixa')").count(), 0, "já fechado");
     await print("caixa-fechado");
     await sair();
 
@@ -238,12 +240,12 @@ async function rodar(tela) {
     await page.click("[data-teste=carrinho] button:has-text('Finalizar venda')");
     await page.waitForSelector("text=Venda registrada");
     await print("gerente-vende-com-caixa-fechado");
-    await page.click("a:has-text('Caixas de outros dias')");
+    await page.click(".pdv-ferramentas a:has-text('Outros dias')");
     await page.waitForSelector(`[data-caixa-dia="${HOJE}"]`);
     assert.match(await texto(`[data-caixa-dia="${HOJE}"]`), /falta R\$\s?5,00/);
     await print("gerente-historico-de-caixas");
     await page.click(`[data-caixa-dia="${HOJE}"] a`);
-    await page.click("summary:has-text('Ver o fechamento e reabrir')");
+    await page.click("[data-teste=aviso-gerente-caixa] > summary");
     await page.click("button:has-text('Reabrir caixa')");
     await page.fill("dialog[open] #c-motivo", "Conferir venda lançada");
     await ok();

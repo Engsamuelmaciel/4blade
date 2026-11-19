@@ -130,29 +130,28 @@ export async function caixaParaLancar(ctx, msgFechado = "O caixa de hoje não es
   const hoje = hojeBrasil();
   let c = await caixaDoDia(ctx.db, ctx.barbeariaId, hoje);
   if (c && c.situacao === "aberto") return c;
-  if (!isGestao(ctx.user)) erro(msgFechado, 409);
+  // 19/11/2026 (pedido do responsável): qualquer pessoa lança com o caixa fechado ou ainda não aberto.
+  // Fechado: o lançamento entra no caixa de hoje depois do fechamento. Não aberto: abre sozinho (troco R$ 0,00).
+  void msgFechado;
   if (!c) {
     const id = crypto.randomUUID();
     await ctx.db.batch([
       ctx.db.prepare("INSERT INTO caixas (id, barbearia_id, data, troco_centavos, aberto_por) VALUES (?, ?, ?, 0, ?) ON CONFLICT(barbearia_id, data) DO NOTHING")
         .bind(id, ctx.barbeariaId, hoje, ctx.user.id),
-      auditoria(ctx, "caixa_aberto", id, { depois: { data: hoje, troco: 0 }, motivo: "Aberto automaticamente por lançamento do gerente" })
+      auditoria(ctx, "caixa_aberto", id, { depois: { data: hoje, troco: 0 }, motivo: "Aberto automaticamente pelo primeiro lançamento do dia" })
     ]);
     c = await caixaDoDia(ctx.db, ctx.barbeariaId, hoje);
   }
   return c;
 }
-// Condição SQL do caixa no momento de gravar: equipe exige aberto; gestão aceita qualquer situação.
-export const sqlCaixaOk = ctx => (isGestao(ctx.user) ? "EXISTS (SELECT 1 FROM caixas WHERE id = ?)" : "EXISTS (SELECT 1 FROM caixas WHERE id = ? AND situacao = 'aberto')");
+// Condição SQL do caixa no momento de gravar: o caixa precisa existir (aberto ou fechado: todos lançam, 19/11/2026).
+// eslint-disable-next-line no-unused-vars
+export const sqlCaixaOk = ctx => "EXISTS (SELECT 1 FROM caixas WHERE id = ?)";
 
 export async function sangriaAutomatica(ctx, valorCentavos, motivo) {
-  // Sai dinheiro da gaveta: precisa existir o caixa de hoje (sem caixa não há dinheiro). Gerente: vale mesmo fechado.
-  const caixa = await caixaDoDia(ctx.db, ctx.barbeariaId, hojeBrasil());
-  if (!caixa || (caixa.situacao !== "aberto" && !isGestao(ctx.user))) erro("Para pagar com dinheiro do caixa, o caixa de hoje precisa estar aberto.", 409);
-  const { totais } = await resumoCaixa(ctx.db, ctx.barbeariaId, caixa);
-  if (valorCentavos > totais.dinheiroEsperadoCentavos) {
-    erro(`Não há dinheiro suficiente no caixa (na gaveta: ${(totais.dinheiroEsperadoCentavos / 100).toFixed(2).replace(".", ",")}).`, 409);
-  }
+  // Sai dinheiro da gaveta (despesa ou comissão paga "com dinheiro do caixa"). 19/11/2026: sem trava — o caixa de hoje
+  // abre sozinho se preciso, vale fechado, e sem dinheiro suficiente fica com saldo negativo (quem marcou "saiu do caixa" confirmou).
+  const caixa = await caixaParaLancar(ctx);
   const id = crypto.randomUUID();
   return {
     id,
@@ -222,10 +221,10 @@ export async function rotasCaixa(ctx, path, method) {
                   FROM agendamentos a JOIN usuarios u ON u.id = a.barbeiro_id JOIN clientes c ON c.id = a.cliente_id
                   LEFT JOIN finalizacoes f ON f.agendamento_id = a.id AND f.estornada = 0
                   WHERE a.barbearia_id = ? AND ((a.data = ? AND a.situacao IN ('agendado','finalizado'))
-                    OR (a.data BETWEEN ? AND ? AND a.situacao = 'agendado'))   -- atendimentos dos últimos 7 dias que ficaram sem cobrar
-                  ORDER BY a.inicio`).bind(ctx.barbeariaId, hoje, somarDias(hoje, -7), somarDias(hoje, -1)).all(),
+                    OR (a.data BETWEEN ? AND ? AND a.situacao = 'agendado'))   -- atendimentos dos últimos 30 dias que ficaram sem cobrar
+                  ORDER BY a.inicio`).bind(ctx.barbeariaId, hoje, somarDias(hoje, -30), somarDias(hoje, -1)).all(),
       db.prepare(`SELECT s.agendamento_id, s.servico_id, s.nome, sv.preco_centavos FROM agendamento_servicos s JOIN agendamentos a ON a.id = s.agendamento_id
-                  LEFT JOIN servicos sv ON sv.id = s.servico_id WHERE a.barbearia_id = ? AND a.data BETWEEN ? AND ? AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = s.id) ORDER BY s.rowid`).bind(ctx.barbeariaId, somarDias(hoje, -7), hoje).all(),
+                  LEFT JOIN servicos sv ON sv.id = s.servico_id WHERE a.barbearia_id = ? AND a.data BETWEEN ? AND ? AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = s.id) ORDER BY s.rowid`).bind(ctx.barbeariaId, somarDias(hoje, -30), hoje).all(),
       db.prepare(`SELECT id, nome FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('proprietario','gerente','barbeiro') ORDER BY nome`).bind(ctx.barbeariaId).all()
     ]);
     return json({
@@ -272,12 +271,11 @@ export async function rotasCaixa(ctx, path, method) {
     const r = await db.prepare(`INSERT INTO caixas (id, barbearia_id, data, troco_centavos, aberto_por) VALUES (?, ?, ?, ?, ?)
                                 ON CONFLICT(barbearia_id, data) DO NOTHING`).bind(id, ctx.barbeariaId, hoje, input.trocoCentavos, user.id).run();
     if (r.meta.changes !== 1) {
-      // Caixa aberto automaticamente (lançamento do gerente) e ainda sem nenhum lançamento: aqui só se define o troco.
+      // Caixa aberto automaticamente pelo 1º lançamento do dia (troco R$ 0,00): aqui só se informa o troco da gaveta,
+      // mesmo que já tenha lançamentos (19/11/2026 — sem trava). Informado uma vez; depois, só com suprimento/sangria.
       const c = await caixaDoDia(db, ctx.barbeariaId, hoje);
-      const vazio = c && c.situacao === "aberto" && c.troco_centavos === 0 && !(await db.prepare(`SELECT 1 FROM caixa_lancamentos WHERE caixa_id = ?1
-          UNION ALL SELECT 1 FROM caixa_movimentos WHERE caixa_id = ?1 UNION ALL SELECT 1 FROM promissorias WHERE caixa_id = ?1
-          UNION ALL SELECT 1 FROM promissoria_pagamentos WHERE caixa_id = ?1 LIMIT 1`).bind(c.id).first());
-      if (!vazio || !input.trocoCentavos) return fail("O caixa de hoje já foi aberto.", 409);
+      const semTroco = c && c.situacao === "aberto" && c.troco_centavos === 0;
+      if (!semTroco || !input.trocoCentavos) return fail("O caixa de hoje já foi aberto.", 409);
       await db.batch([
         db.prepare("UPDATE caixas SET troco_centavos = ? WHERE id = ? AND barbearia_id = ? AND troco_centavos = 0").bind(input.trocoCentavos, c.id, ctx.barbeariaId),
         auditoria(ctx, "caixa_troco_definido", c.id, { antes: { troco: 0 }, depois: { troco: input.trocoCentavos } })
@@ -312,10 +310,7 @@ export async function rotasCaixa(ctx, path, method) {
       ]);
       caixa = await caixaDoDia(db, ctx.barbeariaId, hoje);
     }
-    if (!caixa || caixa.situacao !== "aberto") {
-      if (!isGestao(user)) return fail("O caixa de hoje não está aberto.", 409);
-      caixa = await caixaParaLancar(ctx);   // gerente: lança com o caixa fechado (ou abre o do dia)
-    }
+    if (!caixa || caixa.situacao !== "aberto") caixa = await caixaParaLancar(ctx);   // todos lançam com o caixa fechado (ou abre o do dia)
     let negativo = false;
     if (input.tipo === "sangria") {
       const { totais } = await resumoCaixa(db, ctx.barbeariaId, caixa);

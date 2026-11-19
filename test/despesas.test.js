@@ -64,9 +64,9 @@ describe("despesas: forma de pagamento e parcelas", () => {
     const r = await post("/api/contas", ger.token, { descricao: "Produtos de limpeza", categoria: "outros", valorCentavos: 4590, vencimento: HOJE, forma: "pix", jaPaga: true });
     assert.equal(r.status, 201, JSON.stringify(r.dados));
     assert.deepEqual([r.dados.conta.situacao, r.dados.conta.pagoEm, r.dados.conta.forma], ["paga", HOJE, "pix"]);
-    // dinheiro do caixa sem caixa aberto → recusado
-    const sem = await post("/api/contas", ger.token, { descricao: "Café", categoria: "outros", valorCentavos: 1500, vencimento: HOJE, forma: "dinheiro", jaPaga: true, comCaixa: true });
-    assert.equal(sem.status, 409);
+    // dinheiro do caixa sem caixa aberto → o caixa abre sozinho (19/11/2026) e a retirada fica como saldo negativo
+    const sem = await post("/api/contas", ger.token, { descricao: "Pão", categoria: "outros", valorCentavos: 1500, vencimento: HOJE, forma: "dinheiro", jaPaga: true, comCaixa: true });
+    assert.equal(sem.status, 201, JSON.stringify(sem.dados));
     await post("/api/caixa/abrir", cx.token, { trocoCentavos: 5000 });
     const com = await post("/api/contas", ger.token, { descricao: "Café", categoria: "outros", valorCentavos: 1500, vencimento: HOJE, forma: "dinheiro", jaPaga: true, comCaixa: true });
     assert.equal(com.status, 201, JSON.stringify(com.dados));

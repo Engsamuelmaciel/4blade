@@ -1149,12 +1149,13 @@ function atualizarTopo() {
   } else {
     sub.textContent = "Gestão para barbearias";
     menuEl().hidden = true;
+    document.getElementById("nav-topo").hidden = true;
     fecharMenu();
   }
   acoes.hidden = !logado;
   document.getElementById("btn-notif").hidden = !(logado && usuario.barbearia && usuario.perfil !== "plataforma");
   atualizarFaixa();
-  document.getElementById("btn-menu").hidden = !logado;
+  if (!logado) document.getElementById("btn-menu").hidden = true;
   document.body.classList.toggle("com-menu", logado);
 }
 
@@ -1500,9 +1501,6 @@ async function telaAgenda() {
   mostrar(
     cabecalho(veTodas() ? "Agenda" : "Minha agenda", subtitulo),
     barra,
-    !ag.caixaAberto && (v === "dia" || v === "semana") ? el("p", { class: "info", text: ehCaixa() ? "O caixa de hoje ainda não foi aberto: abra o caixa para cobrar os atendimentos."
-      : gestao() ? "O caixa de hoje ainda não foi aberto. Como gerente, você pode finalizar assim mesmo (o caixa abre sozinho)."
-      : "O caixa de hoje ainda não foi aberto: para finalizar atendimentos, peça para abrir o caixa." }) : null,
     corpo);
 }
 
@@ -2804,46 +2802,45 @@ async function telaCaixa(dataHistorico = null) {
   const voltar = dataHistorico ? "#/caixa-historico" : null;
   const linkHistorico = gestao() && !dataHistorico ? el("a", { class: "botao pequeno", href: "#/caixa-historico", text: "Caixas de outros dias" }) : null;
 
-  let formAbrirGerente = null;
-  if (!c.caixa) {
-    if (dataHistorico) { mostrar(cabecalho("Caixa", dataBR(dataHistorico), voltar), el("p", { class: "vazio", text: "Não houve caixa nesse dia." })); return; }
-    const form = el("form", { class: "cartao" },
-      el("h3", { text: "Abrir o caixa de hoje" }),
-      campo("Troco inicial (R$)", { name: "troco", inputmode: "decimal", required: true, placeholder: "100,00" }),
-      el("button", { type: "submit", class: "botao principal", text: "Abrir caixa" }));
+  if (!c.caixa && dataHistorico && dataHistorico !== hojeLocal()) {
+    mostrar(cabecalho("Caixa", dataBR(dataHistorico), voltar), el("p", { class: "vazio", text: "Não houve caixa nesse dia." })); return;
+  }
+  // 19/11/2026: o caixa nunca trava a tela. Sem caixa aberto, o 1º lançamento abre sozinho (troco R$ 0,00);
+  // abrir com troco é opcional e fica num cartão discreto no topo.
+  let cartaoAbrir = null;
+  if (!c.caixa || (c.caixa.situacao === "aberto" && !c.caixa.trocoCentavos && !dataHistorico)) {
+    const form = el("form", { class: "abrir-caixa-linha" },
+      campo("Troco na gaveta (R$)", { name: "troco", inputmode: "decimal", required: true, placeholder: "100,00" }),
+      el("button", { type: "submit", class: "botao principal", text: c.caixa ? "Informar troco" : "Abrir caixa" }));
     form.addEventListener("submit", ev => {
       ev.preventDefault();
       enviar(form, async () => {
         const troco = paraCentavos(form.troco.value);
         if (troco === null) throw new Error("Valor do troco inválido. Exemplo: 100,00");
         await api("/caixa/abrir", { metodo: "POST", corpo: { trocoCentavos: troco } });
-        avisar("Caixa aberto.");
+        avisar(c.caixa ? "Troco informado." : "Caixa aberto.");
         telaCaixa();
       });
     });
-    if (gestao()) {
-      // Gerente/dono (17/11/2026): lança mesmo sem abrir; o caixa do dia abre sozinho (troco R$ 0,00) no 1º lançamento.
-      formAbrirGerente = el("details", { class: "cartao abrir-gerente", "data-teste": "abrir-gerente" },
-        el("summary", { text: "Abrir o caixa com troco (opcional para o gerente)" }), form);
+    cartaoAbrir = el("section", { class: "cartao abrir-caixa", "data-teste": "abrir-gerente" },
+      el("div", { class: "abrir-caixa-txt" },
+        el("h3", { text: c.caixa ? "Informe o troco da gaveta" : "Abrir o caixa de hoje" }),
+        el("p", { class: "suave", text: c.caixa ? "O caixa abriu sozinho no primeiro lançamento, com troco R$ 0,00. Informe quanto tinha na gaveta (uma vez)."
+          : "Opcional: se não abrir, o caixa abre sozinho no primeiro lançamento (troco R$ 0,00)." })),
+      form);
+    if (!c.caixa) {
       c.caixa = { situacao: "nao_aberto", trocoCentavos: 0, abertoPor: null };
       c.totais = { porForma: { dinheiro: 0, pix: 0, debito: 0, credito: 0 }, atendimentosCentavos: 0, vendasCentavos: 0, entradasCentavos: 0, notasLancadasCentavos: 0,
         notasRecebidasCentavos: 0, sangriasCentavos: 0, suprimentosCentavos: 0, dinheiroEsperadoCentavos: 0, saldoNegativoCentavos: 0 };
       c.lancamentos = []; c.vendas = [];
-    } else {
-    mostrar(cabecalho("Caixa", `${dataBR(c.data)} · ${usuario.barbearia.nome}`, voltar),
-      el("p", { class: "info", text: "Enquanto o caixa não for aberto, ninguém consegue finalizar atendimentos nem vender." }),
-      el("section", { class: "estreito-esq", "data-tela": "caixa" }, form,
-        // Despesa antes de abrir (ex.: lanche pago no Pix): a sangria abre o caixa com troco 0 e saldo negativo (com aviso).
-        botao("Lançar uma sangria (retirada)", () => janelaMovimento("sangria", () => telaCaixa()), "pequeno largo")), linkHistorico);
-    return;
     }
   }
 
   const t = c.totais;
   const aberto = c.caixa.situacao === "aberto";
   const ehHoje = !dataHistorico || dataHistorico === hojeLocal();
+  // Resumo compacto: quanto entrou e quanto deve ter na gaveta; abaixo, uma linha por forma.
   const topo = [
-    // Topo do caixa: quanto entrou no total e quanto deve ter na gaveta; abaixo, uma linha compacta por forma.
     el("div", { class: "pdv-topo", "data-tela": "caixa" },
       el("div", { class: "pdv-num" }, el("span", { text: "Recebido hoje" }), el("strong", { "data-teste": "entradas", text: reais(t.entradasCentavos) }),
         el("small", { text: `Atendimentos ${reais(t.atendimentosCentavos)} · produtos ${reais(t.vendasCentavos)}${t.notasRecebidasCentavos ? ` · notas ${reais(t.notasRecebidasCentavos)}` : ""}` })),
@@ -2855,68 +2852,71 @@ async function telaCaixa(dataHistorico = null) {
       [["dinheiro", "Dinheiro"], ["pix", "Pix"], ["debito", "Débito"], ["credito", "Crédito"]].map(([f, nome]) =>
         el("div", { class: `forma-card forma-${f}`, "data-forma": f }, el("span", { text: nome }), el("strong", { text: reais(t.porForma[f] || 0) }))),
       el("div", { class: "forma-card forma-promissoria", "data-forma": "promissoria", "data-teste": "notas-lancadas", title: "Promissória: a receber (não entrou no caixa)" },
-        el("span", { text: "Promissória" }), el("strong", { text: reais(t.notasLancadasCentavos || 0) })))
+        el("span", { text: "Nota" }), el("strong", { text: reais(t.notasLancadasCentavos || 0) })))
   ];
+  const reabrir = () => pedirMotivo("Reabrir o caixa", "Permite corrigir lançamentos deste dia. Depois, feche de novo.", async motivo => {
+    await api("/caixa/reabrir", { metodo: "POST", corpo: { data: c.data, motivo } });
+    avisar("Caixa reaberto."); recarregar();
+  }, "Reabrir");
 
-  // Gerente/dono lança no caixa de hoje mesmo fechado ou ainda não aberto (17/11/2026).
-  const gerenteLivre = ehHoje && !aberto && gestao();
-  if ((!aberto || !ehHoje) && !gerenteLivre) {
+  // Caixa de outro dia (histórico da gestão): só consulta.
+  if (!ehHoje) {
     mostrar(
-      cabecalho(dataHistorico ? `Caixa de ${dataBR(dataHistorico)}` : "Caixa", `${dataBR(c.data)} · aberto por ${c.caixa.abertoPor}`, voltar),
+      cabecalho(`Caixa de ${dataBR(dataHistorico)}`, `aberto por ${c.caixa.abertoPor}`, voltar),
       topo,
       aberto ? el("div", { class: "pdv-barra" }, el("div", { class: "pdv-acoes" }, botao("Fechar caixa", () => janelaFechar(c, recarregar, dataHistorico), "pequeno perigo")))
-        : el("div", {}, blocoFechamento(c),
-          gestao() ? botao("Reabrir caixa", () => pedirMotivo("Reabrir o caixa", "Permite corrigir lançamentos deste dia. Depois, feche de novo.", async motivo => {
-            await api("/caixa/reabrir", { metodo: "POST", corpo: { data: c.data, motivo } });
-            avisar("Caixa reaberto."); recarregar();
-          }, "Reabrir"), "pequeno") : null),
+        : el("div", {}, blocoFechamento(c), gestao() ? botao("Reabrir caixa", reabrir, "pequeno") : null),
       c.reaberturas?.length ? el("p", { class: "suave", text: `Reaberto ${c.reaberturas.length}x (último motivo: ${c.reaberturas[0].motivo})` }) : null,
-      el("h3", { text: "Lançamentos do dia" }), listaCaixa(c, recarregar), linkHistorico);
+      el("h3", { text: "Lançamentos do dia" }), listaCaixa(c, recarregar));
     return;
   }
 
-  // Caixa de hoje aberto: PDV
+  // Caixa de hoje: PDV sempre disponível (aberto, fechado ou ainda não aberto).
   const aba = estadoCaixa.aba;
   const trocarAba = nova => { estadoCaixa.aba = nova; recarregar(); };
   let conteudo;
-  if (aba === "cobrar") conteudo = await abaCobrar(recarregar);
+  let aCobrarQtd = null;
+  if (aba === "cobrar") { const r = await abaCobrar(recarregar); conteudo = r.el; aCobrarQtd = r.qtd; }
   else if (aba === "vender") conteudo = await abaVender(recarregar);
   else conteudo = listaCaixa(c, recarregar);
 
-  const situacaoTxt = c.caixa.situacao === "nao_aberto" ? "ainda não aberto" : c.caixa.situacao === "fechado" ? `fechado · aberto por ${c.caixa.abertoPor}` : `aberto por ${c.caixa.abertoPor}`;
+  const sit = c.caixa.situacao;
+  const situacao = el("div", { class: `pdv-situacao sit-${sit}`, "data-teste": "situacao-caixa" },
+    el("span", { class: "sit-ponto", "aria-hidden": "true" }),
+    el("span", { class: "sit-txt", text: sit === "aberto" ? `Caixa aberto · por ${c.caixa.abertoPor}` : sit === "fechado" ? `Caixa fechado · aberto por ${c.caixa.abertoPor}` : "Caixa ainda não aberto" }));
+  const aviso = sit === "fechado"
+    ? el("details", { class: "cartao aviso-fechado", "data-teste": "aviso-gerente-caixa" },
+      el("summary", { text: "O caixa de hoje já foi fechado. Pode continuar lançando: entra no caixa de hoje, depois do fechamento." }),
+      blocoFechamento(c), gestao() ? botao("Reabrir caixa", reabrir, "pequeno") : null)
+    : null;
   mostrar(
-    cabecalho("Caixa", `${dataBR(c.data)} · ${situacaoTxt}`),
-    gerenteLivre ? el("p", { class: "info aviso-gerente-caixa", "data-teste": "aviso-gerente-caixa",
-      text: c.caixa.situacao === "fechado"
-        ? "O caixa de hoje já foi fechado. Como gerente, você pode continuar cobrando, vendendo e recebendo: os lançamentos entram depois do fechamento."
-        : "O caixa de hoje ainda não foi aberto. Como gerente, você pode cobrar, vender e receber assim mesmo: o caixa abre sozinho (troco R$ 0,00) no primeiro lançamento." }) : null,
-    formAbrirGerente,
-    c.caixa.situacao === "fechado" && gerenteLivre ? el("details", { class: "cartao" }, el("summary", { text: "Ver o fechamento e reabrir" }), blocoFechamento(c),
-      botao("Reabrir caixa", () => pedirMotivo("Reabrir o caixa", "Permite corrigir lançamentos deste dia. Depois, feche de novo.", async motivo => {
-        await api("/caixa/reabrir", { metodo: "POST", corpo: { data: c.data, motivo } });
-        avisar("Caixa reaberto."); recarregar();
-      }, "Reabrir"), "pequeno")) : null,
+    cabecalho("Caixa", dataBR(c.data)),
+    situacao,
+    cartaoAbrir,
+    aviso,
     topo,
+    // Ferramentas do caixa numa linha só, logo abaixo do resumo
+    el("section", { class: "pdv-ferramentas", "aria-label": "Ações do caixa" },
+      el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("sangria", recarregar) }, icone("setaBaixo"), el("span", { text: "Sangria" })),
+      el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("suprimento", recarregar) }, icone("setaCima"), el("span", { text: "Suprimento" })),
+      el("a", { class: "botao ferramenta", href: "#/notas" }, icone("contas"), el("span", { text: "Notas" })),
+      aberto ? el("button", { type: "button", class: "botao ferramenta perigo", onclick: () => janelaFechar(c, recarregar, dataHistorico) }, icone("cadeado"), el("span", { text: "Fechar caixa" })) : null,
+      gestao() ? el("a", { class: "botao ferramenta", href: "#/caixa-historico" }, icone("lista"), el("span", { text: "Outros dias" })) : null),
     c.reaberturas?.length ? el("p", { class: "suave", text: `Reaberto ${c.reaberturas.length}x (último motivo: ${c.reaberturas[0].motivo})` }) : null,
-    // Três botões grandes (o que o caixa mais usa) e, separado, as ações do caixa com ícones.
+    // As três tarefas do caixa
     el("div", { class: "pdv-barra pdv-principal" },
       el("div", { class: "alterna pdv-abas", role: "tablist", "aria-label": "O que fazer" },
         [["cobrar", "Cobrar", "atendimento", "recibo"], ["vender", "Vender", "produto", "sacola"], ["lancamentos", "Lançamentos", "do dia", "lista"]].map(([k, txt, sub, ic]) =>
           el("button", { type: "button", role: "tab", "aria-selected": String(aba === k), class: `botao pdv-aba aba-${k} ${aba === k ? "ativo" : ""}`, onclick: () => trocarAba(k) },
-            icone(ic), el("span", { class: "pdv-aba-txt" }, el("strong", { text: txt }), el("small", { text: sub })))))),
-    conteudo,
-    el("section", { class: "pdv-ferramentas", "aria-label": "Ações do caixa" },
-      el("h3", { text: "Caixa" }),
-      el("div", { class: "pdv-acoes" },
-        el("a", { class: "botao ferramenta", href: "#/notas" }, icone("contas"), el("span", { text: "Notas em aberto" })),
-        el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("sangria", recarregar) }, icone("setaBaixo"), el("span", { text: "Sangria" })),
-        el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("suprimento", recarregar) }, icone("setaCima"), el("span", { text: "Suprimento" })),
-        aberto ? el("button", { type: "button", class: "botao ferramenta perigo", onclick: () => janelaFechar(c, recarregar, dataHistorico) }, icone("cadeado"), el("span", { text: "Fechar caixa" })) : null,
-        linkHistorico)));
-  timerCaixa = setTimeout(() => { if (location.hash === "#/caixa" && !janela.open && estadoCaixa.aba !== "vender") telaCaixa().catch(() => {}); }, 30000);
+            icone(ic), el("span", { class: "pdv-aba-txt" }, el("strong", { text: txt }), el("small", { text: sub })),
+            k === "cobrar" && aCobrarQtd ? el("span", { class: "pdv-aba-num", "aria-label": `${aCobrarQtd} aguardando`, text: String(aCobrarQtd) }) : null)))),
+    conteudo);
+  timerCaixa = setTimeout(() => { if (location.hash === "#/caixa" && !janela.open && estadoCaixa.aba !== "vender" && !document.activeElement?.matches?.("input")) telaCaixa().catch(() => {}); }, 30000);
 }
 
-// Aba "Cobrar atendimento": fila de hoje + atendimento sem horário.
+// Aba "Cobrar": quem falta pagar primeiro (o cartão inteiro é tocável), busca quando a fila cresce,
+// "Atendimento sem horário" para quem não estava na agenda e os pagos de hoje recolhidos.
+const estadoCobrar = { busca: "" };
 async function abaCobrar(recarregar) {
   const [{ atendimentos, profissionais }] = await Promise.all([api("/caixa/atendimentos"), carregarServicos()]);
   const aCobrar = atendimentos.filter(a => a.situacao === "agendado");
@@ -2924,45 +2924,35 @@ async function abaCobrar(recarregar) {
   const tabela = s => s.reduce((t, x) => t + (x.precoCentavos || 0), 0);
   const cobrar = a => janelaFinalizar(a, { endpoint: "/caixa/cobrar", aoTerminar: recarregar, titulo: `Concluir atendimento de ${a.cliente.nome}` });
   const quando = a => (a.atrasado ? `${dataBR(a.data).slice(0, 5)} ${a.inicio}` : a.inicio);
-  const ticket = a => el("div", { class: `ticket-at ${a.situacao === "finalizado" ? "pago" : ""} ${a.atrasado ? "atrasado" : ""}`, "data-cobrar": a.cliente.nome },
-    el("span", { class: "hora", text: quando(a) }),
-    el("div", { class: "dados" }, el("strong", { text: a.cliente.nome }), el("span", { text: `${a.barbeiro} · ${a.servicos.map(x => x.nome).join(" + ")}${a.atrasado ? " · ficou sem cobrar" : ""}` })),
-    a.situacao === "finalizado"
-      ? el("span", { class: "etiqueta verde", text: `Pago ${reais(a.totalCentavos)}` })
-      : [el("span", { class: "valor", text: reais(tabela(a.servicos)) }), botao("Cobrar", () => cobrar(a), "pequeno principal")]);
-  return el("div", { class: "pdv-cobrar" },
-    el("div", { class: "pdv-concluir" },
-      botao("✓ Concluir atendimento", () => janelaConcluir(aCobrar, profissionais, cobrar, recarregar), "principal grande-acao"),
-      botao("+ Atendimento sem horário", () => janelaAvulso(profissionais, recarregar), "dourado grande-acao")),
-    el("div", { class: "pdv-barra" }, el("h3", { text: `Aguardando pagamento (${aCobrar.length})` })),
-    aCobrar.length ? el("div", { class: "fila" }, aCobrar.map(ticket)) : el("p", { class: "vazio", text: "Nenhum atendimento da agenda aguardando pagamento." }),
-    pagos.length ? [el("h3", { class: "titulo-pagos", text: `Pagos hoje (${pagos.length})` }), el("div", { class: "fila" }, pagos.map(ticket))] : null);
-}
-
-// Concluir atendimento: escolhe um horário da agenda (de hoje ou que ficou sem cobrar) e lança a entrada.
-// O horário fica "Finalizado" na agenda do cliente e a comissão vai para o barbeiro.
-function janelaConcluir(aCobrar, profissionais, cobrar, recarregar) {
-  const busca = el("input", { type: "search", id: "concluir-busca", autocomplete: "off", placeholder: "Buscar cliente ou barbeiro", "aria-label": "Buscar atendimento" });
-  const lista = el("ul", { class: "lista-concluir", "data-teste": "lista-concluir" });
-  const desenhar = () => {
-    const t = busca.value.trim().toLowerCase();
-    const itens = aCobrar.filter(a => !t || a.cliente.nome.toLowerCase().includes(t) || a.barbeiro.toLowerCase().includes(t));
-    lista.replaceChildren(...(itens.length ? itens.map(a => el("li", {},
-      el("button", { type: "button", class: "concluir-opcao", "data-concluir": a.cliente.nome, onclick: () => { janela.close(); setTimeout(() => cobrar(a)); } },
-        el("span", { class: "hora", text: a.atrasado ? `${dataBR(a.data).slice(0, 5)} ${a.inicio}` : a.inicio }),
-        el("span", { class: "dados" }, el("strong", { text: a.cliente.nome }), el("small", { text: `${a.barbeiro} · ${a.servicos.map(x => x.nome).join(" + ")}` })),
-        el("strong", { class: "valor", text: reais(a.servicos.reduce((x, s) => x + (s.precoCentavos || 0), 0)) }))))
-      : [el("li", { class: "suave sem-resultado", text: aCobrar.length ? "Nenhum atendimento com esse nome." : "Nenhum horário da agenda aguardando pagamento." })]));
+  const ticket = a => {
+    const pago = a.situacao === "finalizado";
+    const t = el(pago ? "div" : "button", { ...(pago ? {} : { type: "button", onclick: () => cobrar(a), "aria-label": `Cobrar ${a.cliente.nome}` }),
+      class: `ticket-at ${pago ? "pago" : "a-cobrar"} ${a.atrasado ? "atrasado" : ""}`, "data-cobrar": a.cliente.nome },
+      el("span", { class: "hora", text: quando(a) }),
+      el("span", { class: "dados" }, el("strong", { text: a.cliente.nome }), el("span", { text: `${a.barbeiro} · ${a.servicos.map(x => x.nome).join(" + ")}${a.atrasado ? " · ficou sem cobrar" : ""}` })),
+      pago ? el("span", { class: "etiqueta verde", text: `Pago ${reais(a.totalCentavos)}` })
+        : [el("span", { class: "valor", text: reais(tabela(a.servicos)) }), el("span", { class: "botao pequeno principal falso-botao", text: "Cobrar" })]);
+    return t;
   };
-  busca.addEventListener("input", desenhar);
+  const fila = el("div", { class: "fila" });
+  const desenhar = () => {
+    const termo = normalizar(estadoCobrar.busca);
+    const vis = aCobrar.filter(a => !termo || normalizar(`${a.cliente.nome} ${a.barbeiro}`).includes(termo));
+    fila.replaceChildren(...(vis.length ? vis.map(ticket) : [el("p", { class: "vazio", text: aCobrar.length ? "Ninguém com esse nome na fila." : "Ninguém aguardando pagamento. Quando o barbeiro terminar, o atendimento aparece aqui." })]));
+  };
   desenhar();
-  return abrirJanela("Concluir atendimento", [
-    el("p", { class: "suave", text: "Escolha o atendimento que o barbeiro terminou. Depois confira o valor e a forma de pagamento: o horário fica concluído na agenda." }),
-    aCobrar.length > 4 ? busca : null,
-    lista,
-    el("p", { class: "suave centro" }, "O cliente não estava na agenda? ",
-      el("button", { type: "button", class: "link-acao", text: "Lançar atendimento sem horário", onclick: () => { janela.close(); setTimeout(() => janelaAvulso(profissionais, recarregar)); } }))
-  ], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
+  const busca = aCobrar.length > 5 ? el("input", { type: "search", class: "busca-viva", placeholder: "Buscar cliente ou barbeiro", "aria-label": "Buscar na fila", value: estadoCobrar.busca,
+    oninput: e => { estadoCobrar.busca = e.target.value; desenhar(); } }) : null;
+  return {
+    qtd: aCobrar.length,
+    el: el("div", { class: "pdv-cobrar" },
+      el("div", { class: "pdv-cobrar-topo" },
+        el("h3", { text: `Aguardando pagamento (${aCobrar.length})` }),
+        botao("+ Atendimento sem horário", () => janelaAvulso(profissionais, recarregar), "dourado")),
+      busca, fila,
+      pagos.length ? el("details", { class: "pagos-hoje", open: aCobrar.length ? null : true }, el("summary", { class: "titulo-pagos", text: `Pagos hoje (${pagos.length}) · ${reais(pagos.reduce((x, a) => x + (a.totalCentavos || 0), 0))}` }),
+        el("div", { class: "fila" }, pagos.map(ticket))) : null)
+  };
 }
 
 // Atendimento sem horário marcado (cliente chegou na hora): registra e já cobra.
@@ -3384,7 +3374,12 @@ async function telaPainel() {
   ].filter(Boolean);
   const textoPeriodo = p.periodo.ini === p.periodo.fim ? dataBR(p.periodo.ini) : `${dataBR(p.periodo.ini)} a ${dataBR(p.periodo.fim)}`;
   mostrar(
-    cabecalho("Painel", textoPeriodo),
+    cabecalho("Início", textoPeriodo),
+    // Atalhos (19/11/2026): telas de uso frequente que não estão nas abas do topo
+    el("nav", { class: "pdv-ferramentas atalhos-inicio", "aria-label": "Atalhos" },
+      el("a", { class: "botao ferramenta", href: "#/visao-dia", "data-atalho": "visao-dia" }, icone("lista"), el("span", { text: "Visão do dia" })),
+      el("a", { class: "botao ferramenta", href: "#/notas", "data-atalho": "notas" }, icone("contas"), el("span", { text: "Notas em aberto" })),
+      el("a", { class: "botao ferramenta", href: "#/pagamento-equipe", "data-atalho": "equipe" }, icone("equipe"), el("span", { text: "Pagar equipe" }))),
     filtroPeriodo(periodoPainel, v => { periodoPainel = v; telaPainel(); }),
     el("div", { class: "cartoes" },
       cartao("Faturamento bruto", reais(c.brutoCentavos), `Serviços ${reais(c.atendimentosCentavos)} · produtos ${reais(c.vendasCentavos)}`, "", "bruto"),
@@ -3410,7 +3405,7 @@ async function telaPainel() {
 
 // ---------- RELATÓRIO FINANCEIRO (gestão): entradas e saídas por dia, semana, mês e ano ----------
 // Cores das séries: --serie-entrada (azul) e --serie-saida (laranja), validadas para daltonismo e nos dois temas.
-const estadoFin = { periodo: "mes", data: null, filtroMov: "todos", movVisiveis: 30 };
+const estadoFin = { periodo: "mes", data: null, filtroMov: "todos", movVisiveis: 30, aba: "resumo", cache: null };
 const NOME_ANTERIOR = { dia: "o dia anterior", semana: "a semana anterior", mes: "o mês anterior", ano: "o ano anterior" };
 const NO_ANTERIOR = { dia: "no dia anterior", semana: "na semana anterior", mes: "no mês anterior", ano: "no ano anterior" };
 const AO_ANTERIOR = { dia: "ao dia anterior", semana: "à semana anterior", mes: "ao mês anterior", ano: "ao ano anterior" };
@@ -3592,10 +3587,13 @@ function listaPartes(itens, classe, total) {
 async function telaFinanceiro() {
   estadoFin.data ||= hojeLocal();
   const e = estadoFin;
-  const f = await api(`/financeiro?periodo=${e.periodo}&data=${e.data}`);
+  // Trocar de aba não busca de novo (19/11/2026): guarda a última resposta do mesmo período.
+  const chave = `${e.periodo}|${e.data}`;
+  const f = e.cache?.chave === chave ? e.cache.f : await api(`/financeiro?periodo=${e.periodo}&data=${e.data}`);
+  e.cache = { chave, f };
   const t = f.totais, a = f.anterior, tipo = f.periodo.tipo;
   const ir = async (periodo, data) => {
-    Object.assign(estadoFin, { periodo, data, movVisiveis: 30 });
+    Object.assign(estadoFin, { periodo, data, movVisiveis: 30, cache: null });
     document.body.dataset.carregando = "1";   // tela sendo montada (os testes esperam por isto)
     try { await comCarga(telaFinanceiro); } catch (erro) { avisar(erro.message, "erro"); } finally { delete document.body.dataset.carregando; }
   };
@@ -3638,7 +3636,7 @@ async function telaFinanceiro() {
   const tituloGrafico = tipo === "dia" ? "Entradas e saídas nos últimos 7 dias" : tipo === "ano" ? "Entradas e saídas por mês" : "Entradas e saídas por dia";
   const temSerie = f.serie.pontos.some(p => p.entradasCentavos || p.saidasCentavos);
   const aoEscolher = (chave) => (f.serie.porMes ? ir("mes", `${chave}-01`) : ir("dia", chave));
-  const saldo = tipo === "dia" ? null : graficoSaldo(f.serie, f.periodo.hoje);
+  void graficoSaldo;   // saldo acumulado saiu da tela (19/11/2026: relatório completo, mas sem gráfico pouco usado)
 
   const formas = Object.entries(en.porForma).map(([forma, v]) => ({ nome: NOME_FORMA_FIN[forma], valor: v.servicosCentavos + v.produtosCentavos + v.notasCentavos,
     detalhe: [v.servicosCentavos && `serviços ${reais(v.servicosCentavos)}`, v.produtosCentavos && `produtos ${reais(v.produtosCentavos)}`, v.notasCentavos && `notas recebidas ${reais(v.notasCentavos)}`].filter(Boolean).join(" · ") }))
@@ -3697,37 +3695,50 @@ async function telaFinanceiro() {
   const secao = (titulo, resumo, id, ...filhos) => el("details", { class: "cartao fin-secao", "data-secao-fin": id, open: largo || null },
     el("summary", {}, el("span", { class: "fin-secao-tit", text: titulo }), resumo ? el("span", { class: "fin-secao-res", text: resumo }) : null), ...filhos);
   const maiorDe = l => (l[0] ? `${l[0].nome} ${reais(l[0].valor)}` : "");
-  mostrar(
-    cabecalho("Relatório financeiro", "Entradas, saídas e resultado da barbearia"),
-    controles,
-    cartoes,
-    blocoMais,
-    secaoFixa(tituloGrafico, temSerie ? graficoEntradasSaidas(f.serie, f.periodo, aoEscolher) : el("p", { class: "vazio", text: "Sem entradas nem saídas neste período." }), temSerie ? tabelaSerie(f.serie) : null),
-    saldo ? secao("Saldo acumulado no período", `Fim: ${reais(t.saldoCentavos)}`, "saldo", saldo) : null,
-    el("div", { class: "duas-colunas iguais" },
-      secao("De onde veio o dinheiro", maiorDe(formas), "entradas",
-        formas.length ? listaPartes(formas, "partes-entrada") : el("p", { class: "vazio", text: "Sem entradas no período." }),
-        origens.length ? el("h4", { text: "Por origem" }) : null, origens.length ? listaPartes(origens, "partes-entrada") : null,
-        en.notasLancadasCentavos ? el("p", { class: "suave", text: `Vendido em nota (a receber depois): ${reais(en.notasLancadasCentavos)}. Entra no faturamento, mas só vira entrada quando o cliente paga.` }) : null),
-      secao("Para onde foi o dinheiro", maiorDe(saidas), "saidas",
-        saidas.length ? listaPartes(saidas, "partes-saida") : el("p", { class: "vazio", text: "Sem saídas no período." }))),
-    el("div", { class: "duas-colunas iguais" },
-      secao("Resultado do período", reais(r.resultadoCentavos), "resultado", demonstrativo,
+  // Relatórios em 4 abas (19/11/2026): o que o dono mais pergunta, sem tela comprida.
+  const abaFin = ["resumo", "equipe", "vendas", "movimentos"].includes(e.aba) ? e.aba : "resumo";
+  const abasFin = el("div", { class: "alterna abas-fin", role: "tablist", "aria-label": "Relatórios" },
+    [["resumo", "Resumo"], ["equipe", "Equipe"], ["vendas", "Vendas"], ["movimentos", "Movimentos"]].map(([k, txt]) =>
+      el("button", { type: "button", role: "tab", class: `botao ${abaFin === k ? "ativo" : ""}`, "aria-selected": String(abaFin === k), "data-aba-fin": k, text: txt,
+        onclick: () => { estadoFin.aba = k; telaFinanceiro().catch(er => avisar(er.message, "erro")); } })));
+  const fixa = (titulo, id, ...filhos) => el("section", { class: "cartao fin-secao aberta", "data-secao-fin": id }, el("h3", { text: titulo }), ...filhos);
+  let corpo;
+  if (abaFin === "resumo") {
+    corpo = [cartoes, blocoMais,
+      secaoFixa(tituloGrafico, temSerie ? graficoEntradasSaidas(f.serie, f.periodo, aoEscolher) : el("p", { class: "vazio", text: "Sem entradas nem saídas neste período." }), temSerie ? tabelaSerie(f.serie) : null),
+      el("div", { class: "duas-colunas iguais" },
+        fixa("De onde veio o dinheiro", "entradas",
+          formas.length ? listaPartes(formas, "partes-entrada") : el("p", { class: "vazio", text: "Sem entradas no período." }),
+          origens.length ? el("h4", { text: "Por origem" }) : null, origens.length ? listaPartes(origens, "partes-entrada") : null,
+          en.notasLancadasCentavos ? el("p", { class: "suave", text: `Vendido em nota (a receber depois): ${reais(en.notasLancadasCentavos)}. Entra no faturamento, mas só vira entrada quando o cliente paga.` }) : null),
+        fixa("Para onde foi o dinheiro", "saidas",
+          saidas.length ? listaPartes(saidas, "partes-saida") : el("p", { class: "vazio", text: "Sem saídas no período." }))),
+      fixa("Resultado do período (lucro)", "resultado", demonstrativo,
         el("p", { class: "suave", text: "Entradas e saídas mostram o dinheiro que passou pelo caixa. O resultado mostra se a barbearia ganhou ou perdeu no período." }),
         ds.diferencasCaixa.length ? el("ul", { class: "lista-avisos" }, ds.diferencasCaixa.map(x => el("li", { class: "aviso-vermelha",
-          text: `Diferença no caixa de ${dataBR(x.data)}: ${x.diferencaCentavos > 0 ? "sobra" : "falta"} de ${reais(Math.abs(x.diferencaCentavos))}` }))) : null),
-      secao("Equipe: produção e custo", f.profissionais.length ? `pessoal ${reais(f.saidas.pessoalCentavos || 0)}` : "", "profissionais", profs,
-        el("p", { class: "suave", text: "Custo = comissões + salário pago no período. Para pagar a equipe: Financeiro → Pagamento da equipe." }))),
-    el("div", { class: "duas-colunas iguais" },
-      secao("Serviços que mais faturaram", f.maisVendidos.servicos[0]?.nome || "", "servicos", top(f.maisVendidos.servicos, "vez(es)")),
-      secao("Produtos mais vendidos", f.maisVendidos.produtos[0]?.nome || "", "produtos", top(f.maisVendidos.produtos, "un."))),
-    secao("Movimentos do período", `${f.movimentosTotal ?? f.movimentos.length} lançamento(s)`, "movimentos", listaMov),
-    blocoExtratoProfissional());
+          text: `Diferença no caixa de ${dataBR(x.data)}: ${x.diferencaCentavos > 0 ? "sobra" : "falta"} de ${reais(Math.abs(x.diferencaCentavos))}` }))) : null)];
+  } else if (abaFin === "equipe") {
+    corpo = [
+      fixa("Produção e custo de cada pessoa", "profissionais", profs,
+        el("p", { class: "suave" }, "Custo = comissões + salário pago no período. Para pagar: ", el("a", { href: "#/pagamento-equipe", text: "Pagamento da equipe" }), ".")),
+      blocoExtratoProfissional(true)];
+  } else if (abaFin === "vendas") {
+    corpo = el("div", { class: "duas-colunas iguais" },
+      fixa("Serviços que mais faturaram", "servicos", top(f.maisVendidos.servicos, "vez(es)")),
+      fixa("Produtos mais vendidos", "produtos", top(f.maisVendidos.produtos, "un.")));
+  } else {
+    corpo = [
+      fixa(`Movimentos do período (${f.movimentosTotal ?? f.movimentos.length})`, "movimentos", listaMov),
+      el("p", { class: "suave centro" }, "Planilha completa e envio ao contador: ", el("a", { href: "#/contador", text: "Contador e dados" }), ".")];
+  }
+  mostrar(
+    cabecalho("Relatórios", "Entradas, saídas, resultado, equipe e vendas da barbearia"),
+    controles, abasFin, corpo);
 }
 
 // Extrato do profissional (antes ficava em "Meu desempenho"; 17/11/2026 veio para o Relatório financeiro, só gestão):
 // atendimentos, comissões, vales e comissões pagas do mês, em PDF e planilha (útil para quem é MEI).
-function blocoExtratoProfissional() {
+function blocoExtratoProfissional(aberto = false) {
   const sel = el("select", { id: "extrato-pessoa", name: "extratoPessoa", required: true }, el("option", { value: "", text: "Carregando…" }));
   const mesInput = el("input", { type: "month", id: "mes-extrato", name: "mesExtrato", value: hojeLocal().slice(0, 7), max: hojeLocal().slice(0, 7), required: true });
   const form = el("form", { class: "form-extrato" },
@@ -3752,7 +3763,7 @@ function blocoExtratoProfissional() {
       if (r !== "cancelado") avisar(r === "compartilhado" ? "Extrato compartilhado." : "Extrato baixado (PDF e planilha).");
     });
   });
-  return el("details", { class: "cartao fin-secao", "data-secao-fin": "extrato", "data-teste": "extrato-profissional" },
+  return el("details", { class: "cartao fin-secao", "data-secao-fin": "extrato", "data-teste": "extrato-profissional", open: aberto || null },
     el("summary", {}, el("span", { class: "fin-secao-tit", text: "Extrato do profissional" }), el("span", { class: "fin-secao-res", text: "PDF e planilha" })),
     form);
 }
@@ -5545,10 +5556,12 @@ function gruposDoPerfil(p) {
     { id: "atendimento", titulo: "Meu trabalho", icone: "agenda", itens: [["agenda", "Minha agenda", "agenda"], ["notificacoes", "Notificações", "sino"]] },
     { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
   ];
+  // Gerente/dono (19/11/2026): no topo ficam Início (Painel), Agenda, Caixa, Clientes, Despesas e Relatórios; os grupos
+  // abaixo são o "Mais", por assunto e em ordem de uso.
   return [
-    { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ["visao-dia", "Visão do dia", "lista"], ["notificacoes", "Notificações", "sino"]] },
-    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
-    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["pagamento-equipe", "Pagamento da equipe", "equipe"], ["notas", "Notas em aberto", "contas"], ["contas", "Despesas", "contas"], ["contador", "Contador e dados", "contador"]] },
+    { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ["financeiro", "Relatório financeiro", "grafico"]] },
+    { id: "atendimento", titulo: "Dia a dia", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["visao-dia", "Visão do dia", "lista"], ["notas", "Notas em aberto", "contas"], ["mensagens", "Mensagens", "mensagem"], ["notificacoes", "Notificações", "sino"]] },
+    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["contas", "Despesas", "contas"], ["pagamento-equipe", "Pagamento da equipe", "equipe"], ["contador", "Contador e dados", "contador"]] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"], ["estoque", "Estoque", "estoque"]] },
     { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"], ["assinatura", "Meu plano", "dinheiro"]] }
   ];
@@ -5556,6 +5569,17 @@ function gruposDoPerfil(p) {
 
 const menuEl = () => document.getElementById("menu");
 const gruposAbertos = new Set();
+// Menu superior (19/11/2026): as telas de uso constante ficam em abas no topo; o resto fica em "Mais" (painel que desce
+// do topo com tudo, por assunto). A ordem segue o uso do dia a dia de cada perfil.
+function navPrincipal() {
+  const p = usuario.perfil;
+  if (p === "plataforma") return [["plataforma", "Barbearias", "loja"], ["pedidos", "Pedidos", "clientes"], ["chamados", "Chamados", "suporte"]];
+  if (usuario.assinatura?.bloqueada) return [["assinatura", "Assinatura", "dinheiro"], ["suporte", "Suporte", "suporte"]];
+  if (p === "caixa") return [["visao-dia", "Hoje", "painel"], ["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["clientes", "Clientes", "clientes"], ["notas", "Notas", "contas"]];
+  if (p === "barbeiro") return [["agenda", "Agenda", "agenda"], ["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]];
+  return [["painel", "Início", "painel"], ["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"],
+    ["contas", "Despesas", "contas"], ["financeiro", "Relatórios", "grafico"]];
+}
 function rotaAtual() {
   const r = location.hash.replace(/^#\/?/, "").split("/")[0] || (usuario?.telaInicial ?? "");
   return r === "inicio" ? (gestao() ? "painel" : "agenda") : r === "caixa-historico" || r === "caixa-dia" ? "caixa" : r;
@@ -5563,15 +5587,33 @@ function rotaAtual() {
 function montarMenu() {
   const aside = menuEl();
   const atual = rotaAtual();
-  const grupos = gruposDoMenu();
-  for (const g of grupos) if (g.itens.some(([r]) => r === atual)) gruposAbertos.add(g.id);
+  const todos = gruposDoMenu();
+  const principais = navPrincipal();
+  const noTopo = new Set(principais.map(([r]) => r));
+  const nomeCompleto = Object.fromEntries(todos.flatMap(g => g.itens.map(([r, t]) => [r, t])));
+  // "Mais" mostra só o que não está nas abas (menos ruído)
+  const grupos = todos.map(g => ({ ...g, itens: g.itens.filter(([r]) => !noTopo.has(r)) })).filter(g => g.itens.length);
+  // Abas do topo + botão "Mais" (o próprio #btn-menu)
+  const nav = document.getElementById("nav-topo");
+  const btnMenu = document.getElementById("btn-menu");
+  const temMais = grupos.length > 0;
+  const maisAtivo = grupos.some(g => g.itens.some(([r]) => r === atual));
+  btnMenu.replaceChildren(icone("menu"), el("span", { text: "Mais" }));
+  btnMenu.classList.toggle("ativo", maisAtivo);
+  btnMenu.hidden = !temMais;
+  nav.replaceChildren(
+    el("div", { class: "nav-abas" }, principais.map(([rota, titulo, ic]) =>
+      el("a", { class: `nav-aba ${rota === atual ? "ativo" : ""}`, href: `#/${rota}`, "data-nav-topo": titulo, "data-nav": nomeCompleto[rota] || titulo, title: nomeCompleto[rota] || titulo, "aria-current": rota === atual ? "page" : null,
+        onclick: () => { fecharMenu(); if (location.hash === `#/${rota}`) rotear(); } }, icone(ic), el("span", { text: titulo })))),
+    btnMenu);
+  nav.hidden = false;
+  // Painel "Mais": tudo, por assunto (os grupos começam abertos)
   aside.replaceChildren(
     el("div", { class: "menu-cabecalho" },
-      el("img", { class: "menu-logo", src: "/icons/logo.png", alt: "4blade", width: "98", height: "40" }),
       el("strong", { text: usuario.barbearia ? usuario.barbearia.nome : "Plataforma" }),
       el("span", { text: `${usuario.nome.split(" ")[0]} · ${NOME_PERFIL[usuario.perfil]}` })),
     el("nav", { class: "menu-nav" }, grupos.map(g => {
-      const aberto = gruposAbertos.has(g.id) || grupos.length === 1;
+      const aberto = !gruposFechados.has(g.id);
       const itens = el("div", { class: "grupo-itens", id: `grupo-${g.id}` }, g.itens.map(([rota, titulo, ic]) =>
         el("a", { class: `nav-item ${rota === atual ? "ativo" : ""}`, href: `#/${rota}`, "data-nav": titulo, "aria-current": rota === atual ? "page" : null,
           onclick: () => { fecharMenu(); if (location.hash === `#/${rota}`) rotear(); } }, icone(ic), el("span", { text: titulo }))));
@@ -5582,15 +5624,20 @@ function montarMenu() {
           itens.hidden = !abrir;
           titulo.setAttribute("aria-expanded", abrir ? "true" : "false");
           grupo.classList.toggle("aberto", abrir);
-          if (abrir) gruposAbertos.add(g.id); else gruposAbertos.delete(g.id);
+          if (abrir) gruposFechados.delete(g.id); else gruposFechados.add(g.id);
         } }, icone(g.icone), el("span", { text: g.titulo }), svg("svg", { viewBox: "0 0 24 24", class: "icone seta", "aria-hidden": "true" }, svg("path", { d: ICONES.seta })));
       const grupo = el("div", { class: `grupo ${aberto ? "aberto" : ""}`, "data-grupo": g.id }, titulo, itens);
       return grupo;
-    })),
-    el("div", { class: "menu-rodape", text: "4blade · gestão para barbearias" }));
+    })));
   aside.hidden = false;
 }
+const gruposFechados = new Set();
+void gruposAbertos;
 function abrirMenu() {
+  // o painel desce logo abaixo do topo (altura do topo muda entre celular e computador)
+  const topo = document.querySelector(".topo").getBoundingClientRect().bottom;
+  menuEl().style.top = `${Math.round(topo)}px`;
+  document.getElementById("fundo-menu").style.top = `${Math.round(topo)}px`;
   menuEl().classList.add("aberto");
   document.getElementById("fundo-menu").hidden = false;
   document.getElementById("btn-menu").setAttribute("aria-expanded", "true");
@@ -5757,7 +5804,6 @@ async function iniciar() {
   btnAjuda.append(icone("ajuda"));
   btnAjuda.addEventListener("click", ajudaDaTela);
   const btnMenu = document.getElementById("btn-menu");
-  btnMenu.append(icone("menu"));
   btnMenu.addEventListener("click", () => (menuEl().classList.contains("aberto") ? fecharMenu() : abrirMenu()));
   document.getElementById("fundo-menu").addEventListener("click", fecharMenu);
   document.addEventListener("keydown", e => { if (e.key === "Escape") fecharMenu(); });

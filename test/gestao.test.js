@@ -170,7 +170,7 @@ describe("regras e permissões da gestão", () => {
     assert.equal((await get("/api/extrato?mes=2026-13", A.token)).status, 400);
   });
 
-  test("contas: validações, cancelar com motivo, pagar com caixa exige caixa aberto e dinheiro", async () => {
+  test("contas: validações, cancelar com motivo, pagar com dinheiro do caixa sem trava", async () => {
     const s = await semanaSimulada();
     const { post, ger } = s;
     emDia("2026-11-09");   // caixa do dia 09 ainda não aberto
@@ -180,12 +180,14 @@ describe("regras e permissões da gestão", () => {
     assert.equal((await post("/api/contas", ger.token, { descricao: "Água", categoria: "agua", valorCentavos: 100, vencimento: "10/11/2026" })).status, 400);
     const agua = (await post("/api/contas", ger.token, { descricao: "Água", categoria: "agua", valorCentavos: 9000, vencimento: "2026-11-10" })).dados.conta;
     assert.equal(agua.status, "proxima");
-    const r = await post("/api/contas/pagar", ger.token, { id: agua.id, comCaixa: true });
-    assert.equal(r.status, 409);
-    assert.match(r.dados.erro, /caixa de hoje precisa estar aberto/);
     assert.equal((await post("/api/contas/cancelar", ger.token, { id: agua.id })).status, 400);
     assert.equal((await post("/api/contas/cancelar", ger.token, { id: agua.id, motivo: "Lançada em duplicidade" })).status, 200);
     assert.equal((await post("/api/contas/pagar", ger.token, { id: agua.id })).status, 409);
+    // 19/11/2026: pagar "com dinheiro do caixa" sem caixa aberto não trava mais — o caixa do dia abre sozinho (saldo negativo)
+    const luz = (await post("/api/contas", ger.token, { descricao: "Luz", categoria: "luz", valorCentavos: 9000, vencimento: "2026-11-10" })).dados.conta;
+    const r = await post("/api/contas/pagar", ger.token, { id: luz.id, comCaixa: true });
+    assert.equal(r.status, 200, JSON.stringify(r.dados));
+    assert.equal((await s.get("/api/caixa/hoje", ger.token)).dados.totais.saldoNegativoCentavos, 9000);
     voltar();
   });
 

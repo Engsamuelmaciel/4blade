@@ -106,20 +106,45 @@ body {
 .botao.largo { width: 100%; }
 @media (max-width: 699px) { .topo .sub { display: none; } }
 
-/* ---------- menu lateral ---------- */
+/* ---------- menu superior (19/11/2026) ----------
+   Abas das telas mais usadas no topo; "Mais" abre um painel que desce do topo com todas as telas por assunto. */
+.topo { flex-wrap: wrap; row-gap: 0; }
+.nav-topo { flex: 0 0 calc(100% + 24px); max-width: calc(100% + 24px); min-width: 0; order: 10; display: flex; align-items: stretch; gap: 4px; margin: 0 -12px; padding: 0 8px; border-top: 1px solid rgba(255, 255, 255, .08); }
+.nav-topo[hidden] { display: none; }
+.nav-abas { flex: 1; min-width: 0; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.nav-abas::-webkit-scrollbar { display: none; }
+.nav-aba, .nav-topo .btn-menu {
+  flex: none; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-width: 62px; min-height: 52px; padding: 4px 8px 6px; border: 0; border-radius: 0; background: transparent;
+  color: #b9bec5; font: inherit; font-size: 12px; font-weight: 600; text-decoration: none; cursor: pointer; position: relative;
+}
+.nav-aba .icone, .nav-topo .btn-menu .icone { width: 22px; height: 22px; }
+.nav-aba:hover, .nav-topo .btn-menu:hover { color: #fff; background: rgba(255, 255, 255, .05); }
+.nav-aba.ativo, .nav-topo .btn-menu.ativo, .nav-topo .btn-menu[aria-expanded="true"] { color: #fff; }
+.nav-aba.ativo::after, .nav-topo .btn-menu.ativo::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--dourado); }
+.nav-aba.ativo .icone { color: var(--dourado); }
+.nav-topo .btn-menu { width: auto; height: auto; border-left: 1px solid rgba(255, 255, 255, .08); }
+.topo > .btn-menu { display: none; }
+@media (max-width: 1023px) {
+  /* celular/tablet: as abas dividem a largura (sem rolar), ícone em cima e nome embaixo */
+  .nav-aba { flex: 1 1 0; min-width: 0; padding: 4px 2px 6px; font-size: 11px; letter-spacing: -.1px; }
+  .nav-aba span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav-topo { padding: 0 2px; gap: 0; }
+  .nav-abas { gap: 0; }
+  .nav-topo .btn-menu { min-width: 46px; padding: 4px 4px 6px; font-size: 11px; }
+  .nav-aba.ativo::after, .nav-topo .btn-menu.ativo::after { left: 6px; right: 6px; }
+}
 .menu-lateral {
-  position: fixed; z-index: 400; top: 0; bottom: 0; left: 0;
-  width: var(--menu-largura); max-width: 86vw;
+  position: fixed; z-index: 290; top: 0; left: 0; right: 0;
+  max-height: min(78vh, 720px); overflow-y: auto;
   background: var(--primaria); color: #e9eaec;
   display: flex; flex-direction: column;
-  transform: translateX(-102%); transition: transform .2s ease;
-  padding-top: env(safe-area-inset-top);
-  overflow-y: auto;
+  transform: translateY(-110%); transition: transform .18s ease; visibility: hidden;
+  border-bottom: 3px solid var(--dourado); box-shadow: 0 18px 40px rgba(0, 0, 0, .3);
 }
-.menu-lateral.aberto { transform: none; box-shadow: 0 0 40px rgba(0, 0, 0, .35); }
-.fundo-menu { position: fixed; inset: 0; z-index: 350; background: rgba(15, 17, 20, .5); }
-.menu-cabecalho { display: block; padding: 16px 16px 12px; border-bottom: 1px solid rgba(255, 255, 255, .08); }
-.menu-cabecalho .menu-logo { display: block; height: 48px; width: auto; margin-bottom: 10px; }
+.menu-lateral.aberto { transform: none; visibility: visible; }
+.fundo-menu { position: fixed; inset: 0; z-index: 280; background: rgba(15, 17, 20, .45); }
+.menu-cabecalho { display: block; padding: 12px 16px 8px; border-bottom: 1px solid rgba(255, 255, 255, .08); }
 .menu-cabecalho strong { display: block; font-size: 16px; color: #fff; }
 .menu-cabecalho span { display: block; font-size: 12px; color: #aeb3ba; }
 .menu-nav { padding: 8px; display: grid; gap: 2px; }
@@ -535,10 +560,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
   .horas { grid-template-columns: repeat(4, 1fr); }
 }
 @media (min-width: 1024px) {
-  /* menu lateral fixo no computador */
-  body.com-menu { padding-left: var(--menu-largura); }
-  body.com-menu .menu-lateral { transform: none; box-shadow: none; }
-  body.com-menu .btn-menu, body.com-menu .fundo-menu { display: none; }
+  /* computador: abas com ícone ao lado do nome; o painel "Mais" mostra os assuntos lado a lado */
+  .nav-aba, .nav-topo .btn-menu { flex-direction: row; gap: 8px; min-height: 46px; padding: 0 14px; font-size: 14px; }
+  .nav-aba .icone, .nav-topo .btn-menu .icone { width: 19px; height: 19px; }
+  .menu-lateral { max-height: 80vh; }
+  .menu-nav { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); align-items: start; padding: 10px 16px 16px; gap: 6px 18px; }
   main { padding: 18px 22px 40px; }
   .cartoes { grid-template-columns: repeat(6, 1fr); }
   .cartao-num[data-cartao=lucro] { grid-column: auto; }
@@ -546,7 +572,6 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
   .contas-cartao { grid-column: auto; flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 3px; }
   .contas-cartao .cartao-tit { flex-basis: auto; }
   .contas-cartao .linha-conta { font-size: 12px; padding: 1px 6px; }
-  body.com-menu .topo-logo { display: none; }
   .duas-colunas { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; align-items: start; }
   .duas-colunas > section:last-child { position: sticky; top: calc(var(--topo-altura) + 12px); }
   .duas-colunas.iguais { grid-template-columns: 1fr 1fr; }
@@ -1167,6 +1192,57 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
 @media (prefers-reduced-motion: reduce) { .pdv-aba.botao { transition: none; } .pdv-aba.botao:hover { transform: none; } }
 @media (max-width: 699px) { .pdv-formas { display: grid; grid-template-columns: repeat(3, 1fr); overflow: visible; } .pdv-formas .forma-card { min-width: 0; } }
 
+/* ---------- Caixa simples (19/11/2026): situação numa linha, ferramentas em linha, fila de quem falta pagar em destaque ---------- */
+.pdv-situacao { display: inline-flex; align-items: center; gap: 8px; margin: -4px 0 10px; padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 700;
+  background: var(--ok-fundo); color: var(--ok); }
+.pdv-situacao .sit-ponto { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.pdv-situacao.sit-fechado { background: var(--neutro-2); color: var(--suave); }
+.pdv-situacao.sit-nao_aberto { background: var(--amarelo-fundo); color: var(--amarelo); }
+.abrir-caixa { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 16px; margin-bottom: 12px; border-left: 4px solid var(--dourado); }
+.abrir-caixa-txt { flex: 1 1 260px; }
+.abrir-caixa-txt h3 { margin: 0 0 2px; }
+.abrir-caixa-txt p { margin: 0; font-size: 13px; }
+.abrir-caixa-linha { display: flex; align-items: end; gap: 8px; flex: 1 1 260px; }
+.abrir-caixa-linha .campo { flex: 1; margin: 0; }
+.abrir-caixa-linha > :first-child { flex: 1 1 auto; min-width: 0; margin: 0; }
+.abrir-caixa-linha .botao { white-space: nowrap; width: auto; flex: none; }
+.aviso-fechado { margin-bottom: 12px; border-left: 4px solid var(--borda); }
+.aviso-fechado > summary { cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--suave); }
+.pdv-ferramentas { margin: 0 0 14px; padding: 0; background: none; box-shadow: none; border-radius: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.pdv-ferramentas::-webkit-scrollbar { display: none; }
+.pdv-ferramentas .botao.ferramenta { flex: none; width: auto; flex-direction: row; gap: 6px; min-height: 38px; padding: 0 12px; border-radius: 999px; font-size: 13px; background: var(--cartao); }
+.pdv-ferramentas .botao.ferramenta .icone { width: 17px; height: 17px; }
+.pdv-aba { position: relative; }
+.pdv-formas .forma-promissoria { grid-column: auto; }
+.pdv-aba-num { position: absolute; top: 6px; right: 8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; display: grid; place-items: center;
+  background: var(--erro); color: #fff; font-size: 12px; font-weight: 800; }
+.pdv-cobrar-topo { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.pdv-cobrar-topo h3 { margin: 0; }
+.pdv-cobrar .busca-viva { width: 100%; margin-bottom: 10px; min-height: 44px; border: 1px solid var(--campo-borda); border-radius: 12px; padding: 0 12px; background: var(--cartao); font: inherit; }
+button.ticket-at { width: 100%; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; transition: transform .1s, box-shadow .1s; }
+button.ticket-at:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(16, 24, 40, .12); }
+button.ticket-at:focus-visible { outline: 3px solid var(--dourado); outline-offset: 2px; }
+.ticket-at .falso-botao { pointer-events: none; }
+.pagos-hoje { margin-top: 14px; }
+.pagos-hoje > summary { cursor: pointer; }
+.pagos-hoje .fila { margin-top: 8px; }
+@media (max-width: 699px) {
+  .pdv-aba.botao { min-height: 64px; flex-direction: row; gap: 6px; padding: 8px 6px; }
+  .pdv-aba .icone { width: 30px; height: 30px; padding: 6px; }
+  .pdv-aba-txt small { display: none; }
+  .pdv-aba-num { top: -6px; right: -4px; }
+  .pdv-num { padding: 10px 12px; }
+  .pdv-num small { font-size: 11px; }
+  .pdv-formas { grid-template-columns: repeat(5, 1fr); gap: 4px; }
+  .pdv-formas .forma-card { padding: 5px 6px; }
+  .pdv-formas .forma-card span { font-size: 9.5px; letter-spacing: 0; }
+  .pdv-formas .forma-card strong { font-size: 12.5px; white-space: nowrap; }
+  button.ticket-at { grid-template-columns: auto 1fr auto; }
+  button.ticket-at .falso-botao { display: none; }
+  .abrir-caixa-linha { flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { button.ticket-at { transition: none; } button.ticket-at:hover { transform: none; } }
+
 /* ---------- Listas limpas (17/11/2026): item compacto que expande, busca, filtros, painel de cadastro ---------- */
 .tela-lista { display: grid; gap: 16px; align-items: start; }
 @media (min-width: 1024px) { .tela-lista.com-lado { grid-template-columns: minmax(0, 1fr) 360px; } .tela-lista-lado { position: sticky; top: calc(var(--topo-altura) + 12px); } }
@@ -1427,3 +1503,5 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
 .equipe-hero .botao.principal { background: var(--dourado); color: var(--sobre-dourado); border-color: var(--dourado); font-weight: 800; }
 .equipe-hero .botao.principal:hover { filter: brightness(1.05); }
 .abas-equipe { margin-bottom: 12px; }
+.abas-fin { margin: 4px 0 14px; } .fin-secao.aberta > h3 { margin-top: 0; }
+@media (min-width: 700px) { .pdv-cobrar-topo .botao { width: auto; } }

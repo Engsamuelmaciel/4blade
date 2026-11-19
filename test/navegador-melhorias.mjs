@@ -119,22 +119,20 @@ async function rodar(tela) {
     await sair();
 
     // ---------- MENU ----------
-    passo("menu lateral com categorias; cada opção abre a tela inteira");
+    passo("menu superior: abas das telas mais usadas + \"Mais\" com o resto por assunto (19/11/2026)");
     await entrar("ana.semana");
     await page.waitForSelector("h2:has-text('Minha agenda')");
-    if (tela.movel) {
-      assert.equal(await page.locator("#menu.aberto").count(), 0, "no celular o menu começa fechado");
-      await page.click("#btn-menu");
-      await page.waitForSelector("#menu.aberto");
-      await page.waitForTimeout(300);
-      await print("menu-aberto", false);
-      await page.click("#fundo-menu", { position: { x: 370, y: 400 } });
-      await page.waitForFunction(() => !document.getElementById("menu").classList.contains("aberto"));
-    } else {
-      assert.ok(await page.locator("#menu").isVisible(), "no computador o menu fica fixo");
-    }
+    assert.deepEqual(await page.locator("#nav-topo [data-nav-topo]").allInnerTexts(), ["Agenda", "Serviços", "Produtos"], "barbeiro: abas do topo");
+    assert.equal(await page.locator("#menu.aberto").count(), 0, "o painel Mais começa fechado");
+    assert.ok(!(await page.locator("#menu").isVisible()), "sem menu lateral fixo");
+    await page.click("#btn-menu");
+    await page.waitForSelector("#menu.aberto");
+    await page.waitForTimeout(300);
+    await print("menu-mais-aberto", false);
     const grupos = await page.locator("#menu .grupo-titulo").allInnerTexts();
-    assert.ok(grupos.length >= 2, `categorias no menu: ${grupos.join(", ")}`);
+    assert.ok(grupos.length >= 1, `categorias no Mais: ${grupos.join(", ")}`);
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !document.getElementById("menu").classList.contains("aberto"));
 
     // ---------- HORÁRIO FIXO ----------
     passo("barbeira marca horário fixo toda semana");
@@ -270,11 +268,8 @@ async function rodar(tela) {
     await page.waitForSelector('[data-cobrar="Gil Fila Fictício"]');
     const entradas0 = await page.textContent("[data-teste=entradas]");
     await print("caixa-pdv-fila");
-    // botão "Concluir atendimento": escolhe o horário da agenda e lança a entrada
-    await page.click("button:has-text('Concluir atendimento')");
-    await page.waitForSelector('dialog[open] [data-concluir="Gil Fila Fictício"]');
-    await print("concluir-atendimento-escolher", false);
-    await page.click('dialog[open] [data-concluir="Gil Fila Fictício"]');
+    // 19/11/2026: o cartão inteiro da fila é o botão de cobrar (sem passo extra de "Concluir atendimento")
+    await page.click('button[data-cobrar="Gil Fila Fictício"]');
     await page.waitForSelector("dialog[open] >> text=Concluir atendimento de Gil Fila Fictício");
     await page.waitForSelector("dialog[open] [data-teste=total]:has-text('40,00')");
     // 17/11/2026: o cliente leva uma pomada junto — entra no mesmo pagamento (sem abrir outra venda)
@@ -291,6 +286,7 @@ async function rodar(tela) {
     await print("cobrar-com-produto-e-troco", false);
     await ok();
     await page.waitForSelector("text=Atendimento e produtos cobrados");
+    await page.evaluate(() => document.querySelectorAll('.pagos-hoje').forEach(d => { d.open = true; }));
     await page.waitForSelector('[data-cobrar="Gil Fila Fictício"] >> text=Pago');
     assert.notEqual(await page.textContent("[data-teste=entradas]"), entradas0);
 
@@ -302,6 +298,7 @@ async function rodar(tela) {
     await page.check("dialog[open] #c-aLgpd");
     await print("caixa-atendimento-sem-horario", false);
     await ok();
+    await page.evaluate(() => document.querySelectorAll('.pagos-hoje').forEach(d => { d.open = true; }));
     await page.waitForSelector('[data-cobrar="Hugo Avulso Fictício"] >> text=Pago');
     await print("caixa-pdv-pagos");
 
@@ -311,6 +308,7 @@ async function rodar(tela) {
     await page.check("dialog[open] input[name=aserv] >> nth=0");
     assert.equal(await page.locator("dialog[open] #c-aLgpd").isVisible(), false, "aceite LGPD só aparece com telefone");
     await ok();
+    await page.evaluate(() => document.querySelectorAll('.pagos-hoje').forEach(d => { d.open = true; }));
     await page.waitForSelector('[data-cobrar="Cliente não identificado"] >> text=Pago');
 
     await page.click(".pdv-barra .alterna button:has-text('Vender')");
@@ -350,7 +348,7 @@ async function rodar(tela) {
     await page.selectOption("dialog[open] #c-forma1", "promissoria");
     await ok();
     await page.waitForSelector("[data-teste=notas-lancadas]");
-    await page.click(".pdv-acoes a:has-text('Notas em aberto')");
+    await page.click(".pdv-ferramentas a:has-text('Notas')");
     await page.waitForSelector('[data-nota-cliente="Fábio Fixo Fictício"]');
     await print("notas-em-aberto");
     await abrirItem(page, '[data-nota-cliente="Fábio Fixo Fictício"]');
@@ -368,8 +366,10 @@ async function rodar(tela) {
     await print("nota-recebida");
 
     passo("caixa (recepção) vê a agenda de todos, marca para um barbeiro e acessa clientes, mensagens e catálogo");
-    const gruposCaixa = await page.locator("#menu .grupo-titulo").allInnerTexts();
-    assert.ok(gruposCaixa.some(t => /Atendimento/.test(t)) && gruposCaixa.some(t => /Catálogo/.test(t)), `menu do caixa: ${gruposCaixa}`);
+    const abasCaixa = await page.locator("#nav-topo [data-nav-topo]").allInnerTexts();
+    assert.deepEqual(abasCaixa, ["Hoje", "Caixa", "Agenda", "Clientes", "Notas"], `menu do caixa: ${abasCaixa}`);
+    const gruposCaixa = await page.locator("#menu .grupo-titulo").allTextContents();
+    assert.ok(gruposCaixa.some(t => /Catálogo/.test(t)), `Mais do caixa: ${gruposCaixa}`);
     await ir(page, "Agenda");
     await page.waitForSelector(".filtro-prof");
     assert.equal(await page.locator(".acoes-agenda button:has-text('Bloquear')").count(), 0, "caixa não bloqueia agenda");
@@ -491,7 +491,7 @@ async function rodar(tela) {
     await page.waitForSelector("[data-cartao=bruto]");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), tela.largura, "nada passa da largura da tela");
     await print("gerente-painel");
-    assert.ok(await page.locator(tela.movel ? ".topo-logo img" : ".menu-logo").isVisible(), "logo no topo/menu");
+    assert.ok(await page.locator(".topo-logo img").isVisible(), "logo no topo (celular e computador: menu superior)");
     await page.click("#btn-conta");
     await page.waitForSelector("dialog[open] .conta-cartao >> text=Gustavo Gerente");
     await print("minha-conta", false);

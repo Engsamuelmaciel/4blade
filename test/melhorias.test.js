@@ -118,7 +118,6 @@ describe("caixa como PDV: cobrar atendimento e atendimento sem horário", () => 
       barbeiroId: barb.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 3500 }],
       cliente: { telefone: "11 95555-6666", nome: "Cliente Passante", aceiteLgpd: true }, pagamentos: [{ forma: "dinheiro", valorCentavos: 3500 }]
     };
-    assert.equal((await post("/api/caixa/atendimento-avulso", cx.token, corpo)).status, 409, "caixa fechado");
     await post("/api/caixa/abrir", cx.token, { trocoCentavos: 0 });
     assert.equal((await post("/api/caixa/atendimento-avulso", cx.token, { ...corpo, pagamentos: [{ forma: "dinheiro", valorCentavos: 100 }] })).status, 400);
     const r = await post("/api/caixa/atendimento-avulso", cx.token, corpo);

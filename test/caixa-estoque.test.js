@@ -113,9 +113,7 @@ describe("dia simulado completo (conferido à mão)", () => {
     assert.equal((await saldo(amb, ger.token, oleo)).saldo, 4);
     assert.equal((await saldo(amb, ger.token, pomada)).valorEstoqueCentavos, 12 * 2200);
 
-    // Fechado não muda: nada de venda, sangria, finalizar, cancelar ou corrigir.
-    assert.equal((await vender(cx.token, [[pomada, 1]], [["pix", 4500]])).status, 409);
-    assert.equal((await post("/api/caixa/movimento", cx.token, { tipo: "suprimento", valorCentavos: 100, motivo: "teste" })).status, 409);
+    // Fechado: o fechamento não muda (não fecha de novo nem corrige forma); lançamento novo entra depois (abaixo).
     assert.equal((await post("/api/caixa/fechar", cx.token, { contadoCentavos: 24850, observacao: "de novo" })).status, 409);
     const algum = c.lancamentos.find(l => l.tipo === "atendimento");
     assert.equal((await post("/api/caixa/corrigir-forma", cx.token, { id: algum.id, novaForma: "credito", motivo: "teste" })).status, 409);
@@ -130,6 +128,11 @@ describe("dia simulado completo (conferido à mão)", () => {
     const hist = (await get("/api/caixa/historico", ger.token)).dados.caixas;
     assert.deepEqual(hist[0], { data: HOJE, situacao: "fechado", trocoCentavos: 10000, entradasCentavos: 49700, diferencaCentavos: -500, observacao: "Troco dado a mais (fictício)" });
     assert.equal((await get("/api/caixa/historico", cx.token)).status, 403, "histórico de outros dias é do gerente");
+    // 19/11/2026: com o caixa fechado o caixa ainda vende e lança suprimento; o fechamento registrado continua igual.
+    assert.equal((await vender(cx.token, [[pomada, 1]], [["pix", 4500]])).status, 201);
+    assert.equal((await post("/api/caixa/movimento", cx.token, { tipo: "suprimento", valorCentavos: 100, motivo: "teste" })).status, 201);
+    const depois = (await get("/api/caixa/hoje", cx.token)).dados;
+    assert.deepEqual([depois.caixa.situacao, depois.fechamento.diferencaCentavos, depois.totais.entradasCentavos], ["fechado", -500, 49700 + 4500]);
     assert.equal((await post("/api/caixa/reabrir", ger.token, { motivo: "Conferir venda" })).status, 200);
     const reaberto = (await get("/api/caixa/hoje", ger.token)).dados;
     assert.equal(reaberto.caixa.situacao, "aberto");

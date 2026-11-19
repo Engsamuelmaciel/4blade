@@ -136,7 +136,7 @@ async function rodar(tela) {
     assert.equal(await page.inputValue("#c-telefone"), "(11) 98765-4321");
     await page.locator("#c-propTel").pressSequentially("1133334444");
     assert.equal(await page.inputValue("#c-propTel"), "(11) 3333-4444");
-    assert.deepEqual(await page.locator("#menu [data-nav]").allInnerTexts(), ["Barbearias", "Pedidos de teste", "Chamados"], "plataforma: barbearias e chamados");
+    assert.deepEqual(await page.locator("#nav-topo [data-nav-topo]").allInnerTexts(), ["Barbearias", "Pedidos", "Chamados"], "plataforma: barbearias e chamados (menu superior)");
     assert.match(await page.textContent("[data-teste=explicacao-plataforma]"), /entre com o usuário do proprietário/);
     await page.click("button:has-text('Criar barbearia')");
     let senhaProp = await lerSenhaDaJanela();

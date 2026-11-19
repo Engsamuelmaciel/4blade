@@ -68,11 +68,12 @@ async function rodar(tela) {
     await page.fill("#c-login", login);
     await page.fill("#c-senha", SENHA);
     await page.click("button:has-text('Entrar')");
-    await page.waitForSelector("#menu:not([hidden]) .grupo");
+    await page.waitForSelector("#nav-topo:not([hidden]) .nav-aba");
     await pronto();
   };
   const sair = async () => { await page.click("#btn-conta"); await page.click("#btn-sair"); await page.waitForSelector("text=Você saiu do sistema."); };
   const cartao = async id => (await page.textContent(`[data-cartao=${id}]`)).replace(/\s+/g, " ");
+  const aba = async nome => { await page.click(`[data-aba-fin=${nome}]`); await pronto(); await page.waitForSelector(`[data-aba-fin=${nome}].ativo`); };
   const abrirSecao = async id => { const d = page.locator(`[data-secao-fin=${id}]`); if (await d.getAttribute("open") === null) await d.locator(":scope > summary").click(); };
   const periodo = async nome => { await page.click(`.fin-controles .alterna button:has-text('${nome}')`); await pronto(); };
 
@@ -92,15 +93,21 @@ async function rodar(tela) {
     assert.match(await cartao("resultado"), /1\.523,00/);
     assert.match(await cartao("faturamento"), /Serviços R\$\s?355,00 · produtos R\$\s?180,00/);
     assert.match(await cartao("atendimentos"), /8.*Ticket médio R\$\s?44,38/);
-    assert.equal(await page.locator(".grafico-fin").count(), 2, "gráfico de barras + saldo acumulado");
+    assert.equal(await page.locator(".grafico-fin").count(), 1, "gráfico de barras (saldo acumulado saiu em 19/11/2026)");
     assert.equal(await page.locator(".grafico-fin .faixa[data-ponto]").count(), 12, "12 meses");
     assert.match(await page.textContent("[data-parte='Pix']"), /R\$\s?270,00 · 50%/);
     assert.match(await page.textContent("[data-parte='Conta: Aluguel']"), /R\$\s?1\.500,00/);
     assert.match(await page.textContent("[data-parte='Compra de mercadoria']"), /R\$\s?120,00/);
     assert.match(await page.textContent("[data-teste=demonstrativo]"), /Comissões da equipe\s*-?R\$\s?-?178,00/);
-    assert.match(await page.textContent("[data-teste=fin-profissionais]"), /Beto Barbeiro.*Ana Barbeira/s);
-    assert.match(await page.textContent(".fin-top"), /Corte\s*6 vez\(es\)\s*R\$\s?235,00/);
     await print("ano");
+    passo("abas: Equipe e Vendas");
+    await aba("equipe");
+    assert.match(await page.textContent("[data-teste=fin-profissionais]"), /Beto Barbeiro.*Ana Barbeira/s);
+    await print("aba-equipe");
+    await aba("vendas");
+    assert.match(await page.textContent(".fin-top"), /Corte\s*6 vez\(es\)\s*R\$\s?235,00/);
+    await print("aba-vendas");
+    await aba("resumo");
 
     passo("toca no mês no gráfico → leitura → Ver este mês");
     const mes = HOJE.slice(0, 7);
@@ -142,8 +149,7 @@ async function rodar(tela) {
 
     passo("movimentos: filtro Saídas");
     await periodo("Ano");
-    if (tela.movel) assert.equal(await page.locator("[data-secao-fin=movimentos]").getAttribute("open"), null, "no celular os blocos começam fechados");
-    await abrirSecao("movimentos");
+    await aba("movimentos");
     await page.locator(".fin-movs").scrollIntoViewIfNeeded();
     await page.click(".fin-movs .alterna button:has-text('Saídas')");
     const tipos = await page.locator(".fin-mov-lista li").evaluateAll(l => l.map(x => x.dataset.mov));
@@ -155,6 +161,7 @@ async function rodar(tela) {
     console.log(`  print: docs/prints/financeiro/${tela.nome}-${String(n).padStart(2, "0")}-movimentos-entradas.png`);
 
     passo("tabela do gráfico e tema escuro");
+    await aba("resumo");
     await page.click(".fin-tabela summary");
     assert.ok(await page.locator(".fin-tabela table tbody tr").count() === 12);
     await page.evaluate(() => { localStorage.setItem("4blade.aparencia", JSON.stringify({ paleta: "navalha", modo: "escuro" })); });

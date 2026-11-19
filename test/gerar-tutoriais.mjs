@@ -77,7 +77,7 @@ async function entrar(login, senha) {
   await page.fill("#c-login", login);
   await page.fill("#c-senha", senha);
   await page.click("form.cartao button[type=submit]");
-  await page.waitForSelector("#menu:not([hidden]) .grupo");
+  await page.waitForSelector("#nav-topo:not([hidden]) .nav-aba");
   await pronto();
   logado = login;
 }

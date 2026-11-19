@@ -223,18 +223,18 @@ describe("agenda (4.1)", () => {
 });
 
 describe("finalizar atendimento (4.2) e caixa", () => {
-  test("exige caixa do dia aberto; barbeiro não abre caixa; caixa abre uma vez só", async () => {
+  test("sem caixa aberto o barbeiro finaliza (o caixa do dia abre sozinho); o caixa informa o troco depois, uma vez só", async () => {
     const amb = await cenario();
-    const { marcar, barb, cx, corte } = amb;
+    const { get, marcar, barb, cx, corte } = amb;
     const id = (await marcar(barb.token, {})).dados.agendamento.id;
     const r = await finalizarSimples(amb, barb.token, id, [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], [{ forma: "pix", valorCentavos: 4000 }]);
-    assert.equal(r.status, 409);
-    assert.match(r.dados.erro, /peça para abrir o caixa/i);
+    assert.equal(r.status, 201, JSON.stringify(r.dados));
     assert.equal((await abrirCaixa(amb, barb.token)).status, 403);
     assert.equal((await abrirCaixa(amb, cx.token, -5)).status, 400);
-    assert.equal((await abrirCaixa(amb, cx.token, 10000)).status, 201);
-    assert.equal((await abrirCaixa(amb, cx.token, 10000)).status, 409);
-    assert.equal((await finalizarSimples(amb, barb.token, id, [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], [{ forma: "pix", valorCentavos: 4000 }])).status, 201);
+    assert.equal((await abrirCaixa(amb, cx.token, 10000)).status, 201, "informa o troco do caixa aberto sozinho");
+    assert.equal((await abrirCaixa(amb, cx.token, 10000)).status, 409, "troco só uma vez");
+    const c = (await get("/api/caixa/hoje", cx.token)).dados;
+    assert.deepEqual([c.caixa.trocoCentavos, c.totais.porForma.pix], [10000, 4000]);
   });
 
   test("valor bruto no caixa, comissão à parte; valor alterado registrado e destacado; caixa não vê comissão", async () => {
@@ -351,7 +351,7 @@ describe("finalizar atendimento (4.2) e caixa", () => {
     assert.equal((await get("/api/caixa/hoje", cx.token)).dados.totais.entradasCentavos, 3000);
   });
 
-  test("caixa fechado: barbeiro não reabre; gerente precisa reabrir o caixa antes", async () => {
+  test("caixa fechado: barbeiro não reabre; gerente precisa reabrir o caixa antes; lançamento novo entra", async () => {
     const amb = await cenario();
     const { env, post, marcar, barb, ger, cx, corte } = amb;
     await abrirCaixa(amb, cx.token);
@@ -362,9 +362,9 @@ describe("finalizar atendimento (4.2) e caixa", () => {
     assert.equal(b.status, 409);
     assert.match(b.dados.erro, /só o gerente/);
     assert.match((await post("/api/agenda/reabrir", ger.token, { id, motivo: "engano" })).dados.erro, /reabra o caixa/);
-    // e com o caixa fechado não se finaliza
+    // com o caixa fechado o lançamento novo entra mesmo assim (19/11/2026)
     const id2 = (await marcar(barb.token, { hora: "15:00" })).dados.agendamento.id;
-    assert.equal((await finalizarSimples(amb, barb.token, id2, [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], [{ forma: "pix", valorCentavos: 4000 }])).status, 409);
+    assert.equal((await finalizarSimples(amb, barb.token, id2, [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], [{ forma: "pix", valorCentavos: 4000 }])).status, 201);
   });
 });
 

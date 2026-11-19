@@ -19,21 +19,21 @@ async function cenario(sufixo = "gcf", amb = ambiente(), plataforma = null) {
 }
 const marcar = (amb, hora, quem = amb.ger) => amb.post("/api/agenda", quem.token, { barbeiroId: amb.barb.id, data: HOJE, hora, servicoIds: [amb.corte.id], cliente: { nome: `Cliente ${hora}` } }).then(r => r.dados.agendamento);
 
-describe("gerente lança com o caixa fechado ou sem abrir", () => {
-  test("sem caixa: equipe é recusada; gerente cobra e vende (o caixa do dia abre sozinho, troco 0)", async () => {
+describe("todos lançam com o caixa fechado ou sem abrir (19/11/2026)", () => {
+  test("sem caixa: caixa, barbeiro e gerente lançam (o caixa do dia abre sozinho, troco 0)", async () => {
     const amb = await cenario();
     const { post, get, ger, barb, cx, corte, pom, env } = amb;
     const m = await marcar(amb, "08:00");
     const corpo = { id: m.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], pagamentos: [{ forma: "pix", valorCentavos: 4000 }] };
-    assert.equal((await post("/api/caixa/cobrar", cx.token, corpo)).status, 409, "caixa (pessoa) precisa do caixa aberto");
-    assert.equal((await post("/api/vendas", barb.token, { itens: [{ produtoId: pom.id, quantidade: 1 }], pagamentos: [{ forma: "pix", valorCentavos: 3000 }] })).status, 409);
     assert.equal(env.DB.raw.prepare("SELECT COUNT(*) n FROM caixas").get().n, 0);
-    assert.equal((await post("/api/caixa/cobrar", ger.token, corpo)).status, 201);
+    assert.equal((await post("/api/caixa/cobrar", cx.token, corpo)).status, 201, "caixa (pessoa) cobra sem abrir");
+    assert.equal((await post("/api/vendas", barb.token, { itens: [{ produtoId: pom.id, quantidade: 1 }], pagamentos: [{ forma: "pix", valorCentavos: 3000 }] })).status, 201, "barbeiro vende");
     assert.equal((await post("/api/vendas", ger.token, { itens: [{ produtoId: pom.id, quantidade: 1 }], pagamentos: [{ forma: "dinheiro", valorCentavos: 3000 }] })).status, 201);
     const c = (await get("/api/caixa/hoje", ger.token)).dados;
-    assert.deepEqual([c.caixa.situacao, c.caixa.trocoCentavos, c.totais.entradasCentavos], ["aberto", 0, 7000]);
+    assert.deepEqual([c.caixa.situacao, c.caixa.trocoCentavos, c.totais.entradasCentavos], ["aberto", 0, 10000]);
     assert.ok(env.DB.raw.prepare("SELECT 1 FROM auditoria WHERE acao = 'caixa_aberto' AND detalhes LIKE '%automaticamente%'").get());
-    // já tem lançamento: abrir com troco é recusado (o troco entra como suprimento)
+    // o troco da gaveta ainda pode ser informado uma vez (caixa aberto sozinho com troco 0)
+    assert.equal((await post("/api/caixa/abrir", cx.token, { trocoCentavos: 10000 })).status, 201);
     assert.equal((await post("/api/caixa/abrir", cx.token, { trocoCentavos: 10000 })).status, 409);
   });
 
@@ -48,7 +48,7 @@ describe("gerente lança com o caixa fechado ou sem abrir", () => {
     assert.equal((await get("/api/caixa/hoje", cx.token)).dados.caixa.trocoCentavos, 10000);
   });
 
-  test("caixa fechado: gerente cobra, vende, recebe nota e faz sangria; equipe é recusada", async () => {
+  test("caixa fechado: caixa, barbeiro e gerente cobram, vendem, recebem nota e lançam suprimento", async () => {
     const amb = await cenario("gcf3");
     const { post, get, ger, barb, cx, corte, pom } = amb;
     await post("/api/caixa/abrir", cx.token, { trocoCentavos: 0 });
@@ -58,15 +58,12 @@ describe("gerente lança com o caixa fechado ou sem abrir", () => {
     assert.equal((await post("/api/caixa/fechar", cx.token, { contadoCentavos: 0 })).status, 200);
     const m = await marcar(amb, "10:00");
     const corpo = { id: m.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], pagamentos: [{ forma: "debito", valorCentavos: 4000 }] };
-    assert.equal((await post("/api/caixa/cobrar", cx.token, corpo)).status, 409);
-    assert.equal((await post("/api/agenda/finalizar", barb.token, corpo)).status, 409);
-    assert.equal((await post("/api/caixa/cobrar", ger.token, corpo)).status, 201, "gerente cobra com o caixa fechado");
+    assert.equal((await post("/api/agenda/finalizar", barb.token, corpo)).status, 201, "barbeiro finaliza com o caixa fechado");
     assert.equal((await post("/api/vendas", ger.token, { itens: [{ produtoId: pom.id, quantidade: 1 }], pagamentos: [{ forma: "pix", valorCentavos: 3000 }] })).status, 201);
     const nota = (await get("/api/promissorias", ger.token)).dados.clientes[0];
-    assert.equal((await post("/api/promissorias/receber", cx.token, { clienteId: cli.id, promissoriaIds: nota.notas.map(n => n.id), pagamentos: [{ forma: "pix", valorCentavos: 4000 }] })).status, 409);
-    assert.equal((await post("/api/promissorias/receber", ger.token, { clienteId: cli.id, promissoriaIds: nota.notas.map(n => n.id), pagamentos: [{ forma: "pix", valorCentavos: 4000 }] })).status, 201);
+    assert.equal((await post("/api/promissorias/receber", cx.token, { clienteId: cli.id, promissoriaIds: nota.notas.map(n => n.id), pagamentos: [{ forma: "pix", valorCentavos: 4000 }] })).status, 201, "caixa recebe nota");
     assert.equal((await post("/api/caixa/movimento", ger.token, { tipo: "suprimento", valorCentavos: 2000, motivo: "Troco extra" })).status, 201);
-    assert.equal((await post("/api/caixa/movimento", cx.token, { tipo: "suprimento", valorCentavos: 2000, motivo: "Troco extra" })).status, 409);
+    assert.equal((await post("/api/caixa/movimento", cx.token, { tipo: "suprimento", valorCentavos: 2000, motivo: "Troco extra" })).status, 201);
     const c = (await get("/api/caixa/hoje", ger.token)).dados;
     assert.equal(c.caixa.situacao, "fechado", "o caixa continua fechado");
     assert.equal(c.totais.entradasCentavos, 11000, "4000 + 3000 + nota 4000 entraram depois do fechamento");
