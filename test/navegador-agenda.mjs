@@ -90,6 +90,7 @@ async function rodar(tela) {
 
     passo("barra enxuta: Grade/Lista junto do filtro; + Novo horário flutuante no celular");
     assert.equal(await page.locator(".linha-filtros-agenda .modo-dia").count(), 1);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), tela.largura, "a barra da agenda não alarga a página");
     const novo = page.locator(".acoes-agenda .novo-horario");
     const pos = await novo.evaluate(e => getComputedStyle(e).position);
     assert.equal(pos, tela.movel ? "fixed" : "static", "no celular o botão flutua");
@@ -122,7 +123,51 @@ async function rodar(tela) {
     }
     await print("ano");
 
-    const reais = problemas.filter(p => !/status of 40[39]/.test(p));
+    passo("Subir horários em lote: 3 linhas, 1 certa e 2 com problema; corrige e envia de novo (só as que faltam)");
+    if (tela.movel) {   // no celular fica no "Mais" (a barra da agenda não tem espaço)
+      await page.click("#btn-menu"); await page.waitForSelector("#menu.aberto"); await page.click("#menu [data-nav='Subir horários em lote']");
+    } else await page.click("[data-teste=link-lote]");
+    await page.waitForSelector("[data-lote-linha='3']");
+    const dia = somarDias(HOJE, 2);
+    const linha = n => page.locator(`[data-lote-linha='${n}']`);
+    const preencher = async (n, campo, valor) => { const c = linha(n).locator(`[data-campo=${campo}]`); await c.fill(valor); await c.dispatchEvent("input"); };
+    for (const n of [1, 2, 3]) {
+      await preencher(n, "data", dia);
+      await linha(n).locator("[data-campo=barbeiroId]").selectOption({ label: "Rafael Barbeiro" });
+      await linha(n).locator("[data-campo=servicoId]").selectOption({ label: "Corte masculino (30 min)" });
+    }
+    await preencher(1, "hora", "09:00"); await preencher(1, "nome", "Lote Um Fictício");
+    await preencher(2, "hora", "10:00"); await preencher(2, "nome", "Lote Dois Fictício"); await preencher(2, "telefone", "11 95555-0102");   // cliente novo com telefone: falta o aceite LGPD
+    await preencher(3, "hora", "25:99"); await preencher(3, "nome", "Lote Tres Fictício");   // hora inválida
+    assert.match(await page.textContent("[data-teste=enviar-lote]"), /Enviar 3 horários/);
+    await page.click("[data-teste=enviar-lote]");
+    await page.waitForSelector("[data-teste=lote-resumo].com-erro");
+    assert.match(await page.textContent("[data-teste=lote-resumo]"), /1 marcado\(s\)\. 2 com problema/);
+    assert.ok((await linha(1).getAttribute("class")).includes("ok"));
+    assert.match(await linha(2).locator(".lote-msg").textContent(), /LGPD/);
+    assert.match(await linha(3).locator(".lote-msg").textContent(), /Hora inválida/);
+    await print("lote-com-erros");
+    // corrige: aceite LGPD e hora certa → envia só as 2 que faltam
+    await page.check("#c-loteLgpd");
+    await preencher(3, "hora", "11:00");
+    assert.match(await page.textContent("[data-teste=enviar-lote]"), /Enviar 2 horários/);
+    await page.click("[data-teste=enviar-lote]");
+    await page.waitForSelector("[data-teste=lote-resumo].tudo-ok");
+    assert.match(await page.textContent("[data-teste=lote-resumo]"), /Pronto: 2 horário/);
+    await print("lote-enviado");
+    // na agenda do dia, os três estão lá
+    await page.click("a:has-text('Ver na agenda')");
+    await page.waitForSelector(".visoes-agenda");
+    await pronto();
+    await page.click(".visoes-agenda button:text-is('Dia')");
+    await pronto();
+    await page.fill(".data-agenda", dia);
+    await page.locator(".data-agenda").dispatchEvent("change");
+    await page.waitForSelector(".grade-agenda [data-evento='Lote Tres Fictício']");
+    for (const nome of ["Lote Um Fictício", "Lote Dois Fictício"]) assert.equal(await page.locator(`.grade-agenda [data-evento='${nome}']`).count(), 1, nome);
+    await print("lote-na-agenda");
+
+    const reais = problemas.filter(p => !/status of 40[039]/.test(p));   // 400 esperado: linha do lote sem o aceite LGPD
     assert.deepEqual(reais, [], `erros no console: ${reais.join(" | ")}`);
     passo("OK — nenhum erro no console (inclui bloqueios de CSP)");
   } finally {

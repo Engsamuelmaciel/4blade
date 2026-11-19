@@ -183,6 +183,8 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 
   - Agenda revisada (mesma ramificação): barra `.barra-agenda` com `.visoes-agenda`, `.navega-data` e `.linha-filtros-agenda` (filtro com label "Todos", `alternaModoAgenda()` saiu do corpo e foi para a barra, `.acoes-agenda .novo-horario` = botão flutuante no celular); `estadoAgenda.rolouAgora` (rola até `.grade-agora` uma vez); `gradeSemana` com blocos que se cruzam (`a._col`/`a._span`, subcolunas = MMC das faixas até 12); CSS: `.grade-hora` sticky e sem translate, `.grade-livre .mais` só no hover, colunas 150 px (dia) / 108 px (semana) no celular, `.mes-tag/.mes-mais` escondidos no celular, `.pt.passado` neutro. Teste: `test/navegador-agenda.mjs` (prints `docs/prints/agenda/`). Cache do sw `4blade-v38`.
 
+  - Subir horários em lote (mesma ramificação): `telaAgendaLote` (rota `agenda-lote`, todos os perfis da barbearia; no "Mais" e `[data-teste=link-lote]` na agenda); linhas `[data-lote-linha]` com `[data-campo=data|hora|barbeiroId|servicoId|nome|telefone]`, `#c-loteLgpd`, `#c-loteNota`, `[data-teste=enviar-lote]`, `[data-teste=lote-resumo]`; envia uma a uma pelo `POST /agenda` existente (sem rota nova); rascunho em localStorage `4blade.loteRascunho.<usuário>`. Testado em `test/navegador-agenda.mjs`. Cache do sw `4blade-v39`.
+
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.

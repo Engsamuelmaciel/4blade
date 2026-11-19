@@ -1438,6 +1438,7 @@ async function telaAgenda() {
       temModo ? alternaModoAgenda() : null,
       el("div", { class: "acoes-agenda" },
         botao("+ Novo horário", () => janelaMarcar(ag), "principal pequeno novo-horario"),
+        el("a", { class: "botao pequeno", href: "#/agenda-lote", "data-teste": "link-lote", title: "Vários horários de uma vez (passar do caderno)", text: "Vários de uma vez" }),
         ehCaixa() ? null : botao("Bloquear", () => janelaBloquear(ag), "pequeno"))));
 
   const profs = ag.profissionais.filter(p => !estadoAgenda.barbeiroId || p.id === estadoAgenda.barbeiroId);
@@ -1540,6 +1541,124 @@ function calendarioAno(oc, ano, irPara) {
 }
 
 // Horários e bloqueios de um profissional num dia, em ordem.
+// ---------- SUBIR HORÁRIOS EM LOTE (19/11/2026) ----------
+// Para passar o caderno para o sistema: várias linhas (dia, hora, profissional, serviço, cliente) enviadas de uma vez.
+// Cada linha vira um horário comum pela mesma rota do "Novo horário" (mesmas regras e conferências); o resultado aparece
+// em cada linha (marcado ✓ ou o motivo). O rascunho fica guardado no aparelho até ser enviado.
+const chaveLote = () => `4blade.loteRascunho.${usuario?.id || ""}`;
+function lerRascunhoLote() { try { return JSON.parse(localStorage.getItem(chaveLote()) || "null"); } catch { return null; } }
+function salvarRascunhoLote(linhas) { try { localStorage.setItem(chaveLote(), JSON.stringify(linhas)); } catch { /* sem espaço */ } }
+async function telaAgendaLote() {
+  const hoje = hojeLocal();
+  const [ag, servicos] = await Promise.all([api(`/agenda?data=${hoje}`), carregarServicos()]);
+  const profs = ag.profissionais;
+  if (!profs.length) return mostrar(cabecalho("Subir horários em lote", "", "#/agenda"), el("p", { class: "vazio", text: "Nenhum profissional com agenda. Cadastre em Equipe." }));
+  if (!servicos.length) return mostrar(cabecalho("Subir horários em lote", "", "#/agenda"), el("p", { class: "vazio", text: "Cadastre os serviços antes (Catálogo → Serviços)." }));
+  const soUm = profs.length === 1;
+  const vazia = base => ({ data: base?.data || hoje, hora: "", barbeiroId: base?.barbeiroId || profs[0].id, servicoId: base?.servicoId || servicos[0].id, nome: "", telefone: "", estado: null, msg: "" });
+  let linhas = (lerRascunhoLote() || []).filter(l => l && l.estado !== "ok");
+  if (!linhas.length) linhas = [vazia(), vazia(), vazia()];
+  const lista = el("div", { class: "lote-lista", "data-teste": "lote-lista" });
+  const resumo = el("p", { class: "lote-resumo", "data-teste": "lote-resumo", role: "status" });
+  const lgpd = caixaMarcar("Os clientes com telefone autorizaram o uso do telefone para o atendimento (LGPD)", { name: "loteLgpd" });
+  const notaVencida = caixaMarcar("Marcar mesmo se o cliente tiver nota vencida", { name: "loteNota" });
+  const guardar = () => salvarRascunhoLote(linhas.filter(l => l.estado !== "ok"));
+  const desenhar = () => {
+    lista.replaceChildren(...linhas.map((l, i) => {
+      const travada = l.estado === "ok";
+      const inp = (nome, attrs) => {
+        const e = el(attrs.tag || "input", { ...attrs, tag: null, "aria-label": `${attrs.rotulo} (linha ${i + 1})`, rotulo: null, disabled: travada || null, "data-campo": nome });
+        e.addEventListener("input", () => { l[nome] = e.value; guardar(); contar(); });
+        e.addEventListener("change", () => { l[nome] = e.value; guardar(); });
+        return el("label", { class: `lote-campo lote-${nome}` }, el("span", { text: attrs.rotulo }), e);
+      };
+      return el("div", { class: `lote-linha ${l.estado || ""}`, "data-lote-linha": String(i + 1) },
+        el("span", { class: "lote-num", text: travada ? "✓" : String(i + 1) }),
+        inp("data", { type: "date", value: l.data, rotulo: "Dia", required: true }),
+        inp("hora", { type: "time", value: l.hora, rotulo: "Hora", required: true, placeholder: "00:00" }),
+        soUm ? null : inp("barbeiroId", { tag: "select", rotulo: "Profissional" }),
+        inp("servicoId", { tag: "select", rotulo: "Serviço" }),
+        inp("nome", { value: l.nome, rotulo: "Cliente", autocomplete: "off", maxlength: "80", placeholder: "Nome" }),
+        inp("telefone", { value: l.telefone, rotulo: "Telefone (opcional)", inputmode: "tel", autocomplete: "off", placeholder: "(11) 90000-0000" }),
+        travada ? el("span", { class: "lote-tirar" }) : el("button", { type: "button", class: "lote-tirar", "aria-label": `Tirar a linha ${i + 1}`, title: "Tirar esta linha", text: "×",
+          onclick: () => { linhas.splice(i, 1); if (!linhas.length) linhas.push(vazia()); guardar(); desenhar(); } }),
+        l.msg ? el("p", { class: `lote-msg ${l.estado === "ok" ? "ok" : "erro"}`, text: l.msg }) : null);
+    }));
+    // selects: opções e valor atual
+    lista.querySelectorAll(".lote-linha").forEach((linhaEl, i) => {
+      const l = linhas[i];
+      const sp = linhaEl.querySelector("[data-campo=barbeiroId]");
+      if (sp) { sp.replaceChildren(...profs.map(p => el("option", { value: p.id, text: p.nome }))); sp.value = l.barbeiroId; }
+      const ss = linhaEl.querySelector("[data-campo=servicoId]");
+      ss.replaceChildren(...servicos.map(x => el("option", { value: x.id, text: `${x.nome} (${x.duracaoMin} min)` }))); ss.value = l.servicoId;
+    });
+    aplicarMascaras(lista);
+    contar();
+  };
+  // Botão mostra quantos vão (atualiza enquanto digita)
+  const contar = () => {
+    const pend = linhas.filter(l => l.estado !== "ok" && (l.hora || l.nome || l.telefone)).length;
+    enviarBtn.textContent = pend ? `Enviar ${pend} horário${pend === 1 ? "" : "s"} para a agenda` : "Enviar para a agenda";
+    enviarBtn.disabled = !pend;
+  };
+  const adicionar = (qtd = 1) => {
+    for (let k = 0; k < qtd; k++) { const ult = linhas[linhas.length - 1]; linhas.push(vazia(ult)); }
+    guardar(); desenhar();
+    const novas = lista.querySelectorAll(".lote-linha:not(.ok) [data-campo=hora]");
+    novas[novas.length - qtd]?.focus();
+  };
+  const enviarBtn = el("button", { type: "button", class: "botao principal largo", "data-teste": "enviar-lote" });
+  enviarBtn.addEventListener("click", async () => {
+    const pendentes = linhas.filter(l => l.estado !== "ok" && (l.hora || l.nome || l.telefone));
+    if (!pendentes.length) return;
+    enviarBtn.disabled = true;
+    let ok = 0, erro = 0;
+    document.body.dataset.carregando = "1";
+    try {
+      for (const [k, l] of pendentes.entries()) {
+        resumo.textContent = `Enviando ${k + 1} de ${pendentes.length}…`;
+        const hora = (l.hora || "").trim();
+        if (!/^\d{2}:\d{2}$/.test(hora)) { l.estado = "erro"; l.msg = "Hora inválida. Exemplo: 09:30"; erro++; continue; }
+        if (!l.nome.trim() && !l.telefone.replace(/\D/g, "")) { l.estado = "erro"; l.msg = "Informe o nome ou o telefone do cliente."; erro++; continue; }
+        try {
+          await api("/agenda", { metodo: "POST", corpo: {
+            data: l.data, hora, barbeiroId: soUm ? profs[0].id : l.barbeiroId, servicoIds: [l.servicoId],
+            cliente: { nome: l.nome.trim() || undefined, telefone: l.telefone, aceiteLgpd: lgpd.querySelector("input").checked },
+            ...(notaVencida.querySelector("input").checked ? { aceiteNotaVencida: true } : {})
+          } });
+          l.estado = "ok"; l.msg = `Marcado: ${dataBR(l.data)} às ${hora}.`; ok++;
+        } catch (e) {
+          if (e.message === "Sessão encerrada") throw e;
+          l.estado = "erro";
+          l.msg = e.dados?.codigo === "nota_vencida" ? "Cliente com nota vencida: marque \"Marcar mesmo se o cliente tiver nota vencida\" e envie de novo."
+            : /LGPD/.test(e.message) ? "Cliente novo com telefone: marque a autorização do telefone (LGPD) logo abaixo e envie de novo." : e.message;
+          erro++;
+        }
+      }
+    } finally { delete document.body.dataset.carregando; }
+    guardar(); desenhar();
+    resumo.textContent = erro ? `${ok} marcado(s). ${erro} com problema: corrija as linhas em vermelho e envie de novo (só elas vão).`
+      : `Pronto: ${ok} horário(s) na agenda.`;
+    resumo.className = `lote-resumo ${erro ? "com-erro" : "tudo-ok"}`;
+    if (ok) avisar(`${ok} horário(s) marcado(s).`);
+  });
+  const limparMarcados = () => { linhas = linhas.filter(l => l.estado !== "ok"); if (!linhas.length) linhas = [vazia()]; resumo.textContent = ""; guardar(); desenhar(); };
+  mostrar(
+    cabecalho("Subir horários em lote", "Passe os horários do caderno para a agenda: preencha as linhas e envie tudo de uma vez.", "#/agenda"),
+    el("section", { class: "cartao lote" },
+      el("p", { class: "suave", text: "Dica: a linha nova já vem com o dia, o profissional e o serviço da linha de cima — é só trocar a hora e o cliente. O que você digitar fica guardado neste aparelho até enviar." }),
+      lista,
+      el("div", { class: "lote-acoes" },
+        botao("+ Linha", () => adicionar(1), "pequeno"),
+        botao("+ 5 linhas", () => adicionar(5), "pequeno"),
+        botao("Tirar os já marcados", limparMarcados, "pequeno")),
+      el("div", { class: "lote-confirmar" }, lgpd, notaVencida),
+      enviarBtn,
+      resumo,
+      el("p", { class: "centro" }, el("a", { href: "#/agenda", text: "Ver na agenda" }))));
+  desenhar();
+}
+
 // ---------- AGENDA EM GRADE (17/11/2026): horas à esquerda, uma coluna por profissional ----------
 // Cada linha da grade = 5 minutos. Posição dos blocos pela grade CSS (definida via CSSOM, sem style="" no HTML).
 const MIN_LINHA = 5;
@@ -5363,7 +5482,7 @@ setInterval(() => { if (document.visibilityState === "visible" && Date.now() - u
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Date.now() - ultimoSinalUso > 55000) enviarUso(); });
 
 const NOME_TELA = {
-  "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
+  "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", "agenda-lote": "Subir horários em lote", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
   clientes: "Clientes", mensagens: "Mensagens", notas: "Notas", notificacoes: "Notificações", financeiro: "Relatório financeiro",
   "pagamento-equipe": "Pagamento da equipe", comissoes: "Comissões e vales", contas: "Despesas", contador: "Contador e dados",
   servicos: "Serviços", produtos: "Produtos", estoque: "Estoque", equipe: "Equipe", funcionamento: "Funcionamento", assinatura: "Meu plano",
@@ -5581,18 +5700,18 @@ function gruposDoMenu() {
 }
 function gruposDoPerfil(p) {
   if (p === "caixa") return [
-    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["visao-dia", "Visão do dia", "painel"], ["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["notas", "Notas em aberto", "contas"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"], ["notificacoes", "Notificações", "sino"]] },
+    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["visao-dia", "Visão do dia", "painel"], ["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["agenda-lote", "Subir horários em lote", "lista"], ["notas", "Notas em aberto", "contas"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"], ["notificacoes", "Notificações", "sino"]] },
     { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
   ];
   if (p === "barbeiro") return [
-    { id: "atendimento", titulo: "Meu trabalho", icone: "agenda", itens: [["agenda", "Minha agenda", "agenda"], ["notificacoes", "Notificações", "sino"]] },
+    { id: "atendimento", titulo: "Meu trabalho", icone: "agenda", itens: [["agenda", "Minha agenda", "agenda"], ["agenda-lote", "Subir horários em lote", "lista"], ["notificacoes", "Notificações", "sino"]] },
     { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
   ];
   // Gerente/dono (19/11/2026): no topo ficam Início (Painel), Agenda, Caixa, Clientes, Despesas e Relatórios; os grupos
   // abaixo são o "Mais", por assunto e em ordem de uso.
   return [
     { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ["financeiro", "Relatório financeiro", "grafico"]] },
-    { id: "atendimento", titulo: "Dia a dia", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["visao-dia", "Visão do dia", "lista"], ["notas", "Notas em aberto", "contas"], ["mensagens", "Mensagens", "mensagem"], ["notificacoes", "Notificações", "sino"]] },
+    { id: "atendimento", titulo: "Dia a dia", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["agenda-lote", "Subir horários em lote", "lista"], ["visao-dia", "Visão do dia", "lista"], ["notas", "Notas em aberto", "contas"], ["mensagens", "Mensagens", "mensagem"], ["notificacoes", "Notificações", "sino"]] },
     { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["contas", "Despesas", "contas"], ["pagamento-equipe", "Pagamento da equipe", "equipe"], ["contador", "Contador e dados", "contador"]] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"], ["estoque", "Estoque", "estoque"]] },
     { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"], ["assinatura", "Meu plano", "dinheiro"]] }
@@ -5702,6 +5821,7 @@ const ROTAS = {
   clientes: { perfis: ["proprietario", "gerente", "caixa"], tela: () => telaClientes() },
   mensagens: { perfis: ["proprietario", "gerente", "caixa"], tela: telaMensagens },
   agenda: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgenda },
+  "agenda-lote": { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgendaLote },
   notas: { perfis: ["proprietario", "gerente", "caixa"], tela: telaNotas },
   "pagamento-equipe": { perfis: ["proprietario", "gerente"], tela: telaPagamentoEquipe },
   notificacoes: { perfis: ["proprietario", "gerente", "caixa", "barbeiro"], tela: telaNotificacoes },

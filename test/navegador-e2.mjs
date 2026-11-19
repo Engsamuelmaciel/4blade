@@ -293,7 +293,9 @@ async function rodar(tela) {
     await print("gerente-agenda-semana-ficha", false);
     await page.click("dialog[open] button[type=submit]");
     // "Ver o dia completo" leva para a visão Dia daquela data
-    await page.click(`[data-dia="${AMANHA}"] ~ .acoes-dia-semana button:has-text('Ver o dia completo')`);
+    const verDia = page.locator(`[data-dia="${AMANHA}"] ~ .acoes-dia-semana button:has-text('Ver o dia completo')`);
+    await verDia.evaluate(e => e.scrollIntoView({ block: "center" }));   // fora do canto do botão flutuante
+    await verDia.click();
     await page.waitForSelector('.coluna-prof [data-agendamento="Elias Cliente Fictício"]');
     // visão Dia em grade: bloco do tamanho da duração, livres tocáveis, cabeçalho por profissional
     await page.click(".modo-dia button:has-text('Grade')");
@@ -308,6 +310,7 @@ async function rodar(tela) {
     await print("gerente-agenda-grade");
     const livre = page.locator("[data-livre-grade^='Bruno']").first();
     const horaLivre = (await livre.getAttribute("data-livre-grade")).split("|")[1];
+    await livre.evaluate(e => e.scrollIntoView({ block: "center" }));   // no celular o "+ Novo horário" flutua no canto de baixo
     await livre.click();
     await page.waitForSelector("dialog[open] #c-hora");
     await page.waitForFunction(h => document.querySelector("dialog[open] #c-hora")?.value === h, horaLivre, { timeout: 5000 }).catch(() => {});
