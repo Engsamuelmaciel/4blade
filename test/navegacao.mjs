@@ -1,7 +1,7 @@
-// Navegação (19/11/2026: menu superior). Se o nome é uma aba do topo, toca nela; senão abre "Mais" (#btn-menu) e
+// Navegação (19/11/2026): caixa/barbeiro/plataforma têm menu no topo; gerente/dono, menu lateral. Se o nome é uma aba do topo, toca nela; senão abre "Mais" (#btn-menu) e
 // toca no item do painel (que tem todas as telas, por assunto). Tenta algumas vezes: logo após o login o menu é remontado.
 export async function ir(page, nome) {
-  await page.waitForSelector("#nav-topo:not([hidden]) .nav-aba", { state: "attached" });
+  await page.waitForFunction(() => document.querySelector("#nav-topo:not([hidden]) .nav-aba") || document.querySelector("#menu:not([hidden]) .grupo"));
   for (let tentativa = 0; ; tentativa++) {
     try {
       const aba = page.locator(`#nav-topo [data-nav-topo="${nome}"], #nav-topo [data-nav="${nome}"]`).first();
@@ -9,7 +9,8 @@ export async function ir(page, nome) {
       let pelo = "topo";
       if (!(await aba.count())) {
         pelo = "mais";
-        if (!(await page.locator("#menu.aberto").count())) {
+        // menu do topo ("Mais") ou menu lateral no celular (☰); no computador o lateral fica sempre visível
+        if (await page.locator("#btn-menu").isVisible() && !(await page.locator("#menu.aberto").count())) {
           await page.click("#btn-menu");
           await page.waitForSelector("#menu.aberto");
           await page.waitForTimeout(250); // animação do painel
@@ -22,6 +23,7 @@ export async function ir(page, nome) {
       await item.click({ timeout: 3000 });
       await page.waitForFunction(d => location.hash === d, destino);
       if (pelo === "mais") await page.waitForFunction(() => !document.getElementById("menu").classList.contains("aberto"));
+      void 0;
       await page.waitForTimeout(80);   // o evento de troca de endereço chega logo depois do clique
       await page.waitForFunction(() => !document.body.dataset.carregando);   // espera a tela terminar de montar
       return;

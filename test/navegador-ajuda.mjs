@@ -59,7 +59,7 @@ async function rodar(tela) {
     await page.fill("#c-login", login);
     await page.fill("#c-senha", senha);
     await page.click("form.cartao button[type=submit]");
-    await page.waitForSelector("#nav-topo:not([hidden]) .nav-aba");
+    await page.waitForFunction(() => document.querySelector("#nav-topo:not([hidden]) .nav-aba") || document.querySelector("#menu:not([hidden]) .grupo"));
     await pronto();
   };
   const sair = async () => { await page.click("#btn-conta"); await page.click("#btn-sair"); await page.waitForSelector("text=Você saiu do sistema."); };

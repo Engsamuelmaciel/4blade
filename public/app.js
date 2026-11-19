@@ -1150,6 +1150,7 @@ function atualizarTopo() {
     sub.textContent = "Gestão para barbearias";
     menuEl().hidden = true;
     document.getElementById("nav-topo").hidden = true;
+    document.body.classList.remove("com-lateral", "com-topo");
     fecharMenu();
   }
   acoes.hidden = !logado;
@@ -3070,8 +3071,10 @@ async function telaCaixa(dataHistorico = null) {
 const estadoCobrar = { busca: "" };
 async function abaCobrar(recarregar) {
   const [{ atendimentos, profissionais }] = await Promise.all([api("/caixa/atendimentos"), carregarServicos()]);
-  const aCobrar = atendimentos.filter(a => a.situacao === "agendado");
-  const pagos = atendimentos.filter(a => a.situacao === "finalizado");
+  // Só o dia de hoje, em ordem de hora (19/11/2026, pedido do responsável).
+  const doDia = atendimentos.filter(a => !a.atrasado).sort((x, y) => x.inicio.localeCompare(y.inicio));
+  const aCobrar = doDia.filter(a => a.situacao === "agendado");
+  const pagos = doDia.filter(a => a.situacao === "finalizado");
   const tabela = s => s.reduce((t, x) => t + (x.precoCentavos || 0), 0);
   const cobrar = a => janelaFinalizar(a, { endpoint: "/caixa/cobrar", aoTerminar: recarregar, titulo: `Concluir atendimento de ${a.cliente.nome}` });
   const quando = a => (a.atrasado ? `${dataBR(a.data).slice(0, 5)} ${a.inicio}` : a.inicio);
@@ -3525,12 +3528,7 @@ async function telaPainel() {
   ].filter(Boolean);
   const textoPeriodo = p.periodo.ini === p.periodo.fim ? dataBR(p.periodo.ini) : `${dataBR(p.periodo.ini)} a ${dataBR(p.periodo.fim)}`;
   mostrar(
-    cabecalho("Início", textoPeriodo),
-    // Atalhos (19/11/2026): telas de uso frequente que não estão nas abas do topo
-    el("nav", { class: "pdv-ferramentas atalhos-inicio", "aria-label": "Atalhos" },
-      el("a", { class: "botao ferramenta", href: "#/visao-dia", "data-atalho": "visao-dia" }, icone("lista"), el("span", { text: "Visão do dia" })),
-      el("a", { class: "botao ferramenta", href: "#/notas", "data-atalho": "notas" }, icone("contas"), el("span", { text: "Notas em aberto" })),
-      el("a", { class: "botao ferramenta", href: "#/pagamento-equipe", "data-atalho": "equipe" }, icone("equipe"), el("span", { text: "Pagar equipe" }))),
+    cabecalho("Painel", textoPeriodo),
     filtroPeriodo(periodoPainel, v => { periodoPainel = v; telaPainel(); }),
     el("div", { class: "cartoes" },
       cartao("Faturamento bruto", reais(c.brutoCentavos), `Serviços ${reais(c.atendimentosCentavos)} · produtos ${reais(c.vendasCentavos)}`, "", "bruto"),
@@ -5707,12 +5705,11 @@ function gruposDoPerfil(p) {
     { id: "atendimento", titulo: "Meu trabalho", icone: "agenda", itens: [["agenda", "Minha agenda", "agenda"], ["agenda-lote", "Subir horários em lote", "lista"], ["notificacoes", "Notificações", "sino"]] },
     { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
   ];
-  // Gerente/dono (19/11/2026): no topo ficam Início (Painel), Agenda, Caixa, Clientes, Despesas e Relatórios; os grupos
-  // abaixo são o "Mais", por assunto e em ordem de uso.
+  // Gerente/dono: menu lateral (organização de antes); Financeiro reúne tudo o que é financeiro.
   return [
-    { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ["financeiro", "Relatório financeiro", "grafico"]] },
-    { id: "atendimento", titulo: "Dia a dia", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["agenda-lote", "Subir horários em lote", "lista"], ["visao-dia", "Visão do dia", "lista"], ["notas", "Notas em aberto", "contas"], ["mensagens", "Mensagens", "mensagem"], ["notificacoes", "Notificações", "sino"]] },
-    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["contas", "Despesas", "contas"], ["pagamento-equipe", "Pagamento da equipe", "equipe"], ["contador", "Contador e dados", "contador"]] },
+    { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ["visao-dia", "Visão do dia", "lista"], ["notificacoes", "Notificações", "sino"]] },
+    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"], ["agenda-lote", "Subir horários em lote", "lista"]] },
+    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["contas", "Despesas", "contas"], ["pagamento-equipe", "Pagamento da equipe", "equipe"], ["notas", "Notas em aberto", "contas"], ["contador", "Contador e dados", "contador"]] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"], ["estoque", "Estoque", "estoque"]] },
     { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"], ["assinatura", "Meu plano", "dinheiro"]] }
   ];
@@ -5735,7 +5732,51 @@ function rotaAtual() {
   const r = location.hash.replace(/^#\/?/, "").split("/")[0] || (usuario?.telaInicial ?? "");
   return r === "inicio" ? (gestao() ? "painel" : "agenda") : r === "caixa-historico" || r === "caixa-dia" ? "caixa" : r;
 }
+// 19/11/2026 (2ª revisão, pedido do responsável): menu no topo só para caixa, barbeiro e plataforma;
+// gerente e dono continuam com o menu lateral de antes (fixo no computador, ☰ no celular).
+const usaMenuTopo = () => !["proprietario", "gerente"].includes(usuario?.perfil) || Boolean(usuario?.assinatura?.bloqueada);
+function montarMenuLateral() {
+  const aside = menuEl();
+  const atual = rotaAtual();
+  const grupos = gruposDoMenu();
+  const btnMenu = document.getElementById("btn-menu");
+  const topo = document.querySelector(".topo");
+  if (btnMenu.parentElement !== topo) topo.prepend(btnMenu);
+  btnMenu.replaceChildren(icone("menu"));
+  btnMenu.setAttribute("aria-label", "Abrir menu");
+  btnMenu.classList.remove("ativo");
+  btnMenu.hidden = false;
+  document.getElementById("nav-topo").hidden = true;
+  document.body.classList.add("com-lateral"); document.body.classList.remove("com-topo");
+  for (const g of grupos) if (g.itens.some(([r]) => r === atual)) gruposAbertos.add(g.id);
+  aside.replaceChildren(
+    el("div", { class: "menu-cabecalho" },
+      el("img", { class: "menu-logo", src: "/icons/logo.png", alt: "4blade", width: "98", height: "40" }),
+      el("strong", { text: usuario.barbearia ? usuario.barbearia.nome : "Plataforma" }),
+      el("span", { text: `${usuario.nome.split(" ")[0]} · ${NOME_PERFIL[usuario.perfil]}` })),
+    el("nav", { class: "menu-nav" }, grupos.map(g => {
+      const aberto = gruposAbertos.has(g.id) || grupos.length === 1;
+      const itens = el("div", { class: "grupo-itens", id: `grupo-${g.id}` }, g.itens.map(([rota, titulo, ic]) =>
+        el("a", { class: `nav-item ${rota === atual ? "ativo" : ""}`, href: `#/${rota}`, "data-nav": titulo, "aria-current": rota === atual ? "page" : null,
+          onclick: () => { fecharMenu(); if (location.hash === `#/${rota}`) rotear(); } }, icone(ic), el("span", { text: titulo }))));
+      itens.hidden = !aberto;
+      const titulo = el("button", { type: "button", class: "grupo-titulo", "aria-expanded": aberto ? "true" : "false", "aria-controls": `grupo-${g.id}`,
+        onclick: () => {
+          const abrir = itens.hidden;
+          itens.hidden = !abrir;
+          titulo.setAttribute("aria-expanded", abrir ? "true" : "false");
+          grupo.classList.toggle("aberto", abrir);
+          if (abrir) gruposAbertos.add(g.id); else gruposAbertos.delete(g.id);
+        } }, icone(g.icone), el("span", { text: g.titulo }), svg("svg", { viewBox: "0 0 24 24", class: "icone seta", "aria-hidden": "true" }, svg("path", { d: ICONES.seta })));
+      const grupo = el("div", { class: `grupo ${aberto ? "aberto" : ""}`, "data-grupo": g.id }, titulo, itens);
+      return grupo;
+    })),
+    el("div", { class: "menu-rodape", text: "4blade · gestão para barbearias" }));
+  aside.hidden = false;
+}
 function montarMenu() {
+  if (!usaMenuTopo()) return montarMenuLateral();
+  document.body.classList.add("com-topo"); document.body.classList.remove("com-lateral");
   const aside = menuEl();
   const atual = rotaAtual();
   const todos = gruposDoMenu();
@@ -5747,6 +5788,7 @@ function montarMenu() {
   // Abas do topo + botão "Mais" (o próprio #btn-menu)
   const nav = document.getElementById("nav-topo");
   const btnMenu = document.getElementById("btn-menu");
+  btnMenu.setAttribute("aria-label", "Mais opções do menu");
   const temMais = grupos.length > 0;
   const maisAtivo = grupos.some(g => g.itens.some(([r]) => r === atual));
   btnMenu.replaceChildren(icone("menu"), el("span", { text: "Mais" }));
@@ -5785,10 +5827,10 @@ function montarMenu() {
 const gruposFechados = new Set();
 void gruposAbertos;
 function abrirMenu() {
-  // o painel desce logo abaixo do topo (altura do topo muda entre celular e computador)
-  const topo = document.querySelector(".topo").getBoundingClientRect().bottom;
-  menuEl().style.top = `${Math.round(topo)}px`;
-  document.getElementById("fundo-menu").style.top = `${Math.round(topo)}px`;
+  // menu do topo: o painel desce logo abaixo do topo (altura muda entre celular e computador); lateral: da esquerda
+  const topo = usaMenuTopo() ? `${Math.round(document.querySelector(".topo").getBoundingClientRect().bottom)}px` : "";
+  menuEl().style.top = topo;
+  document.getElementById("fundo-menu").style.top = topo;
   menuEl().classList.add("aberto");
   document.getElementById("fundo-menu").hidden = false;
   document.getElementById("btn-menu").setAttribute("aria-expanded", "true");

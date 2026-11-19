@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
+import { ir } from "./navegacao.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright");
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -83,8 +84,8 @@ async function rodar(tela) {
     await page.fill("#c-login", "gerente.demo");
     await page.fill("#c-senha", SENHA);
     await page.click("button:has-text('Entrar')");
-    await page.waitForSelector("#nav-topo:not([hidden]) .nav-aba");
-    await page.click("#nav-topo [data-nav-topo='Agenda']");
+    await page.waitForFunction(() => document.querySelector("#nav-topo:not([hidden]) .nav-aba") || document.querySelector("#menu:not([hidden]) .grupo"));
+    await ir(page, "Agenda");
     await page.waitForSelector(".grade-agenda");
     await pronto();
 
@@ -125,7 +126,7 @@ async function rodar(tela) {
 
     passo("Subir horários em lote: 3 linhas, 1 certa e 2 com problema; corrige e envia de novo (só as que faltam)");
     if (tela.movel) {   // no celular fica no "Mais" (a barra da agenda não tem espaço)
-      await page.click("#btn-menu"); await page.waitForSelector("#menu.aberto"); await page.click("#menu [data-nav='Subir horários em lote']");
+      await ir(page, "Subir horários em lote");
     } else await page.click("[data-teste=link-lote]");
     await page.waitForSelector("[data-lote-linha='3']");
     const dia = somarDias(HOJE, 2);

@@ -262,10 +262,12 @@ async function rodar(tela) {
     const pomadaId = (await chamar("/estoque", null, gerT)).produtos.find(p => p.nome === "Pomada").id;
     await chamar("/estoque/entrada", { produtoId: pomadaId, quantidade: 1, custoUnitCentavos: 2000 }, gerT);
     await chamar("/agenda", { data: HOJE, hora: "18:00", servicoIds: [corte.id], cliente: { telefone: "11 96666-5555", nome: "Gil Fila Fictício", aceiteLgpd: true } }, beto);
+    await chamar("/agenda", { data: somarDias(HOJE, -1), hora: "19:30", servicoIds: [corte.id], cliente: { nome: "Ontem Fila Fictício" } }, beto);   // de ontem: não entra na fila do caixa
     await entrar("caixa.semana");
     await ir(page, "Caixa");
     await page.waitForSelector(".pdv-topo");
     await page.waitForSelector('[data-cobrar="Gil Fila Fictício"]');
+    assert.equal(await page.locator('[data-cobrar="Ontem Fila Fictício"]').count(), 0, "a fila do caixa mostra só o dia de hoje");
     const entradas0 = await page.textContent("[data-teste=entradas]");
     await print("caixa-pdv-fila");
     // 19/11/2026: o cartão inteiro da fila é o botão de cobrar (sem passo extra de "Concluir atendimento")
@@ -491,7 +493,12 @@ async function rodar(tela) {
     await page.waitForSelector("[data-cartao=bruto]");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), tela.largura, "nada passa da largura da tela");
     await print("gerente-painel");
-    assert.ok(await page.locator(".topo-logo img").isVisible(), "logo no topo (celular e computador: menu superior)");
+    assert.ok(await page.locator(tela.movel ? ".topo-logo img" : ".menu-logo").isVisible(), "logo no topo/menu (gerente: menu lateral)");
+    // 19/11/2026: gerente usa o menu lateral (sem abas no topo); Financeiro reúne tudo o que é financeiro
+    assert.ok(!(await page.locator("#nav-topo").isVisible()), "gerente sem menu no topo");
+    if (!tela.movel) assert.ok(await page.locator("#menu").isVisible(), "no computador o menu lateral fica fixo");
+    const fin = await page.locator('#menu [data-grupo="financeiro"] [data-nav]').evaluateAll(a => a.map(x => x.dataset.nav));
+    assert.deepEqual(fin, ["Relatório financeiro", "Despesas", "Pagamento da equipe", "Notas em aberto", "Contador e dados"]);
     await page.click("#btn-conta");
     await page.waitForSelector("dialog[open] .conta-cartao >> text=Gustavo Gerente");
     await print("minha-conta", false);
