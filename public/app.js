@@ -1418,22 +1418,27 @@ async function telaAgenda() {
     : v === "ano" ? el("strong", { class: "rotulo-periodo", text: d0.slice(0, 4) }) : dataInput;
   const filtro = veTodas()
     ? el("select", { "aria-label": "Profissional", class: "filtro-prof" },
-      el("option", { value: "", text: "Todos os profissionais", selected: !estadoAgenda.barbeiroId || null }),
+      el("option", { value: "", text: "Todos os profissionais", label: "Todos", selected: !estadoAgenda.barbeiroId || null }),
       ag.profissionais.map(p => el("option", { value: p.id, text: p.nome, selected: p.id === estadoAgenda.barbeiroId || null })))
     : null;
   filtro?.addEventListener("change", () => { estadoAgenda.barbeiroId = filtro.value; telaAgenda(); });
 
+  // Barra (19/11/2026): visão · data · [profissional, grade/lista, bloquear] numa linha; no celular o "+ Novo horário"
+  // vira botão flutuante (sempre à mão enquanto rola a grade).
+  const temModo = v === "dia" || v === "semana";
   const barra = el("div", { class: "barra-agenda" },
-    el("div", { class: "alterna", role: "group", "aria-label": "Visão da agenda" },
+    el("div", { class: "alterna visoes-agenda", role: "group", "aria-label": "Visão da agenda" },
       [["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"], ["ano", "Ano"]].map(([k, t]) =>
         botao(t, () => irPara(d0, k), `pequeno ${v === k ? "ativo" : ""}`))),
     el("div", { class: "navega-data" },
       botao("‹", () => mover(-1), "pequeno seta"), rotuloPeriodo, botao("›", () => mover(1), "pequeno seta"),
-      botao("Hoje", () => irPara(hojeLocal()), "pequeno")),
-    filtro,
-    el("div", { class: "acoes-agenda" },
-      botao("+ Novo horário", () => janelaMarcar(ag), "principal pequeno"),
-      ehCaixa() ? null : botao("Bloquear", () => janelaBloquear(ag), "pequeno")));
+      botao("Hoje", () => irPara(hojeLocal()), `pequeno ${(v === "dia" && d0 === hojeLocal()) ? "hoje-ativo" : ""}`)),
+    el("div", { class: "linha-filtros-agenda" },
+      filtro,
+      temModo ? alternaModoAgenda() : null,
+      el("div", { class: "acoes-agenda" },
+        botao("+ Novo horário", () => janelaMarcar(ag), "principal pequeno novo-horario"),
+        ehCaixa() ? null : botao("Bloquear", () => janelaBloquear(ag), "pequeno"))));
 
   const profs = ag.profissionais.filter(p => !estadoAgenda.barbeiroId || p.id === estadoAgenda.barbeiroId);
   let corpo;
@@ -1441,10 +1446,9 @@ async function telaAgenda() {
     corpo = el("p", { class: "vazio", "data-teste": "sem-profissionais", text: "Nenhum profissional com agenda. Cadastre gerente ou barbeiro em Equipe e ajustes → Equipe." });
   } else if (v === "dia") {
     // Dia: grade (horas × profissionais) ou lista (cartões por profissional). A escolha fica guardada no aparelho.
-    const modo = alternaModoAgenda();
     corpo = estadoAgenda.modoDia === "grade"
-      ? el("div", {}, modo, gradeAgenda(ag, d0, profs, disp))
-      : el("div", {}, modo, el("div", { class: `agenda-colunas ${profs.length > 1 ? "varias" : ""}` }, profs.map(p => {
+      ? el("div", {}, gradeAgenda(ag, d0, profs, disp))
+      : el("div", {}, el("div", { class: `agenda-colunas ${profs.length > 1 ? "varias" : ""}` }, profs.map(p => {
         const x = dispDe(p.id);
         const itens = itensDoDia(ag, d0, p.id, false, x && !disp.passado && x.situacao === "aberto" ? x.livres : null);
         return el("section", { class: "coluna-prof", "data-prof": p.nome },
@@ -1453,14 +1457,14 @@ async function telaAgenda() {
           itens.length ? itens : el("p", { class: "vazio", text: "Nenhum horário." }));
       })));
   } else if (v === "semana" && estadoAgenda.modoDia === "grade") {
-    corpo = el("div", {}, alternaModoAgenda(), gradeSemana(ag, d0, profs, dispDoDia, oc));
+    corpo = el("div", {}, gradeSemana(ag, d0, profs, dispDoDia, oc));
   } else if (v === "semana") {
     // Semana (pedido de 16/11/2026): cada dia é só uma barra com "marcados" e "livres" (horários ocultos).
     // Tocar na barra abre a lista do dia (hora · cliente · serviço); tocar num horário abre a ficha com todas as opções.
     const varios = profs.length > 1;
     const idsProfs = new Set(profs.map(p => p.id));
     const ocDe = d => oc?.dias.find(x => x.data === d);
-    corpo = el("div", { class: "agenda-semana" }, alternaModoAgenda(), [0, 1, 2, 3, 4, 5, 6].map(i => {
+    corpo = el("div", { class: "agenda-semana" }, [0, 1, 2, 3, 4, 5, 6].map(i => {
       const d = somaDias(d0, i);
       const doDia = ag.agendamentos.filter(a => a.data === d && idsProfs.has(a.barbeiroId)).sort((x, y) => x.inicio.localeCompare(y.inicio));
       const marcados = doDia.filter(a => a.situacao === "agendado" || a.situacao === "finalizado").length;
@@ -1502,6 +1506,16 @@ async function telaAgenda() {
     cabecalho(veTodas() ? "Agenda" : "Minha agenda", subtitulo),
     barra,
     corpo);
+  // Hoje na grade: rola até a linha de "agora" (uma vez por visão/data; ações na tela não fazem pular).
+  const chaveRolar = `${v}|${d0}|${estadoAgenda.modoDia}`;
+  if ((v === "dia" || v === "semana") && estadoAgenda.modoDia === "grade" && estadoAgenda.rolouAgora !== chaveRolar) {
+    estadoAgenda.rolouAgora = chaveRolar;
+    const agora = document.querySelector("#app .grade-agora");
+    if (agora) requestAnimationFrame(() => {
+      const r = agora.getBoundingClientRect();
+      if (r.top > window.innerHeight * .6 || r.top < 0) window.scrollTo({ top: Math.max(0, window.scrollY + r.top - window.innerHeight * .35), behavior: "auto" });
+    });
+  }
 }
 
 // Calendário do mês: cada dia com a cor da ocupação e quantos horários livres.
@@ -1720,18 +1734,32 @@ function gradeSemana(ag, d0, profs, disps, oc) {
   ini = Math.floor(ini / 60) * 60; fim = Math.min(24 * 60, Math.max(ini + 60, Math.ceil(fim / 60) * 60));
   const linhas = (fim - ini) / MIN_LINHA;
   const linha = t => (Math.max(ini, Math.min(fim, t)) - ini) / MIN_LINHA + 2;
-  // Faixas (lanes) por dia: atendimentos que se cruzam ficam lado a lado.
+  // Lado a lado só quando se cruzam (19/11/2026): os atendimentos são agrupados em "blocos" que se sobrepõem;
+  // dentro do bloco cada um ganha uma faixa; fora disso o cartão usa a largura toda do dia (dá para ler o nome).
+  // O dia é dividido em L subcolunas (mínimo múltiplo comum das faixas dos blocos, até 12).
+  const mmc = (a, b) => { const g = (x, y) => (y ? g(y, x % y) : x); return (a * b) / g(a, b); };
   const faixasDia = {};
   for (const d of dias) {
-    const doDia = evs.filter(a => a.data === d).sort((x, y) => x.inicio.localeCompare(y.inicio));
-    const fins = [];
+    const doDia = evs.filter(a => a.data === d).sort((x, y) => x.inicio.localeCompare(y.inicio) || x.fim.localeCompare(y.fim));
+    const blocos = [];
+    let atual = null, fimBloco = -1;
     for (const a of doDia) {
-      let k = fins.findIndex(f => f <= minDe(a.inicio));
-      if (k < 0) { k = fins.length; fins.push(0); }
-      fins[k] = minDe(a.fim);
-      a._faixa = k;
+      if (!atual || minDe(a.inicio) >= fimBloco) { atual = []; blocos.push(atual); fimBloco = -1; }
+      atual.push(a); fimBloco = Math.max(fimBloco, minDe(a.fim));
     }
-    faixasDia[d] = { lista: doDia, n: Math.max(1, fins.length) };
+    let L = 1;
+    for (const b of blocos) {
+      const fins = [];
+      for (const a of b) {
+        let k = fins.findIndex(f => f <= minDe(a.inicio));
+        if (k < 0) { k = fins.length; fins.push(0); }
+        fins[k] = minDe(a.fim); a._faixa = k;
+      }
+      b.k = fins.length;
+      L = Math.min(12, mmc(L, b.k));
+    }
+    for (const b of blocos) { const larg = Math.max(1, Math.floor(L / b.k)); for (const a of b) { a._col = a._faixa * larg; a._span = larg; } }
+    faixasDia[d] = { lista: doDia, n: L };
   }
   let col = 2;
   const colDia = {};
@@ -1739,6 +1767,7 @@ function gradeSemana(ag, d0, profs, disps, oc) {
   const grade = el("div", { class: "grade-agenda grade-semana", "data-grade-semana": d0 });
   grade.style.setProperty("--linhas", String(linhas));
   grade.style.gridTemplateColumns = `var(--col-horas) ${dias.map(d => { const n = faixasDia[d].n; return `repeat(${n}, minmax(calc(var(--col-dia) / ${n}), ${(1 / n).toFixed(4)}fr))`; }).join(" ")}`;
+  void 0;
   const filhos = [el("div", { class: "grade-canto" })];
   for (let h = ini; h < fim; h += 60) filhos.push(posicionar(el("div", { class: "grade-hora", text: minParaHoraTela(h) }), linha(h), 60 / MIN_LINHA, 1));
   const colunas = [];
@@ -1784,9 +1813,12 @@ function gradeSemana(ag, d0, profs, disps, oc) {
         title: `${a.inicio}–${a.fim} · ${a.cliente.nome} · ${a.barbeiroNome || ""} · ${a.servicos.map(s => s.nome).join(" + ")}`,
         "data-arrastavel": podeArrastar(a) ? "1" : null,
         onclick: ev => { if (ev.currentTarget.dataset.arrastou) return; janelaAtendimento(a, varios); } },
-        el("span", { class: "ev-linha" }, el("span", { class: "ev-hora", text: `${a.inicio}${a.situacao === "finalizado" ? " ✓" : ""}` }), varios ? el("span", { class: "ev-prof", text: iniciais(a.barbeiroNome || "") }) : null),
+        // curto (< 30 min): hora e nome numa linha só; senão, hora (+ quem atende) e o nome embaixo
+        dur < 30 ? el("span", { class: "ev-linha" }, el("span", { class: "ev-hora", text: `${a.inicio}${a.situacao === "finalizado" ? " ✓" : ""}` }), el("strong", { class: "ev-cliente", text: a.cliente.nome }))
+          : el("span", { class: "ev-linha" }, el("span", { class: "ev-hora", text: `${a.inicio}${a.situacao === "finalizado" ? " ✓" : ""}` }), varios ? el("span", { class: "ev-prof", text: iniciais(a.barbeiroNome || "") }) : null),
         dur >= 30 ? el("strong", { class: "ev-cliente", text: a.cliente.nome }) : null,
-        dur >= 60 ? el("span", { class: "ev-servico", text: a.servicos.map(s => s.nome).join(" + ") }) : null), linha(minDe(a.inicio)), dur / MIN_LINHA, c0 + a._faixa);
+        dur >= 60 ? el("span", { class: "ev-servico", text: a.servicos.map(s => s.nome).join(" + ") }) : null), linha(minDe(a.inicio)), dur / MIN_LINHA, c0 + a._col);
+      card.style.gridColumn = `${c0 + a._col} / span ${a._span}`;
       card._agendamento = a;
       filhos.push(card);
     }

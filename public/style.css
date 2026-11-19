@@ -1505,3 +1505,40 @@ button.ticket-at:focus-visible { outline: 3px solid var(--dourado); outline-offs
 .abas-equipe { margin-bottom: 12px; }
 .abas-fin { margin: 4px 0 14px; } .fin-secao.aberta > h3 { margin-top: 0; }
 @media (min-width: 700px) { .pdv-cobrar-topo .botao { width: auto; } }
+
+/* ---------- Agenda: refinamentos (19/11/2026) ---------- */
+/* Barra: visão · data · [profissional, grade/lista, ações] */
+.linha-filtros-agenda { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.linha-filtros-agenda .modo-dia { margin: 0; }
+.linha-filtros-agenda .acoes-agenda { margin-left: auto; }
+.navega-data .botao.hoje-ativo { border-color: var(--dourado); color: var(--texto); }
+/* Horas fixas à esquerda ao rolar a grade para o lado */
+.grade-hora, .grade-canto { position: sticky; left: 0; z-index: 5; background: var(--cartao); }
+.grade-canto { z-index: 6; }
+/* "+" dos horários vazios: só aparece ao passar o mouse (no toque fica bem discreto) */
+@media (hover: hover) { .grade-livre .mais { opacity: 0; } }
+@media (hover: none) { .grade-livre .mais { opacity: .16; } }
+/* Ano: dias que já passaram ficam neutros (não são "livres") */
+.mes-mini .pt.passado { background: var(--neutro); opacity: 1; }
+.mes-mini .pt.passado.fechado { background: var(--campo-borda); opacity: .5; }
+@media (max-width: 699px) {
+  .barra-agenda { gap: 8px; }
+  .linha-filtros-agenda { flex-wrap: nowrap; }
+  .linha-filtros-agenda .filtro-prof { flex: 1; min-width: 0; width: auto; }
+  .linha-filtros-agenda .modo-dia { flex: none; width: auto; }
+  .linha-filtros-agenda .modo-dia .botao { padding: 0 12px; }
+  .linha-filtros-agenda .acoes-agenda { display: flex; margin-left: auto; flex: none; }
+  .linha-filtros-agenda .acoes-agenda .botao { width: auto; }
+  /* "+ Novo horário" flutuante, sempre à mão */
+  .acoes-agenda .novo-horario { position: fixed; right: 14px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 250;
+    min-height: 52px; padding: 0 20px; border-radius: 999px; font-size: 16px; box-shadow: 0 8px 22px rgba(16, 24, 40, .3); }
+  main:has(.novo-horario) { padding-bottom: 90px; }
+  /* colunas mais largas: dá para ler o nome; arrasta para o lado para ver os outros */
+  .grade-agenda { grid-template-columns: 42px repeat(var(--cols), minmax(150px, 1fr)); }
+  .grade-semana { --col-dia: 108px; }
+  .grade-cab-dia small { display: none; }
+  /* mês: célula enxuta (número, pontinhos, livres) */
+  .mes-tag, .mes-mais { display: none; }
+}
+/* hora da grade dentro da própria linha (a 1ª hora não fica escondida atrás do cabeçalho) */
+.grade-hora { transform: none; padding-top: 2px; }
