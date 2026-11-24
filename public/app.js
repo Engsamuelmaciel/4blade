@@ -2218,6 +2218,7 @@ function acoesDoHorario(a) {
     const mais = { chave: "mais", rotulo: "Mais opções", itens: [
       botao("Remarcar", () => janelaRemarcar(a, ultimaAgenda), "pequeno"),
       botao("Editar", () => janelaEditarHorario(a), "pequeno"),
+      a.serie ? el("button", { type: "button", class: "botao pequeno", "data-teste": "editar-repeticao", text: "Editar repetição", onclick: () => janelaEditarRepeticao(a) }) : null,
       ehCaixa() ? null : botao("Vender produto", () => janelaVenda({ agendamento: a, aoTerminar: telaAgenda }), "pequeno"),
       botao("Faltou", () => abrirJanela(`${a.cliente.nome} faltou?`, el("p", { text: "O horário fica registrado como falta." }), {
         ok: "Registrar falta", aoConfirmar: async () => {
@@ -2340,6 +2341,36 @@ async function janelaEditarHorario(a) {
   });
   const f = janela.querySelector("form");
   f.addEventListener("input", () => { f.eLgpd.closest(".marcar").hidden = !f.eTel.value.replace(/\D/g, ""); });
+  return promessa;
+}
+
+// Editar a repetição de um horário fixo (25/11/2026): vale deste horário em diante; os anteriores não mudam.
+function janelaEditarRepeticao(a) {
+  const opcoes = OPCOES_REPETIR.map(([v, t]) => v === "" ? ["0", "Não repetir mais"] : [v, t]);
+  const promessa = abrirJanela(`Repetição · ${a.cliente.nome}`, [
+    el("p", { class: "suave", text: `Vale a partir deste horário (${dataBR(a.data)} às ${a.inicio}) em diante. Os horários anteriores não mudam. Os próximos são refeitos com a nova repetição.` }),
+    campo("Repetir", { tag: "select", name: "rRep", valor: String(a.serie.intervaloSemanas), opcoes }),
+    campo("Repetir até", { name: "rAte", type: "date", value: a.serie.ate && a.serie.ate > a.data ? a.serie.ate : somaDias(a.data, 56) }, "Até 2 anos."),
+    caixaMarcar("Marcar também os dias fora do funcionamento ou do horário do profissional", { name: "rFora" })
+  ], {
+    ok: "Salvar repetição",
+    aoConfirmar: async f => {
+      const n = Number(f.rRep.value);
+      const r = await api("/agenda/serie/editar", { metodo: "POST", corpo: { id: a.id, intervaloSemanas: n, ...(n ? { ate: f.rAte.value } : {}), ...(f.rFora.checked ? { aceiteForaHorario: true } : {}) } });
+      telaAgenda();
+      if (!n || !r.pulados.length) { avisar(n ? `${r.mensagem} ${textoRepeticao(n, r.diaSemana)} às ${a.inicio}.` : r.mensagem); return; }
+      setTimeout(() => abrirJanela("Repetição alterada", [
+        el("p", { text: `${r.criados} horário(s) marcado(s), ${textoRepeticao(n, r.diaSemana)} às ${a.inicio}.` }),
+        el("div", { class: "info", "data-teste": "repeticao-pulados" },
+          el("strong", { text: "Datas que ficaram de fora:" }),
+          el("ul", { class: "lista-pulados" }, r.pulados.map(x => el("li", { text: `${dataBR(x.data)} — ${x.motivo}` }))))
+      ], { ok: "Pronto", semCancelar: true, aoConfirmar: () => true }), 0);
+    }
+  });
+  const f = janela.querySelector("form");
+  const ajustar = () => { f.rAte.closest(".campo").hidden = f.rRep.value === "0"; f.rFora.closest(".marcar").hidden = f.rRep.value === "0"; };
+  f.rRep.addEventListener("change", ajustar);
+  ajustar();
   return promessa;
 }
 

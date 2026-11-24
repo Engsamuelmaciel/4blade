@@ -171,6 +171,18 @@ async function rodar(tela) {
     await ok();
     await page.waitForSelector('[data-agendamento="Fábio Fixo Fictício"] >> text=Fixo semanal');
 
+    passo("edita a repetição do horário fixo: de toda semana para a cada 15 dias");
+    await abrirHorarios(page, "Fábio Fixo Fictício");
+    await acao(page, '[data-agendamento="Fábio Fixo Fictício"]', "[data-teste=editar-repeticao]");
+    await page.waitForSelector("dialog[open] #c-rRep");
+    assert.equal(await page.inputValue("dialog[open] #c-rRep"), "1");
+    assert.equal(await page.inputValue("dialog[open] #c-rAte"), somarDias(AMANHA, 56), "começa com a data final atual");
+    await page.selectOption("dialog[open] #c-rRep", "2");
+    await print("editar-repeticao", false);
+    await ok();
+    await page.waitForSelector("text=Repetição alterada: 4 horário(s) daqui para frente.");
+    await page.waitForSelector('[data-agendamento="Fábio Fixo Fictício"] >> text=Fixo quinzenal');
+
     passo("marca horário SEM telefone (só o nome)");
     await page.click("button:has-text('+ Novo horário')");
     await page.fill("dialog[open] #c-data", AMANHA);

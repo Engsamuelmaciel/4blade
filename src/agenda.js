@@ -86,7 +86,7 @@ async function listarAgenda(ctx) {
       .bind(ctx.barbeariaId, ...(todas ? [] : [user.id])).all(),
     db.prepare(`SELECT a.*, c.nome AS cliente_nome, c.telefone AS cliente_telefone, u.nome AS barbeiro_nome,
                   (SELECT group_concat(nome, ' + ') FROM (SELECT nome FROM agendamento_servicos s WHERE s.agendamento_id = a.id AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = s.id) ORDER BY s.rowid)) AS servicos_nomes,
-                  si.serie_id, se.intervalo_semanas
+                  si.serie_id, se.intervalo_semanas, se.data_fim AS serie_ate
                 FROM agendamentos a JOIN clientes c ON c.id = a.cliente_id JOIN usuarios u ON u.id = a.barbeiro_id
                 LEFT JOIN agendamento_serie_itens si ON si.agendamento_id = a.id LEFT JOIN agendamento_series se ON se.id = si.serie_id
                 WHERE ${condA} ORDER BY a.inicio`).bind(...pa).all(),
@@ -131,7 +131,7 @@ async function listarAgenda(ctx) {
       id: a.id, barbeiroId: a.barbeiro_id, barbeiroNome: a.barbeiro_nome, data: a.data,
       inicio: a.inicio.slice(11), fim: a.fim.slice(11), situacao: a.situacao, motivo: a.motivo || null,
       observacao: a.observacao || null,
-      serie: a.serie_id ? { id: a.serie_id, intervaloSemanas: a.intervalo_semanas } : null,
+      serie: a.serie_id ? { id: a.serie_id, intervaloSemanas: a.intervalo_semanas, ate: a.serie_ate } : null,
       cliente: { id: a.cliente_id, nome: a.cliente_nome, telefone: telefoneReal(a.cliente_telefone), ...(sinais.get(a.cliente_id) || {}) },
       servicos: (servPor[a.id] || []).map(s => ({ id: s.servico_id, nome: s.nome, duracaoMin: s.duracao_min })),
       whatsapp: linksWhatsapp(a, modelos, user.barbearia_nome, { semNumero: true }),
@@ -690,6 +690,87 @@ async function excluir(ctx) {
   return json({ mensagem: "Horário excluído da agenda." });
 }
 
+// ---------- EDITAR A REPETIÇÃO DE UM HORÁRIO FIXO (25/11/2026) ----------
+// Vale "deste horário em diante": os próximos da série (ainda agendados) saem da agenda (excluídos com motivo, nada apagado)
+// e são criados de novo com a nova frequência até a nova data. intervaloSemanas 0 = parar de repetir (este fica).
+// Mesmas regras do marcar: conflito/bloqueio pula a data; fora do funcionamento pula, a não ser com aceiteForaHorario.
+async function editarSerie(ctx) {
+  const { db, user, request } = ctx;
+  const input = await readJson(request);
+  const a = await agendamentoPermitido(ctx, input.id);
+  if (a.situacao !== "agendado") erro("Só dá para mudar a repetição a partir de um horário agendado.", 409);
+  const se = await db.prepare(`SELECT s.* FROM agendamento_serie_itens i JOIN agendamento_series s ON s.id = i.serie_id
+                               WHERE i.agendamento_id = ? AND i.barbearia_id = ?`).bind(a.id, ctx.barbeariaId).first();
+  if (!se) erro("Esse horário não faz parte de um horário fixo.");
+  const n = input.intervaloSemanas;
+  if (!Number.isInteger(n) || n < 0 || n > 4) erro("Repetição inválida: não repetir, toda semana, a cada 15 dias, 3 ou 4 semanas.");
+  let ate = null;
+  if (n > 0) {
+    ate = exigirData(input.ate, "Data final da repetição");
+    if (ate <= a.data) erro("A data final da repetição precisa ser depois deste horário.");
+    if (ate > somarDias(a.data, 731)) erro("Repetição de no máximo 2 anos. Depois é só renovar.");
+  }
+  const motivo = "Repetição alterada";
+  const proximos = `id IN (SELECT agendamento_id FROM agendamento_serie_itens WHERE serie_id = ?) AND barbearia_id = ? AND situacao = 'agendado' AND inicio > ?
+                    AND id NOT IN (SELECT agendamento_id FROM agendamentos_excluidos)`;
+  const qtd = Number((await db.prepare(`SELECT COUNT(*) AS n FROM agendamentos WHERE ${proximos}`).bind(se.id, ctx.barbeariaId, a.inicio).first()).n);
+  const comandos = [
+    db.prepare(`INSERT INTO agendamentos_excluidos (agendamento_id, barbearia_id, motivo, situacao_antes, excluido_por)
+                SELECT id, barbearia_id, ?, situacao, ? FROM agendamentos WHERE ${proximos}`).bind(motivo, user.id, se.id, ctx.barbeariaId, a.inicio),
+    db.prepare(`UPDATE agendamentos SET situacao = 'cancelado', motivo = ?, atualizado_em = CURRENT_TIMESTAMP
+                WHERE id IN (SELECT agendamento_id FROM agendamentos_excluidos WHERE motivo = ? AND excluido_por = ?)
+                  AND id IN (SELECT agendamento_id FROM agendamento_serie_itens WHERE serie_id = ?) AND situacao = 'agendado' AND inicio > ?`)
+      .bind(`Excluído: ${motivo}`, motivo, user.id, se.id, a.inicio)
+  ];
+  const antes = { intervaloSemanas: se.intervalo_semanas, ate: se.data_fim };
+  if (n === 0) {
+    comandos.push(
+      db.prepare("UPDATE agendamento_series SET ativo = 0, motivo_encerramento = ?, data_fim = ? WHERE id = ? AND barbearia_id = ?").bind("Parou de repetir", a.data, se.id, ctx.barbeariaId),
+      auditoria(ctx, "horario_fixo_alterado", se.id, { aPartirDe: a.data, antes, depois: { repete: false }, removidos: qtd })
+    );
+    await db.batch(comandos);
+    return json({ mensagem: `Não repete mais: ${qtd} horário(s) seguinte(s) saíram da agenda. Este continua marcado.`, removidos: qtd, criados: 0, pulados: [] });
+  }
+  // Novas datas depois deste horário
+  const datas = [];
+  for (let d = somarDias(a.data, 7 * n); d <= ate; d = somarDias(d, 7 * n)) datas.push(d);
+  const ini = horaParaMin(a.inicio.slice(11, 16));
+  const fim = horaParaMin(a.fim.slice(11, 16));
+  const servs = (await db.prepare(`SELECT servico_id AS id, nome, duracao_min FROM agendamento_servicos s WHERE s.agendamento_id = ? AND s.barbearia_id = ?
+                                  AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = s.id) ORDER BY s.rowid`).bind(a.id, ctx.barbeariaId).all()).results;
+  const pulados = [];
+  const validas = [];
+  const foraDoHorario = [];
+  if (datas.length) {
+    const regras = await carregarRegras(db, ctx.barbeariaId, datas[0], datas.at(-1));
+    for (const d of datas) {
+      try { conferirHorario(regras(d, a.barbeiro_id), ini, fim); validas.push(d); }
+      catch (e) {
+        if (input.aceiteForaHorario === true && e instanceof HttpError && e.status === 409) { validas.push(d); foraDoHorario.push({ data: d, motivo: e.message }); }
+        else pulados.push({ data: d, motivo: e.message });
+      }
+    }
+  }
+  const ids = validas.map(d => [d, crypto.randomUUID()]);
+  for (const [d, id] of ids) {
+    comandos.push(...comandosDoHorario(ctx, { id, prof: { id: a.barbeiro_id }, cliente: { id: a.cliente_id }, data: d, ini, fim, servs, observacao: a.observacao, serieId: se.id }));
+  }
+  comandos.push(
+    db.prepare("UPDATE agendamento_series SET intervalo_semanas = ?, data_fim = ?, ativo = 1, motivo_encerramento = NULL WHERE id = ? AND barbearia_id = ?").bind(n, ate, se.id, ctx.barbeariaId),
+    auditoria(ctx, "horario_fixo_alterado", se.id, { aPartirDe: a.data, antes, depois: { intervaloSemanas: n, ate }, removidos: qtd, datas: validas.length }),
+    ...(foraDoHorario.length ? [auditoria(ctx, "marcou_fora_do_horario", a.barbeiro_id, { hora: a.inicio.slice(11, 16), dias: foraDoHorario })] : [])
+  );
+  await db.batch(comandos);
+  const criados = ids.length ? (await db.prepare(`SELECT data FROM agendamentos WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids.map(x => x[1])).all()).results.map(x => x.data) : [];
+  const criadosSet = new Set(criados);
+  for (const [d] of ids) if (!criadosSet.has(d)) pulados.push({ data: d, motivo: "Já existe outro atendimento ou bloqueio nesse horário." });
+  pulados.sort((x, y) => x.data.localeCompare(y.data));
+  return json({
+    mensagem: `Repetição alterada: ${criados.length} horário(s) daqui para frente.`,
+    removidos: qtd, criados: criados.length, datas: criados.sort(), pulados, diaSemana: NOME_DIA_SEMANA[diaSemana(a.data)], intervaloSemanas: n
+  });
+}
+
 // ---------- MENSAGEM (registro do envio pelo WhatsApp) ----------
 async function registrarMensagem(ctx) {
   const { db, user, request } = ctx;
@@ -939,6 +1020,7 @@ export async function rotasAgenda(ctx, path, method) {
   if (path === "/agenda/situacao" && method === "POST") return mudarSituacao(ctx);
   if (path === "/agenda/remarcar" && method === "POST") return remarcar(ctx);
   if (path === "/agenda/editar" && method === "POST") return editar(ctx);
+  if (path === "/agenda/serie/editar" && method === "POST") return editarSerie(ctx);
   if (path === "/agenda/desfazer" && method === "POST") return desfazer(ctx);
   if (path === "/agenda/excluir" && method === "POST") return excluir(ctx);
   if (path === "/agenda/mensagem" && method === "POST") return registrarMensagem(ctx);
