@@ -16,7 +16,7 @@ export const TEMAS = ["classico", "claro", "vintage", "moderno"];
 export const FORMAS_PAGINA = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro" };
 export const MAX_GALERIA = 12;
 export const MAX_FOTO_BYTES = 700 * 1024;              // o celular já reduz para ~500 KB; folga para PNG pequeno
-export const LIMITE_TOTAL_BYTES = 30 * 1024 * 1024;   // 30 MB por barbearia
+export const LIMITE_TOTAL_BYTES = 15 * 1024 * 1024;   // 15 MB por barbearia (decisão do responsável, 24/11/2026)
 export const DIAS_SLUG_ANTIGO = 90;
 const DIAS_HORARIOS = 7;
 // Endereços que não podem virar página (rotas e arquivos do sistema + palavras reservadas do pedido).
@@ -659,7 +659,7 @@ async function enviarFoto(ctx, p) {
   const substituidas = tipo === "galeria" ? [] : ativas.filter(f => f.tipo === tipo && (tipo !== "equipe" || f.usuario_id === usuarioId));
   if (tipo === "galeria" && ativas.filter(f => f.tipo === "galeria").length >= MAX_GALERIA) erro(`A galeria já tem ${MAX_GALERIA} fotos. Exclua uma para enviar outra.`, 409);
   const uso = ativas.reduce((s, f) => s + f.bytes, 0) - substituidas.reduce((s, f) => s + f.bytes, 0);
-  if (uso + bytes.length > LIMITE_TOTAL_BYTES) erro("Limite de 30 MB de fotos da barbearia atingido. Exclua alguma foto antes.", 409);
+  if (uso + bytes.length > LIMITE_TOTAL_BYTES) erro("Limite de 15 MB de fotos da barbearia atingido. Exclua alguma foto antes.", 409);
   const id = crypto.randomUUID();
   const ordem = tipo === "galeria" ? ativas.filter(f => f.tipo === "galeria").length : 0;
   await r2.put(chaveFoto(ctx.barbeariaId, id), bytes, { httpMetadata: { contentType: mime } });

@@ -189,6 +189,12 @@ describe("página da barbearia", () => {
     f = await worker.fetch(new Request(`https://forblade.teste/f/${ids[0]}`), env);
     assert.equal(f.status, 404);
     assert.ok(env.DB.raw.prepare("SELECT 1 FROM auditoria WHERE acao = 'pagina_foto_excluida'").get());
+    // limite travado por barbearia: 15 MB no total (aqui simulado com fotos já guardadas)
+    const bid = env.DB.raw.prepare("SELECT barbearia_id FROM paginas_fotos WHERE id = ?").get(ids[1]).barbearia_id;
+    env.DB.raw.prepare("INSERT INTO paginas_fotos (id, barbearia_id, tipo, mime, bytes) VALUES (?, ?, 'capa', 'image/webp', ?)").run(crypto.randomUUID(), bid, 15 * 1024 * 1024 - 500);
+    r = await enviarFoto(amb, ger.token, "logo", jpg);
+    assert.equal(r.status, 409);
+    assert.match(r.dados.erro, /15 MB/);
     // a função de limpeza também tira o EXIF do WEBP
     assert.equal(tipoImagem(semExif(webp, "image/webp")), "image/webp");
   });
