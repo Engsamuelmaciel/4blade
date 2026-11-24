@@ -1425,7 +1425,7 @@ const NOME_SITUACAO = { agendado: "Agendado", finalizado: "Finalizado", faltou: 
 const COR_SITUACAO = { agendado: "", finalizado: "verde", faltou: "amarela", cancelado: "vermelha" };
 
 // ---------- AGENDA ----------
-const estadoAgenda = { data: null, visao: "dia", barbeiroId: "", diasAbertos: new Set(), modoDia: (() => { try { return localStorage.getItem("4blade.agendaModo") || "grade"; } catch { return "grade"; } })() };
+const estadoAgenda = { data: null, visao: "dia", barbeiroId: "", diasAbertos: new Set(), profsAbertos: null, modoDia: (() => { try { return localStorage.getItem("4blade.agendaModo") || "grade"; } catch { return "grade"; } })() };
 let marcarParaCliente = null;
 let ultimaAgenda = null;   // profissionais da agenda aberta (usados ao remarcar)   // cliente escolhido na tela Clientes → abre o "Novo horário" já com ele
 let servicosCache = null;
@@ -1515,11 +1515,25 @@ async function telaAgenda() {
       ? el("div", {}, gradeAgenda(ag, d0, profs, disp))
       : el("div", {}, el("div", { class: `agenda-colunas ${profs.length > 1 ? "varias" : ""}` }, profs.map(p => {
         const x = dispDe(p.id);
-        const itens = itensDoDia(ag, d0, p.id, false, x && !disp.passado && x.situacao === "aberto" ? x.livres : null);
-        return el("section", { class: "coluna-prof", "data-prof": p.nome },
-          el("h3", { text: p.nome }),
-          resumoDia(p),
+        const livres = x && !disp.passado && x.situacao === "aberto" ? x.livres : null;
+        const itens = itensDoDia(ag, d0, p.id, false, livres);
+        // Celular, vários profissionais (25/11/2026): a agenda de quem está usando fica aberta e a dos outros recolhida
+        // (só o nome e os números); tocar no nome abre/fecha. No computador as colunas ficam lado a lado, todas abertas.
+        if (profs.length < 2) return el("section", { class: "coluna-prof", "data-prof": p.nome }, el("h3", { text: p.nome }), resumoDia(p),
           itens.length ? itens : el("p", { class: "vazio", text: "Nenhum horário." }));
+        if (!estadoAgenda.profsAbertos) estadoAgenda.profsAbertos = new Set([profs.some(q => q.id === usuario.id) ? usuario.id : profs[0].id]);
+        const aberto = estadoAgenda.profsAbertos.has(p.id);
+        const marcados = ag.agendamentos.filter(a => a.data === d0 && a.barbeiroId === p.id && (a.situacao === "agendado" || a.situacao === "finalizado")).length;
+        const nLivres = livres ? livres.length : 0;
+        const cabeca = el("button", { type: "button", class: "prof-cabeca", "aria-expanded": aberto ? "true" : "false", "data-prof-cabeca": p.nome,
+          onclick: () => { if (aberto) estadoAgenda.profsAbertos.delete(p.id); else estadoAgenda.profsAbertos.add(p.id); telaAgenda(); } },
+          el("span", { class: "prof-avatar", text: iniciais(p.nome) }),
+          el("span", { class: "prof-nome" }, el("strong", { text: p.id === usuario.id ? `${p.nome} (você)` : p.nome }),
+            el("small", { text: `${marcados} marcado${marcados === 1 ? "" : "s"} · ${nLivres} livre${nLivres === 1 ? "" : "s"}` })),
+          el("span", { class: "prof-seta", "aria-hidden": "true" }));
+        return el("section", { class: `coluna-prof recolhivel-prof ${aberto ? "aberta" : "recolhida"}`, "data-prof": p.nome },
+          cabeca,
+          el("div", { class: "prof-conteudo" }, resumoDia(p), itens.length ? itens : el("p", { class: "vazio", text: "Nenhum horário." })));
       })));
   } else if (v === "semana" && estadoAgenda.modoDia === "grade") {
     corpo = el("div", {}, gradeSemana(ag, d0, profs, dispDoDia, oc));
@@ -6776,6 +6790,10 @@ function blocoAparencia() {
   desenhar();
   return bloco;
 }
+
+// Sem zoom no celular (25/11/2026): o iPhone ignora "user-scalable=no"; os gestos de pinça são barrados aqui.
+["gesturestart", "gesturechange"].forEach(t => document.addEventListener(t, ev => ev.preventDefault(), { passive: false }));
+document.addEventListener("touchmove", ev => { if (ev.touches && ev.touches.length > 1) ev.preventDefault(); }, { passive: false });
 
 async function iniciar() {
   const btnConta = document.getElementById("btn-conta");

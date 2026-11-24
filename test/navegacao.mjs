@@ -26,6 +26,9 @@ export async function ir(page, nome) {
       void 0;
       await page.waitForTimeout(80);   // o evento de troca de endereço chega logo depois do clique
       await page.waitForFunction(() => !document.body.dataset.carregando);   // espera a tela terminar de montar
+      // Testes antigos olham a agenda de todos: no celular, abre os blocos recolhidos dos outros profissionais (25/11/2026).
+      // (test/navegador-agenda.mjs confere o recolhido antes de qualquer abertura: lá a agenda abre em Grade.)
+      if (nome === "Agenda") await abrirProfissionais(page);
       return;
     } catch (e) {
       if (tentativa >= 3) throw e;
@@ -71,4 +74,16 @@ export async function acao(page, escopo, alvo) {
   }
   await loc.scrollIntoViewIfNeeded();
   await loc.click();
+}
+
+// Agenda em lista no celular (25/11/2026): a agenda dos outros profissionais começa recolhida; abre todas.
+export async function abrirProfissionais(page) {
+  await page.waitForFunction(() => !document.body.dataset.carregando);
+  for (let i = 0; i < 12; i++) {
+    const c = page.locator(".recolhivel-prof.recolhida .prof-cabeca").first();
+    if (!(await c.count()) || !(await c.isVisible())) return;
+    if (!(await c.evaluate(e => getComputedStyle(e).pointerEvents !== "none"))) return;
+    await c.click();
+    await page.waitForFunction(() => !document.body.dataset.carregando);
+  }
 }

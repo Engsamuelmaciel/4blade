@@ -99,6 +99,37 @@ async function rodar(tela) {
     assert.equal(await page.locator(".grade-hora").first().evaluate(e => getComputedStyle(e).position), "sticky");
     await print("dia-grade");
 
+    passo("sem zoom no celular: viewport travado e sem zoom de toque duplo");
+    assert.match(await page.getAttribute("meta[name=viewport]", "content"), /maximum-scale=1, user-scalable=no/);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).touchAction), "manipulation");
+
+    passo("Lista com vários profissionais: a agenda de quem está usando aberta, a dos outros recolhida (só no celular)");
+    await page.click(".linha-filtros-agenda .modo-dia button:text-is('Lista')");
+    await pronto();
+    await page.waitForSelector(".recolhivel-prof");
+    const blocos = await page.locator(".recolhivel-prof").count();
+    assert.ok(blocos >= 2, "vários profissionais");
+    assert.match(await page.textContent(".recolhivel-prof.aberta .prof-cabeca"), /\(você\)/, "o seu bloco é o aberto");
+    assert.equal(await page.locator(".recolhivel-prof.aberta").count(), 1);
+    const outro = page.locator(".recolhivel-prof.recolhida").first();
+    const nomeOutro = await outro.getAttribute("data-prof");
+    assert.match(await outro.locator(".prof-cabeca small").textContent(), /\d+ marcados? · \d+ livres?/);
+    if (tela.movel) {
+      assert.equal(await outro.locator(".prof-conteudo").isVisible(), false, "no celular o do outro fica recolhido");
+      await print("lista-por-profissional");
+      await outro.locator(".prof-cabeca").click();
+      await pronto();
+      await page.waitForSelector(`.recolhivel-prof.aberta[data-prof="${nomeOutro}"] .prof-conteudo`);
+      assert.ok(await page.locator(`.recolhivel-prof[data-prof="${nomeOutro}"] .prof-conteudo`).isVisible());
+      await print("lista-outro-aberto");
+    } else {
+      assert.ok(await outro.locator(".prof-conteudo").isVisible(), "no computador as colunas ficam todas abertas");
+      await print("lista-por-profissional");
+    }
+    await page.click(".linha-filtros-agenda .modo-dia button:text-is('Grade')");
+    await pronto();
+    await page.waitForSelector(".grade-agenda");
+
     passo("Semana: cartão sozinho usa a largura toda do dia; quem se cruza fica lado a lado");
     await visao("Semana");
     await page.waitForSelector(".grade-semana [data-evento='Sozinho Fictício']");

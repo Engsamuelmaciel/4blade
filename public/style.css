@@ -1699,3 +1699,27 @@ a.forma-card { color: inherit; text-decoration: none; }
 #c-listaClientes { min-height: 220px; font-family: ui-monospace, monospace; font-size: 0.9rem; }
 .lote-previa p { margin: 0; }
 .lista-previa { margin: 6px 0 0; padding-left: 22px; display: grid; gap: 2px; font-size: 0.9rem; }
+
+/* Agenda em lista com vários profissionais (25/11/2026): cada um num bloco com cabeçalho; no celular só o seu fica aberto */
+.recolhivel-prof { border: 1px solid var(--borda); border-radius: 14px; background: var(--cartao); padding: 0 10px 10px; }
+.prof-cabeca { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 2px; background: none; border: 0; color: var(--texto); text-align: left; cursor: pointer; font: inherit; }
+.prof-avatar { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; font-weight: 800; font-size: 13px;
+  background: var(--destaque); color: var(--sobre-dourado, #fff); }
+.prof-nome { display: grid; min-width: 0; flex: 1; }
+.prof-nome strong { font-size: 16px; }
+.prof-nome small { color: var(--suave); font-size: 13px; }
+.prof-seta { width: 10px; height: 10px; border-right: 2px solid var(--suave); border-bottom: 2px solid var(--suave); transform: rotate(45deg); margin: 0 8px 4px; transition: transform .15s; }
+.recolhivel-prof.aberta .prof-seta { transform: rotate(-135deg); margin-bottom: -4px; }
+.recolhivel-prof.recolhida { padding-bottom: 0; }
+.recolhivel-prof.recolhida .prof-conteudo { display: none; }
+.prof-conteudo { display: grid; gap: 8px; }
+@media (min-width: 1024px) {
+  /* computador: colunas lado a lado, todas abertas */
+  .recolhivel-prof.recolhida .prof-conteudo { display: grid; }
+  .recolhivel-prof.recolhida { padding-bottom: 10px; }
+  .prof-cabeca { cursor: default; pointer-events: none; }
+  .prof-seta { display: none; }
+}
+
+/* Sem zoom no celular (pedido de 25/11/2026): sem zoom de toque duplo; o de pinça é travado pelo viewport e, no iPhone, em app.js */
+html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
