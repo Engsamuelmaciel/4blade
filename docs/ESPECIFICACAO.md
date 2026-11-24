@@ -340,3 +340,4 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 ## 25. Celular sem zoom e agenda em lista por profissional (25/11/2026, pedido do responsável)
 - O app não dá mais zoom no celular (nem com dois dedos nem com toque duplo). No computador nada muda.
 - Agenda do dia em **Lista** com vários profissionais: cada um aparece num bloco com o nome, quantos horários marcados e quantos livres. No celular, a agenda de quem está usando fica aberta e a dos outros recolhida; tocar no nome abre ou fecha. No computador continuam lado a lado, todas abertas.
+- **Mapa na página (25/11/2026):** a seção Localização mostra o mapa do Google com o endereço da barbearia, dentro da própria página; embaixo, o endereço e os botões "Como chegar (Google Maps)" e "Abrir no Waze".

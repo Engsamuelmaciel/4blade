@@ -202,6 +202,9 @@ async function rodar(tela) {
     passo("abre o link público: capa, serviços, horários, fotos, equipe, endereço; escolhe 2 serviços → WhatsApp");
     const pub = await contexto.newPage();
     vigiar(pub);
+    // O Google Maps não abre neste ambiente de teste: o mapa é trocado por uma imitação (no celular de verdade carrega o mapa)
+    await pub.route("https://maps.google.com/**", r => r.fulfill({ contentType: "text/html; charset=utf-8",
+      body: "<html><body style='margin:0;display:grid;place-items:center;height:100vh;background:#cfe3d4;font:16px sans-serif'>MAPA (imitação do Google Maps)</body></html>" }));
     await pub.goto(`${base}/semana-ficticia`);
     await pub.waitForSelector("h1:has-text('Barbearia Semana Fictícia')");
     assert.match(await pub.textContent(".pg-frase"), /Corte de respeito desde 2012/);
@@ -210,6 +213,14 @@ async function rodar(tela) {
     assert.match(await pub.textContent(".pg-equipe"), /Degradê e desenhos/);
     assert.ok(await pub.locator("text=Horários livres").count());
     assert.match(await pub.textContent(".pg-local"), /Rua Exemplo, 123/);
+    const mapa = pub.locator(".pg-mapa iframe");
+    assert.match(await mapa.getAttribute("src"), /^https:\/\/maps\.google\.com\/maps\?q=Rua%20Exemplo%2C%20123.*output=embed$/);
+    const caixaMapa = await mapa.boundingBox();
+    assert.ok(caixaMapa.height > 150 && caixaMapa.width > 300, `mapa visível (${JSON.stringify(caixaMapa)})`);
+    await pub.locator(".pg-mapa").scrollIntoViewIfNeeded();
+    await pub.evaluate(() => window.scrollBy(0, 120));
+    await pub.waitForFunction(() => document.querySelector(".pg-mapa iframe")?.contentDocument?.body?.textContent.includes("MAPA") ?? true);
+    await print("pagina-localizacao-mapa", { inteira: false, pg: pub });
     assert.match(await pub.textContent(".pg-servicos"), /Toalha quente e navalha/);
     assert.equal(await pub.locator(".pg-secao > .pg-servicos > .pg-servico").count(), 6, "catálogo enxuto: 6 à vista");
     assert.match(await pub.textContent(".pg-mais > summary"), /Ver mais 2 serviços/);

@@ -104,6 +104,10 @@ describe("página da barbearia", () => {
     assert.match(pg.texto, /"@type":"HairSalon"/);
     assert.match(pg.texto, /rel="canonical" href="https:\/\/forblade\.teste\/navalhaeco"/);
     assert.match(pg.texto, /Rua Exemplo, 123/);
+    // Mapa dentro da página (25/11/2026): iframe do Google com o endereço; a política de segurança libera só esse mapa
+    assert.match(pg.texto, /<iframe src="https:\/\/maps\.google\.com\/maps\?q=Rua%20Exemplo%2C%20123[^"]*output=embed"/);
+    assert.match(pg.headers.get("content-security-policy"), /frame-src https:\/\/maps\.google\.com https:\/\/www\.google\.com;/);
+    assert.doesNotMatch(pg.headers.get("content-security-policy"), /script-src[^;]*google/);
     assert.match(pg.texto, /São Paulo\/SP/);
     assert.match(pg.texto, /instagram\.com\/navalhaeco/);
     const msg = decodeURIComponent(pg.texto.match(/id="pg-solicitar" data-evento="whatsapp" href="https:\/\/wa\.me\/5511900000000\?text=([^"]+)"/)[1]);

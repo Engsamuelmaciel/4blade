@@ -81,7 +81,8 @@ http.createServer(async (req, res) => {
   const corpo = ["GET", "HEAD"].includes(req.method) ? undefined : await new Promise(ok => { const p = []; req.on("data", c => p.push(c)); req.on("end", () => ok(Buffer.concat(p))); });
   const r = await worker.fetch(new Request(url, { method: req.method, headers: { ...req.headers, "cf-connecting-ip": "10.0.0.9" }, body: corpo }), amb.env);
   const h = Object.fromEntries(r.headers);
-  if (!url.pathname.startsWith("/api")) Object.assign(h, cabecalhos);
+  // Igual ao site: os cabeçalhos de public/_headers valem para a tela; a página pública da barbearia traz a própria política
+  if (!url.pathname.startsWith("/api") && !h["content-security-policy"]) Object.assign(h, cabecalhos);
   res.writeHead(r.status, h);
   res.end(Buffer.from(await r.arrayBuffer()));
 }).listen(porta, () => console.log(`http://localhost:${porta}`));

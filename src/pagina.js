@@ -24,7 +24,8 @@ export const RESERVADOS = new Set(["api", "entrar", "planos", "assinar", "duvida
   "app", "sw", "manifest", "termos", "privacidade", "login", "cadastro", "ajuda", "contato", "www", "static", "assets", "b", "f",
   "inicio", "teste-gratis", "plataforma", "pedidos", "chamados", "pagina", "paginas", "index", "favicon", "robots", "sitemap",
   "style", "tema", "legal", "4blade", "forblade", "suporte-4blade", "agenda", "caixa", "painel", "clientes", "equipe"]);
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'";
+// frame-src: só o mapa do Google (25/11/2026: mapa visível na Localização).
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; frame-src https://maps.google.com https://www.google.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'";
 const CABECALHOS = { "Content-Security-Policy": CSP, "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
   "X-Frame-Options": "DENY", "Permissions-Policy": "geolocation=(), camera=(), microphone=()" };
 
@@ -314,6 +315,8 @@ function montarHtml({ p, c, aberto, horarios, origem, previa }) {
   const whats = c.whatsapp ? linkWhats(c.whatsapp, msgPadrao) : null;
   const mapa = p.maps_url && /^https:\/\//.test(p.maps_url) ? p.maps_url
     : end.completo ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(end.completo)}` : null;
+  // Mapa dentro da página (sem chave de API): o endereço vira o alvo do mapa do Google.
+  const mapaEmbutido = end.completo ? `https://maps.google.com/maps?q=${encodeURIComponent(end.completo)}&z=16&hl=pt-BR&output=embed` : null;
   const waze = end.completo ? `https://waze.com/ul?q=${encodeURIComponent(end.completo)}&navigate=yes` : null;
   const insta = p.instagram ? `https://instagram.com/${encodeURIComponent(p.instagram)}` : null;
   const tel = normalizarTelefone(p.telefone || "") || normalizarTelefone(c.barbearia?.telefone || "");
@@ -369,7 +372,7 @@ function montarHtml({ p, c, aberto, horarios, origem, previa }) {
   }).join("") : "";
 
   return `<!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="tema-${e(TEMAS.includes(p.tema) ? p.tema : "classico")}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -414,6 +417,7 @@ ${previa ? '<div class="pg-faixa-previa" role="status">Prévia: só você está 
   ${p.sobre ? `<section class="pg-secao" aria-labelledby="t-sobre"><h2 id="t-sobre">Sobre</h2><p class="pg-sobre">${e(p.sobre)}</p></section>` : ""}
   ${temFuncionamento ? `<section class="pg-secao" aria-labelledby="t-func"><h2 id="t-func">Horário de funcionamento</h2><ul class="pg-funcionamento">${linhasHorario}</ul></section>` : ""}
   ${end.completo ? `<section class="pg-secao" aria-labelledby="t-local"><h2 id="t-local">Localização</h2>
+    ${mapaEmbutido ? `<div class="pg-mapa"><iframe src="${e(mapaEmbutido)}" title="Mapa: ${e(end.completo)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe></div>` : ""}
     <div class="pg-local"><p><strong>${e(end.linha1)}</strong>${end.linha2 ? `<br>${e(end.linha2)}` : ""}${p.end_cep ? `<br>CEP ${e(p.end_cep)}` : ""}</p>
     <div class="pg-acoes">${mapa ? `<a class="pg-botao" data-evento="rota" href="${e(mapa)}" target="_blank" rel="noopener">Como chegar (Google Maps)</a>` : ""}
       ${waze ? `<a class="pg-botao contorno" data-evento="rota" href="${e(waze)}" target="_blank" rel="noopener">Abrir no Waze</a>` : ""}</div></div></section>` : ""}
