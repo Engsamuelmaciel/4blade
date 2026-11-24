@@ -1609,6 +1609,9 @@ function calendarioAno(oc, ano, irPara) {
 // Para passar o caderno para o sistema: várias linhas (dia, hora, profissional, serviço, cliente) enviadas de uma vez.
 // Cada linha vira um horário comum pela mesma rota do "Novo horário" (mesmas regras e conferências); o resultado aparece
 // em cada linha (marcado ✓ ou o motivo). O rascunho fica guardado no aparelho até ser enviado.
+// Horário fixo: "a cada 15 dias" = quinzenal no MESMO dia da semana (de 14 em 14 dias), decisão do responsável (25/11/2026).
+const OPCOES_REPETIR = [["", "Não repete"], ["1", "Toda semana"], ["2", "A cada 15 dias (quinzenal)"], ["3", "A cada 3 semanas"], ["4", "A cada 4 semanas"]];
+const textoRepeticao = (n, dia) => n === 1 ? `toda ${dia}` : n === 2 ? `a cada 15 dias (${dia} sim, ${dia} não)` : `a cada ${n} semanas (${dia})`;
 const chaveLote = (sufixo = "") => `4blade.loteRascunho.${usuario?.id || ""}${sufixo ? `.${sufixo}` : ""}`;
 function lerRascunhoLote(sufixo) { try { return JSON.parse(localStorage.getItem(chaveLote(sufixo)) || "null"); } catch { return null; } }
 function salvarRascunhoLote(linhas, sufixo) { try { localStorage.setItem(chaveLote(sufixo), JSON.stringify(linhas)); } catch { /* sem espaço */ } }
@@ -1674,7 +1677,7 @@ async function telaAgendaLote(suporteId = null) {
       ss.replaceChildren(...servicos.map(x => el("option", { value: x.id, text: `${x.nome} (${x.duracaoMin} min)` }))); ss.value = l.servicoId;
       // Horário fixo (igual ao "Novo horário"): repete a cada N semanas até a data escolhida (padrão: 8 semanas).
       const sr = linhaEl.querySelector("[data-campo=repetir]");
-      sr.replaceChildren(...[["", "Não repete"], ["1", "Toda semana"], ["2", "A cada 2 semanas"], ["3", "A cada 3 semanas"], ["4", "A cada 4 semanas"]].map(([v, t]) => el("option", { value: v, text: t })));
+      sr.replaceChildren(...OPCOES_REPETIR.map(([v, t]) => el("option", { value: v, text: t })));
       sr.value = l.repetir || "";
       sr.addEventListener("change", () => {
         if (l.repetir && !l.ate) l.ate = somaDias(l.data || hoje, 56);
@@ -1732,7 +1735,7 @@ async function telaAgendaLote(suporteId = null) {
           l.estado = "ok";
           if (rm.serie) {
             const sr = rm.serie;
-            l.msg = `Horário fixo: ${sr.criados} marcado(s), ${sr.intervaloSemanas === 1 ? `toda ${sr.diaSemana}` : `a cada ${sr.intervaloSemanas} semanas (${sr.diaSemana})`} às ${hora}, até ${dataBR(sr.datas.at(-1) || l.ate)}.`
+            l.msg = `Horário fixo: ${sr.criados} marcado(s), ${textoRepeticao(sr.intervaloSemanas, sr.diaSemana)} às ${hora}, até ${dataBR(sr.datas.at(-1) || l.ate)}.`
               + (sr.pulados.length ? ` Ficaram de fora: ${sr.pulados.map(x => dataBR(x.data)).join(", ")} (já ocupado ou bloqueado).` : "");
           } else l.msg = `Marcado: ${dataBR(l.data)} às ${hora}.`;
           ok++;
@@ -2269,7 +2272,7 @@ function cartaoAgendamento(a, mostrarNome, { recolhivel = false } = {}) {
     el("div", { class: "slot-topo" },
       el("strong", { class: "slot-hora", text: `${a.inicio}–${a.fim}` }),
       el("span", { class: `etiqueta ${COR_SITUACAO[a.situacao]}`, text: NOME_SITUACAO[a.situacao] }),
-      a.serie ? el("span", { class: "etiqueta fixo", text: a.serie.intervaloSemanas === 1 ? "Fixo semanal" : `Fixo a cada ${a.serie.intervaloSemanas} sem.` }) : null,
+      a.serie ? el("span", { class: "etiqueta fixo", text: a.serie.intervaloSemanas === 1 ? "Fixo semanal" : a.serie.intervaloSemanas === 2 ? "Fixo quinzenal" : `Fixo a cada ${a.serie.intervaloSemanas} sem.` }) : null,
       destaque ? el("span", { class: "etiqueta laranja", text: "Valor alterado" }) : null,
       recolhivel ? el("span", { class: "slot-seta", "aria-hidden": "true" }) : null),
     el("p", { class: "slot-cliente" }, el("strong", { text: a.cliente.nome }), a.cliente.telefone ? ` · ${fone(a.cliente.telefone)}` : " · sem telefone", " ", seloCliente(a.cliente)),
@@ -2487,7 +2490,7 @@ function janelaMarcar(ag, pre = {}) {
     el("fieldset", { class: "servicos-escolha bloco-cliente" }, el("legend", { text: "Cliente" }), seletor.el, blocoAvulso),
     campo("Observação (opcional)", { name: "obs", maxlength: "300", autocomplete: "off" }),
     el("div", { class: "lado-a-lado" },
-      campo("Repetir (horário fixo)", { tag: "select", name: "repetir", opcoes: [["", "Não repete"], ["1", "Toda semana"], ["2", "A cada 2 semanas"], ["3", "A cada 3 semanas"], ["4", "A cada 4 semanas"]] }),
+      campo("Repetir (horário fixo)", { tag: "select", name: "repetir", opcoes: OPCOES_REPETIR }),
       Object.assign(campo("Repetir até", { name: "repAte", type: "date" }), { hidden: true }))
   ], {
     ok: "Marcar",
@@ -2511,7 +2514,7 @@ function janelaMarcar(ag, pre = {}) {
       confirmar?.classList.add("largo");
       if (r.serie) {
         const sr = r.serie;
-        const cada = sr.intervaloSemanas === 1 ? `toda ${sr.diaSemana}` : `a cada ${sr.intervaloSemanas} semanas (${sr.diaSemana})`;
+        const cada = textoRepeticao(sr.intervaloSemanas, sr.diaSemana);
         return abrirJanela("Horário fixo criado", [
           el("p", { text: `${sr.criados} horário(s) marcado(s), ${cada} às ${sr.hora}.` }),
           sr.pulados.length ? el("div", { class: "info" },

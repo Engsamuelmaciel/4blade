@@ -332,3 +332,4 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - Horário fora do funcionamento, em dia fechado ou fora do horário do profissional: o sistema avisa e pergunta "Marcar mesmo assim?". Confirmando, marca e fica auditado quem marcou. Horário em cima de outro atendimento ou de um bloqueio continua recusado.
 - Vale no "Novo horário" (aviso na tela) e no "Vários de uma vez"/"Horários em lote" (caixa "Marcar mesmo fora do funcionamento ou do horário do profissional").
 - No lote, cada linha tem **Horário fixo** (não repete, toda semana, a cada 2, 3 ou 4 semanas) e **Repetir até** (padrão: 8 semanas; máximo 6 meses), igual ao "Novo horário". Datas já ocupadas ficam de fora e aparecem na mensagem da linha.
+- **A cada 15 dias (25/11/2026):** no horário fixo, "A cada 15 dias (quinzenal)" repete no mesmo dia da semana, uma semana sim, outra não (de 14 em 14 dias). Decisão do responsável.
