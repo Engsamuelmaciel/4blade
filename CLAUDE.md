@@ -223,6 +223,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 - 25/11/2026: **Horário fixo "a cada 15 dias"**: decisão do responsável = quinzenal no MESMO dia da semana (intervalo de 2 semanas, sem mudança no servidor). Tela: `OPCOES_REPETIR` (Novo horário e lote: "A cada 15 dias (quinzenal)" no lugar de "A cada 2 semanas"), `textoRepeticao` ("a cada 15 dias (segunda sim, segunda não)"), etiqueta "Fixo quinzenal". Testado em `test/navegador-equipe.mjs` + `test/navegador-melhorias.mjs`. Cache do sw `4blade-v51`. Sem migração.
 
 - 25/11/2026: **Horário fixo até 2 anos** (antes 6 meses; pedido do responsável): `marcar` aceita `repetir.ate` até `data + 731` dias ("Repetição de no máximo 2 anos"). Barbeiro encerra a série pelo Cancelar → "também os próximos" (já existia, só na própria agenda). Teste em `test/melhorias.test.js` (fixo de ~400 dias pelo barbeiro). `npm test` (181). Sem migração; tela sem mudança.
+  - **Publicado em 25/11/2026 (autorizado, sem migração) junto com "A cada 15 dias": versão 7976a71f** (forblade.com.br: sw `4blade-v51`, app.js com "A cada 15 dias (quinzenal)").
 
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
