@@ -2,9 +2,9 @@
 // Guardado neste aparelho (localStorage). Usado também por app.js (window.temaApp).
 (function () {
   const CHAVE = "4blade.aparencia";
-  const PALETAS = ["navalha", "oceano", "esmeralda", "bordo"];
+  const PALETAS = ["navalha", "oceano", "esmeralda", "bordo", "ganache", "berinjela"];
   const MODOS = ["claro", "escuro", "sistema"];
-  const COR_TOPO = { navalha: ["#24272c", "#0f1114"], oceano: ["#16263d", "#0b1524"], esmeralda: ["#17302a", "#0b1a15"], bordo: ["#3a1d26", "#1c0e13"] };
+  const COR_TOPO = { navalha: ["#24272c", "#0f1114"], oceano: ["#16263d", "#0b1524"], esmeralda: ["#17302a", "#0b1a15"], bordo: ["#3a1d26", "#1c0e13"], ganache: ["#4a2c21", "#1e130f"], berinjela: ["#3d2147", "#1a0f1f"] };
   const escuroDoSistema = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
   function ler() {
     try {

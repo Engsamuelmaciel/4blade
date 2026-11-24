@@ -33,6 +33,11 @@
 :root[data-paleta="oceano"]    { --primaria: #16263d; --primaria-hover: #23395a; --dourado: #38a3e8; --foco: #38a3e8; --destaque: #0b6aa8; }
 :root[data-paleta="esmeralda"] { --primaria: #17302a; --primaria-hover: #24463d; --dourado: #34c38f; --foco: #34c38f; --destaque: #0f7a55; }
 :root[data-paleta="bordo"]     { --primaria: #3a1d26; --primaria-hover: #542b38; --dourado: #e8806b; --foco: #e8806b; --destaque: #b0442f; }
+/* 24/11/2026: paletas 60/30/10 — fundo claro quente (60%), cor escura (30%) e destaque (10%) */
+:root[data-paleta="ganache"]   { --primaria: #4a2c21; --primaria-hover: #5e3a2d; --dourado: #1fd15a; --foco: #1fd15a; --destaque: #0e7a34;
+  --fundo: #efe7da; --cartao: #fbf8f2; --borda: #e3d8c6; --neutro: #e8dfd0; --neutro-2: #f3ece1; --alterna-fundo: #e6dccb; --campo: #fffdf9; --campo-borda: #d6c8b2; }
+:root[data-paleta="berinjela"] { --primaria: #3d2147; --primaria-hover: #52305e; --dourado: #ff6420; --foco: #ff6420; --destaque: #c2410c;
+  --fundo: #efebe3; --cartao: #fbfaf6; --borda: #e2dcd0; --neutro: #e8e2d6; --neutro-2: #f4f0e8; --alterna-fundo: #e6e0d3; --campo: #fffefb; --campo-borda: #d5cdbf; }
 :root[data-tema="escuro"] {
   color-scheme: dark;
   --fundo: #121417; --cartao: #1c1f24; --texto: #e8eaed; --suave: #a3a9b1; --borda: #2c3138;
@@ -55,6 +60,8 @@
 :root[data-tema="escuro"][data-paleta="oceano"]    { --primaria: #0b1524; --primaria-hover: #15243a; }
 :root[data-tema="escuro"][data-paleta="esmeralda"] { --primaria: #0b1a15; --primaria-hover: #142a22; }
 :root[data-tema="escuro"][data-paleta="bordo"]     { --primaria: #1c0e13; --primaria-hover: #2c1820; }
+:root[data-tema="escuro"][data-paleta="ganache"]   { --primaria: #1e130f; --primaria-hover: #2e1f19; --fundo: #16110e; --cartao: #211a16; --borda: #3a2e27; --neutro: #2e2520; --neutro-2: #261e1a; --alterna-fundo: #261e1a; --campo: #1a1411; --campo-borda: #4a3c33; }
+:root[data-tema="escuro"][data-paleta="berinjela"] { --primaria: #1a0f1f; --primaria-hover: #2a1a31; --fundo: #141017; --cartao: #1f1923; --borda: #372e3d; --neutro: #2c2432; --neutro-2: #241d29; --alterna-fundo: #241d29; --campo: #17121a; --campo-borda: #463b4d; }
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -618,6 +625,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
 .amostra-oceano span:first-child { background: #16263d; }    .amostra-oceano span:last-child { background: #38a3e8; }
 .amostra-esmeralda span:first-child { background: #17302a; } .amostra-esmeralda span:last-child { background: #34c38f; }
 .amostra-bordo span:first-child { background: #3a1d26; }     .amostra-bordo span:last-child { background: #e8806b; }
+.amostra-ganache span:first-child { background: #4a2c21; }   .amostra-ganache span:last-child { background: #1fd15a; }
+.amostra-berinjela span:first-child { background: #3d2147; } .amostra-berinjela span:last-child { background: #ff6420; }
 
 /* ---------- enviar mensagem (WhatsApp para clientes do dia) ---------- */
 .titulo-secao { margin: 18px 0 4px; }
