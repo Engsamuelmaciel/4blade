@@ -24,3 +24,8 @@ binding = "DB"
 database_name = "4blade-db"
 database_id = "e59dc06b-cf90-4e67-bc06-710165e45d5a"
 migrations_dir = "migrations"
+
+# Fotos da Página da Barbearia (logo, capa, galeria, equipe). Criado em 24/11/2026 (autorizado). Servidas em /f/<id>.
+[[r2_buckets]]
+binding = "FOTOS"
+bucket_name = "4blade-fotos"
