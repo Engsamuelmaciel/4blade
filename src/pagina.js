@@ -235,7 +235,7 @@ export async function rotaPublicaPagina(request, env) {
   if (!ehPrevia && !BOTS.test(request.headers.get("user-agent") || "")) await contarEvento(db, p.barbearia_id, "visita");
   const html = montarHtml({ p, c, aberto, horarios, origem: url.origin, previa: ehPrevia });
   return new Response(request.method === "HEAD" ? null : html, {
-    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": ehPrevia ? "no-store" : "public, max-age=60", ...CABECALHOS,
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": ehPrevia ? "no-store" : "no-cache", ...CABECALHOS,
       ...(ehPrevia ? { "X-Robots-Tag": "noindex" } : {}) }
   });
 }
@@ -349,16 +349,17 @@ function montarHtml({ p, c, aberto, horarios, origem, previa }) {
           ${c.whatsapp ? `<button type="button" class="pg-escolher" aria-pressed="false" aria-label="Escolher ${e(s.nome)}">+</button>` : ""}</div>
       </li>`).join("");
   const galeriaHtml = c.galeria.map((f, i) => `<li><button type="button" class="pg-foto" data-foto="${i}" aria-label="Ampliar foto ${i + 1}${f.legenda ? `: ${e(f.legenda)}` : ""}">
-      <img src="/f/${e(f.id)}" alt="${e(f.legenda || `Foto ${i + 1} da ${nome}`)}" loading="lazy" decoding="async"></button></li>`).join("");
+      <img src="/f/${e(f.id)}" alt="${e(f.legenda || `Foto ${i + 1} da ${nome}`)}" loading="lazy"></button></li>`).join("");
   const equipeHtml = c.equipe.map(u => `<li class="pg-pessoa">${u.foto ? `<img src="/f/${e(u.foto)}" alt="${e(u.nome)}" loading="lazy">`
       : `<span class="pg-inicial" aria-hidden="true">${e(u.nome.trim().charAt(0).toUpperCase())}</span>`}
       <strong>${e(u.nome.split(" ")[0])}</strong>${u.especialidade ? `<small>${e(u.especialidade)}</small>` : ""}</li>`).join("");
-  const horariosHtml = horarios ? horarios.filter(d => d.horas.length).map(d => {
+  // Um dia por linha, recolhido (só o primeiro aberto): a lista não toma a página inteira.
+  const horariosHtml = horarios ? horarios.filter(d => d.horas.length).map((d, i) => {
     const dt = new Date(`${d.data}T12:00:00Z`);
     const rotulo = `${DIAS_CURTOS[dt.getUTCDay()]} ${d.data.slice(8, 10)}/${d.data.slice(5, 7)}`;
-    return `<li class="pg-dia"><strong>${e(rotulo)}</strong><div class="pg-horas">${d.horas.slice(0, 12).map(h => c.whatsapp
+    return `<li class="pg-dia"><details${i === 0 ? " open" : ""}><summary><strong>${e(rotulo)}</strong><span>${d.horas.length} ${d.horas.length === 1 ? "horário" : "horários"}</span></summary><div class="pg-horas">${d.horas.slice(0, 24).map(h => c.whatsapp
       ? `<a class="pg-hora" data-evento="whatsapp" href="${e(linkWhats(c.whatsapp, `Olá, ${nome}! Vim pela sua página. Vocês têm horário ${rotulo} às ${h}?`))}" target="_blank" rel="noopener">${h}</a>`
-      : `<span class="pg-hora">${h}</span>`).join("")}</div></li>`;
+      : `<span class="pg-hora">${h}</span>`).join("")}</div></details></li>`;
   }).join("") : "";
 
   return `<!doctype html>

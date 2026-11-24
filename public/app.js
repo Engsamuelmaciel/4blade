@@ -104,14 +104,15 @@ function paraBp(texto) {
 const bpParaTexto = bp => (Number(bp) / 100).toString().replace(".", ",");
 
 // ---------- API ----------
-async function api(caminho, { metodo = "GET", corpo } = {}) {
+async function api(caminho, { metodo = "GET", corpo, bruto } = {}) {
   const token = localStorage.getItem(CHAVE_TOKEN);
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (corpo !== undefined) headers["Content-Type"] = "application/json";
+  if (bruto !== undefined) headers["Content-Type"] = bruto.type || "application/octet-stream";   // arquivo (foto da página)
   let resp;
   try {
-    resp = await fetch(`/api${caminho}`, { method: metodo, headers, body: corpo !== undefined ? JSON.stringify(corpo) : undefined });
+    resp = await fetch(`/api${caminho}`, { method: metodo, headers, body: bruto !== undefined ? bruto : corpo !== undefined ? JSON.stringify(corpo) : undefined });
   } catch {
     throw new Error("Sem conexão com o servidor. Confira a internet.");
   }
@@ -5626,7 +5627,7 @@ setInterval(() => { if (document.visibilityState === "visible" && Date.now() - u
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Date.now() - ultimoSinalUso > 55000) enviarUso(); });
 
 const NOME_TELA = {
-  "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", "agenda-lote": "Vários de uma vez", "minha-producao": "Minha produção", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
+  "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", "agenda-lote": "Vários de uma vez", "minha-pagina": "Minha página", "minha-producao": "Minha produção", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
   clientes: "Clientes", mensagens: "Mensagens", notas: "Notas", notificacoes: "Notificações", financeiro: "Relatório financeiro",
   "pagamento-equipe": "Pagamento da equipe", comissoes: "Comissões e vales", contas: "Despesas", contador: "Contador e dados",
   servicos: "Serviços", produtos: "Produtos", estoque: "Estoque", equipe: "Equipe", funcionamento: "Funcionamento", assinatura: "Meu plano",
@@ -5833,6 +5834,393 @@ function icone(nome) {
 }
 
 // Categorias de cada perfil. Rota = endereço da tela (#/rota).
+// ---------- MINHA PÁGINA (24/11/2026): a página pública da barbearia (forblade.com.br/<endereço>) ----------
+// Dono e gerente editam: endereço, fotos, textos, tema, contato, endereço físico, serviços, equipe e horários livres.
+// "Solicitar meu horário" na página abre o WhatsApp da barbearia (sem agendamento pelo site).
+const NOME_TEMA_PAGINA = { classico: ["Clássico", "grafite e dourado"], claro: ["Claro", "minimalista"], vintage: ["Vintage", "creme e ferrugem"], moderno: ["Moderno", "índigo e ciano"] };
+const linkPagina = slug => `${location.origin}/${slug}`;
+const fotoUrl = id => `/f/${id}`;
+
+// Reduz e converte a foto no próprio celular (WEBP; se o aparelho não souber, JPEG) e tira os dados de localização.
+async function reduzirFoto(arquivo, maxLado, { quadrada = false } = {}) {
+  let fonte;
+  try { fonte = await createImageBitmap(arquivo); } catch {
+    fonte = await new Promise((ok, falha) => {
+      const leitor = new FileReader();
+      leitor.onload = () => { const img = new Image(); img.onload = () => ok(img); img.onerror = () => falha(new Error("Não consegui abrir essa foto. Tente outra (JPG ou PNG).")); img.src = leitor.result; };
+      leitor.onerror = () => falha(new Error("Não consegui ler o arquivo."));
+      leitor.readAsDataURL(arquivo);
+    });
+  }
+  let sx = 0, sy = 0, sw = fonte.width, sh = fonte.height;
+  if (quadrada) { const l = Math.min(sw, sh); sx = (sw - l) / 2; sy = (sh - l) / 2; sw = sh = l; }
+  const escala = Math.min(1, maxLado / Math.max(sw, sh));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(sw * escala); canvas.height = Math.round(sh * escala);
+  canvas.getContext("2d").drawImage(fonte, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  const gerar = (tipo, q) => new Promise(ok => canvas.toBlob(ok, tipo, q));
+  for (const q of [0.82, 0.7, 0.58, 0.45]) {
+    let b = await gerar("image/webp", q);
+    if (!b || b.type !== "image/webp") b = await gerar("image/jpeg", q);
+    if (b && b.size <= 500 * 1024) return b;
+  }
+  throw new Error("A foto ficou grande demais mesmo reduzida. Escolha outra.");
+}
+
+async function enviarFotoPagina(arquivo, tipo, { legenda = "", usuarioId = null } = {}) {
+  const lado = tipo === "capa" ? 1600 : tipo === "galeria" ? 1200 : 512;
+  const blob = await reduzirFoto(arquivo, lado, { quadrada: tipo === "logo" || tipo === "equipe" });
+  const q = new URLSearchParams({ tipo, ...(legenda ? { legenda } : {}), ...(usuarioId ? { usuarioId } : {}) });
+  return api(`/pagina/foto?${q}`, { metodo: "POST", bruto: blob });
+}
+
+function escolherArquivos(multiplo, aoEscolher) {
+  const inp = el("input", { type: "file", accept: "image/jpeg,image/png,image/webp,image/heic,image/heif", multiple: multiplo || null, hidden: true });
+  inp.addEventListener("change", () => { if (inp.files.length) aoEscolher([...inp.files]); inp.remove(); });
+  document.body.append(inp);
+  inp.click();
+}
+
+async function telaMinhaPagina() {
+  const d = await api("/pagina");
+  const p = d.pagina;
+  const link = linkPagina(p.slug);
+  const recarregar = () => telaMinhaPagina();
+  const salvar = async (corpo, msg = "Salvo.") => {
+    try { const r = await api("/pagina/salvar", { metodo: "POST", corpo }); avisar(r.mensagem === "Nada mudou." ? r.mensagem : msg); recarregar(); }
+    catch (e) { avisar(e.message, "erro"); }
+  };
+  const secao = (id, titulo, resumo, conteudo) => el("details", { class: "mp-secao", "data-secao-pagina": id, open: secoesPaginaAbertas.has(id) || null,
+    ontoggle: ev => { if (ev.target.open) secoesPaginaAbertas.add(id); else secoesPaginaAbertas.delete(id); } },
+    el("summary", {}, el("strong", { text: titulo }), resumo ? el("small", { text: resumo }) : null), el("div", { class: "mp-secao-corpo" }, conteudo));
+
+  // ---- Topo: link, situação, publicar, prévia, compartilhar ----
+  const mensagemLink = `Agende seu horário na ${p.nomeExibicao || d.barbearia.nome}: ${link}`;
+  const topo = el("section", { class: "cartao mp-topo", "data-teste": "mp-topo" },
+    el("div", { class: "mp-link-linha" },
+      el("span", { class: `etiqueta ${p.publicada ? "verde" : "amarela"}`, "data-teste": "mp-situacao", text: p.publicada ? "No ar" : "Rascunho (fora do ar)" }),
+      el("a", { class: "mp-link", href: link, target: "_blank", rel: "noopener", "data-teste": "mp-link", text: link.replace(/^https?:\/\//, "") })),
+    el("p", { class: "suave", text: p.publicada
+      ? `Publicada${p.publicadaEm ? ` em ${dataBR(p.publicadaEm.slice(0, 10))}` : ""}. Cole este link na bio do seu Instagram.`
+      : "Monte a página abaixo e toque em \"Publicar\" quando estiver pronta. Antes disso, só você vê pela prévia." }),
+    acoesAgrupadas([
+      botao(p.publicada ? "Tirar do ar" : "Publicar", async () => {
+        try { const r = await api("/pagina/publicar", { metodo: "POST", corpo: { publicar: !p.publicada } }); avisar(r.mensagem); recarregar(); }
+        catch (e) { avisar(e.message, "erro"); }
+      }, `pequeno ${p.publicada ? "" : "principal"}`),
+      botao("Ver prévia", async () => {
+        const janelaPrevia = window.open("", "_blank");
+        try { const r = await api("/pagina/previa", { metodo: "POST", corpo: {} }); if (janelaPrevia) janelaPrevia.location = r.caminho; else location.href = r.caminho; }
+        catch (e) { janelaPrevia?.close(); avisar(e.message, "erro"); }
+      }, "pequeno")
+    ], [{ chave: "compartilhar", rotulo: "Compartilhar", itens: [
+      botao("Copiar link", async () => { try { await navigator.clipboard.writeText(link); avisar("Link copiado."); } catch { avisar(link); } }, "pequeno"),
+      el("a", { class: "botao pequeno whats", href: `https://wa.me/?text=${encodeURIComponent(mensagemLink)}`, target: "_blank", rel: "noopener", text: "Enviar no WhatsApp" }),
+      botao("Baixar QR Code", () => baixarQrPagina(link, p.nomeExibicao || d.barbearia.nome, d.fotos.logo), "pequeno")
+    ] }]));
+
+  const n = d.numeros7;
+  const numeros = el("section", { class: "mp-numeros", "data-teste": "mp-numeros", "aria-label": "Números da página nos últimos 7 dias" },
+    [["visita", "Visitas"], ["whatsapp", "Pedidos no WhatsApp"], ["rota", "Como chegar"], ["instagram", "Instagram"]].map(([k, t]) =>
+      el("div", { class: "mp-numero" }, el("strong", { text: String(n[k]) }), el("span", { text: t }))),
+    el("p", { class: "suave mp-numeros-nota", text: "Últimos 7 dias. Contagem anônima." }));
+
+  // ---- Endereço (slug) ----
+  const inpSlug = el("input", { id: "mp-slug", value: p.slug, maxlength: "40", autocapitalize: "none", spellcheck: "false", autocomplete: "off", "aria-describedby": "mp-slug-aviso" });
+  const avisoSlug = el("p", { class: "ajuda", id: "mp-slug-aviso", role: "status", text: "Só letras minúsculas sem acento, números e hífen (3 a 40)." });
+  let temporizador;
+  inpSlug.addEventListener("input", () => {
+    inpSlug.value = inpSlug.value.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9-]/g, "");
+    clearTimeout(temporizador);
+    temporizador = setTimeout(async () => {
+      if (inpSlug.value === p.slug) { avisoSlug.textContent = "É o endereço atual."; return; }
+      try {
+        const r = await api(`/pagina/slug-livre?slug=${encodeURIComponent(inpSlug.value)}`);
+        avisoSlug.textContent = r.reservado ? "Esse endereço é reservado pelo sistema." : !r.valido ? "Endereço inválido: 3 a 40 letras, números ou hífen." : r.livre ? `Livre: ${location.host}/${r.slug}` : "Já está em uso. Tente outro.";
+        avisoSlug.className = `ajuda ${r.valido && r.livre ? "ok" : "erro-texto"}`;
+      } catch { /* sem conexão: confere ao salvar */ }
+    }, 300);
+  });
+  const blocoSlug = [
+    el("div", { class: "campo" }, el("label", { for: "mp-slug", text: `Endereço: ${location.host}/…` }), inpSlug, avisoSlug),
+    d.slugsAntigos.length ? el("p", { class: "suave", text: `Endereços antigos que ainda levam para cá: ${d.slugsAntigos.map(a => `/${a.slug} (até ${dataBR(a.validoAte)})`).join(", ")}` }) : null,
+    botao("Salvar endereço", async () => {
+      try { const r = await api("/pagina/slug", { metodo: "POST", corpo: { slug: inpSlug.value } }); avisar(r.mensagem || "Endereço salvo."); recarregar(); }
+      catch (e) { avisar(e.message, "erro"); }
+    }, "principal pequeno")
+  ];
+
+  // ---- Fotos ----
+  const f = d.fotos;
+  const semArmazenamento = !f.armazenamento ? el("p", { class: "info", text: "O envio de fotos ainda está sendo ligado pela equipe 4Blade. Enquanto isso, a página usa a primeira letra do nome no lugar da logo." }) : null;
+  const enviarComCarga = async (arquivos, tipo, extra = {}) => {
+    document.body.dataset.carregando = "1";
+    let ok = 0;
+    try {
+      for (const a of arquivos) {
+        try { await enviarFotoPagina(a, tipo, extra); ok++; } catch (e) { avisar(e.message, "erro"); break; }
+      }
+    } finally { delete document.body.dataset.carregando; }
+    if (ok) { avisar(ok === 1 ? "Foto enviada." : `${ok} fotos enviadas.`); recarregar(); }
+  };
+  const fotoUnica = (tipo, titulo, ajuda, id) => el("div", { class: `mp-foto-unica mp-${tipo}`, "data-foto-tipo": tipo },
+    id ? el("img", { src: fotoUrl(id), alt: titulo }) : el("span", { class: "mp-foto-vazia", text: "Sem foto" }),
+    el("div", {}, el("strong", { text: titulo }), el("small", { class: "suave", text: ajuda }),
+      el("div", { class: "item-acoes" },
+        botao(id ? "Trocar" : "Enviar", () => escolherArquivos(false, arqs => enviarComCarga(arqs, tipo)), "pequeno principal"),
+        id ? botao("Tirar", () => abrirJanela(`Tirar a ${titulo.toLowerCase()}?`, el("p", { text: "A foto sai da página. Fica registrado quem tirou." }), {
+          ok: "Tirar", perigo: true, aoConfirmar: async () => { await api("/pagina/foto/excluir", { metodo: "POST", corpo: { id } }); avisar("Foto tirada."); recarregar(); } }), "pequeno texto-perigo") : null)));
+  const galeria = el("ul", { class: "mp-galeria", "data-teste": "mp-galeria" }, f.galeria.map((g, i) => el("li", { "data-galeria": String(i) },
+    el("img", { src: fotoUrl(g.id), alt: g.legenda || `Foto ${i + 1}`, loading: "lazy" }),
+    el("div", { class: "mp-galeria-acoes" },
+      botao("‹", () => api("/pagina/foto/alterar", { metodo: "POST", corpo: { id: g.id, mover: -1 } }).then(recarregar), "pequeno seta"),
+      botao("Legenda", () => abrirJanela("Legenda da foto", [el("p", { class: "suave", text: "Descreve a foto para quem usa leitor de tela (e aparece ao ampliar)." }),
+        campo("Legenda", { name: "legenda", value: g.legenda, maxlength: "140", autocomplete: "off", placeholder: "Ex.: Degradê com risca" })], {
+        ok: "Salvar", aoConfirmar: async fm => { await api("/pagina/foto/alterar", { metodo: "POST", corpo: { id: g.id, legenda: fm.legenda.value } }); avisar("Legenda salva."); recarregar(); } }), "pequeno"),
+      botao("×", () => abrirJanela("Excluir esta foto?", el("p", { text: "A foto sai da página e o arquivo é apagado. Fica registrado quem excluiu." }), {
+        ok: "Excluir", perigo: true, aoConfirmar: async () => { await api("/pagina/foto/excluir", { metodo: "POST", corpo: { id: g.id } }); avisar("Foto excluída."); recarregar(); } }), "pequeno texto-perigo"),
+      botao("›", () => api("/pagina/foto/alterar", { metodo: "POST", corpo: { id: g.id, mover: 1 } }).then(recarregar), "pequeno seta")))));
+  const blocoFotos = [
+    semArmazenamento,
+    fotoUnica("logo", "Logo", "Quadrada; aparece redonda no alto da página.", f.logo),
+    fotoUnica("capa", "Foto de capa", "Foto larga da fachada ou do ambiente.", f.capa),
+    el("h4", { text: `Galeria (${f.galeria.length} de ${f.maxGaleria})` }),
+    galeria,
+    f.galeria.length < f.maxGaleria ? botao("+ Adicionar fotos", () => escolherArquivos(true, arqs => enviarComCarga(arqs.slice(0, f.maxGaleria - f.galeria.length), "galeria")), "pequeno") : null,
+    el("p", { class: "suave", text: `As fotos são reduzidas no celular antes de enviar. Usado: ${(f.usoBytes / 1048576).toFixed(1).replace(".", ",")} MB de ${Math.round(f.limiteBytes / 1048576)} MB.` })
+  ];
+
+  // ---- Textos e tema ----
+  let temaEscolhido = p.tema;
+  const temas = el("div", { class: "paletas mp-temas", role: "group", "aria-label": "Tema da página" }, d.temas.map(t =>
+    el("button", { type: "button", class: `paleta-opcao ${t === p.tema ? "ativa" : ""}`, "data-tema-pagina": t, "aria-pressed": t === p.tema ? "true" : "false",
+      onclick: ev => { temaEscolhido = t; temas.querySelectorAll("button").forEach(b => { const on = b.dataset.temaPagina === t; b.classList.toggle("ativa", on); b.setAttribute("aria-pressed", String(on)); }); ev.preventDefault(); } },
+      el("span", { class: `amostra amostra-pg-${t}`, "aria-hidden": "true" }, el("span"), el("span")),
+      el("strong", { text: NOME_TEMA_PAGINA[t][0] }), el("small", { text: NOME_TEMA_PAGINA[t][1] }))));
+  const fTextos = el("form", { class: "mp-form" },
+    campo("Nome na página", { name: "nomeExibicao", value: p.nomeExibicao || "", maxlength: "80", placeholder: d.barbearia.nome, autocomplete: "off" }, "Vazio = nome da barbearia no sistema."),
+    campo("Frase de efeito", { name: "frase", value: p.frase || "", maxlength: "120", placeholder: "Ex.: Corte de respeito desde 2012.", autocomplete: "off" }),
+    campo("Sobre a barbearia", { tag: "textarea", name: "sobre", value: p.sobre || "", maxlength: "600", rows: "5", placeholder: "Conte a história, o estilo e o que a barbearia oferece." }, "Até 600 caracteres."),
+    el("h4", { text: "Tema" }), temas,
+    el("button", { type: "submit", class: "botao principal pequeno", text: "Salvar textos e tema" }));
+  fTextos.addEventListener("submit", ev => { ev.preventDefault(); salvar({ nomeExibicao: fTextos.nomeExibicao.value, frase: fTextos.frase.value, sobre: fTextos.sobre.value, tema: temaEscolhido }); });
+
+  // ---- Contato e endereço ----
+  const fContato = el("form", { class: "mp-form" },
+    campo("WhatsApp da página", { name: "whatsapp", value: p.whatsapp || "", inputmode: "tel", autocomplete: "off", placeholder: d.barbearia.telefone || "(11) 90000-0000" },
+      d.barbearia.telefone ? "Vazio = telefone da barbearia no cadastro." : "Sem WhatsApp, o botão \"Solicitar meu horário\" não aparece."),
+    campo("Mensagem padrão do WhatsApp", { tag: "textarea", name: "mensagemPadrao", value: p.mensagemPadrao || "", maxlength: "300", rows: "2",
+      placeholder: `Olá, ${p.nomeExibicao || d.barbearia.nome}! Vim pela sua página e quero agendar um horário.` }, "Usada quando o cliente não escolhe serviço."),
+    el("div", { class: "lado-a-lado" },
+      campo("Instagram", { name: "instagram", value: p.instagram ? `@${p.instagram}` : "", autocapitalize: "none", autocomplete: "off", placeholder: "@suabarbearia" }),
+      campo("Telefone fixo (opcional)", { name: "telefone", value: p.telefone || "", inputmode: "tel", autocomplete: "off" })),
+    el("h4", { text: "Endereço" }),
+    el("div", { class: "lado-a-lado" },
+      campo("Rua", { name: "endRua", value: p.endRua || "", maxlength: "120", autocomplete: "address-line1" }),
+      campo("Número", { name: "endNumero", value: p.endNumero || "", maxlength: "20", inputmode: "numeric", autocomplete: "off" })),
+    el("div", { class: "lado-a-lado" },
+      campo("Bairro", { name: "endBairro", value: p.endBairro || "", maxlength: "80", autocomplete: "off" }),
+      campo("CEP", { name: "endCep", value: p.endCep || "", inputmode: "numeric", maxlength: "9", autocomplete: "postal-code" })),
+    el("div", { class: "lado-a-lado" },
+      campo("Cidade", { name: "endCidade", value: p.endCidade || "", maxlength: "80", autocomplete: "address-level2" }),
+      campo("UF", { name: "endUf", value: p.endUf || "", maxlength: "2", autocomplete: "address-level1", placeholder: "SP" })),
+    campo("Link do Google Maps (opcional)", { name: "mapsUrl", value: p.mapsUrl || "", inputmode: "url", autocomplete: "off", placeholder: "https://maps.app.goo.gl/…" }, "Se ficar vazio, o \"Como chegar\" usa o endereço acima."),
+    el("h4", { text: "Formas de pagamento" }),
+    el("div", { class: "mp-formas" }, Object.entries(d.formasDisponiveis).map(([k, t]) => caixaMarcar(t, { name: "formas", value: k, id: `mp-forma-${k}`, checked: p.formas.includes(k) || null }))),
+    el("button", { type: "submit", class: "botao principal pequeno", text: "Salvar contato e endereço" }));
+  fContato.addEventListener("submit", ev => {
+    ev.preventDefault();
+    const v = n => fContato.querySelector(`[name=${n}]`).value;
+    salvar({ whatsapp: v("whatsapp"), mensagemPadrao: v("mensagemPadrao"), instagram: v("instagram"), telefone: v("telefone"), endRua: v("endRua"),
+      endNumero: v("endNumero"), endBairro: v("endBairro"), endCep: v("endCep"), endCidade: v("endCidade"), endUf: v("endUf"), mapsUrl: v("mapsUrl"),
+      formas: [...fContato.querySelectorAll("[name=formas]:checked")].map(i => i.value) });
+  });
+
+  // ---- Serviços (mostrar, ordem e descrição) ----
+  const servicos = d.servicos.map(s => ({ ...s }));
+  const listaServ = el("ul", { class: "mp-lista", "data-teste": "mp-servicos" });
+  const desenharServ = () => listaServ.replaceChildren(...servicos.map((s, i) => el("li", { class: `mp-item ${s.visivel ? "" : "escondido"}`, "data-servico-pagina": s.nome },
+    el("div", { class: "mp-item-topo" },
+      caixaMarcar(`${s.nome} · ${reais(s.precoCentavos)} · ${s.duracaoMin} min`, { id: `mp-sv-${s.id}`, checked: s.visivel || null, onchange: ev => { s.visivel = ev.target.checked; desenharServ(); } }),
+      el("span", { class: "mp-ordem" },
+        botao("↑", () => { if (i) { [servicos[i - 1], servicos[i]] = [servicos[i], servicos[i - 1]]; desenharServ(); } }, "pequeno seta"),
+        botao("↓", () => { if (i < servicos.length - 1) { [servicos[i + 1], servicos[i]] = [servicos[i], servicos[i + 1]]; desenharServ(); } }, "pequeno seta"))),
+    s.visivel ? el("input", { class: "mp-descricao", value: s.descricao, maxlength: "140", placeholder: "Descrição curta (opcional)", "aria-label": `Descrição de ${s.nome}`,
+      oninput: ev => { s.descricao = ev.target.value; } }) : null)));
+  desenharServ();
+  const blocoServ = servicos.length ? [
+    el("p", { class: "suave", text: "Preço e duração vêm do cadastro de Serviços. Aqui você escolhe quais aparecem e em que ordem." }), listaServ,
+    botao("Salvar serviços", () => salvar({ servicos: servicos.map(s => ({ id: s.id, visivel: s.visivel, descricao: s.descricao })) }), "principal pequeno")
+  ] : [el("p", { class: "vazio", text: "Nenhum serviço cadastrado ainda. Cadastre em Catálogo e estoque → Serviços." })];
+
+  // ---- Equipe ----
+  const equipe = d.equipe.map(u => ({ ...u }));
+  const listaEq = el("ul", { class: "mp-lista", "data-teste": "mp-equipe" });
+  const desenharEq = () => listaEq.replaceChildren(...equipe.map(u => el("li", { class: `mp-item ${u.visivel ? "" : "escondido"}`, "data-equipe-pagina": u.nome },
+    el("div", { class: "mp-item-topo" },
+      u.foto ? el("img", { class: "mp-foto-pessoa", src: fotoUrl(u.foto), alt: "" }) : el("span", { class: "conta-avatar pequeno", text: u.nome.charAt(0).toUpperCase() }),
+      caixaMarcar(u.nome, { id: `mp-eq-${u.id}`, checked: u.visivel || null, onchange: ev => { u.visivel = ev.target.checked; desenharEq(); } }),
+      u.visivel && f.armazenamento ? botao(u.foto ? "Trocar foto" : "Foto", () => escolherArquivos(false, arqs => enviarComCarga(arqs, "equipe", { usuarioId: u.id })), "pequeno") : null),
+    u.visivel ? el("input", { class: "mp-descricao", value: u.especialidade, maxlength: "60", placeholder: "Especialidade (ex.: Degradê e barba)", "aria-label": `Especialidade de ${u.nome}`,
+      oninput: ev => { u.especialidade = ev.target.value; } }) : null)));
+  desenharEq();
+  const blocoEq = [el("p", { class: "suave", text: "Marque quem aparece na página. Opcional." }), listaEq,
+    botao("Salvar equipe", () => salvar({ equipe: equipe.map(u => ({ id: u.id, visivel: u.visivel, especialidade: u.especialidade })) }), "principal pequeno")];
+
+  // ---- Horários livres (só se o gerente ligar) ----
+  const blocoHor = [
+    el("p", { class: "suave", text: "Mostra na página os horários livres dos próximos 7 dias, só para o cliente ver. Tocar num horário abre o WhatsApp pedindo aquele horário; quem confirma é a barbearia. Ninguém marca sozinho pelo site." }),
+    caixaMarcar("Mostrar horários livres na página", { id: "mp-horarios", checked: p.mostrarHorarios || null }),
+    botao("Salvar", () => salvar({ mostrarHorarios: document.getElementById("mp-horarios").checked }), "principal pequeno")
+  ];
+
+  mostrar(
+    cabecalho("Minha página", "Sua vitrine para a bio do Instagram, o WhatsApp e o Google."),
+    topo, numeros,
+    el("div", { class: "mp-secoes" },
+      secao("fotos", "Fotos", `${f.logo ? "Logo ✓" : "Sem logo"} · ${f.capa ? "capa ✓" : "sem capa"} · ${f.galeria.length} na galeria`, blocoFotos),
+      secao("textos", "Textos e tema", NOME_TEMA_PAGINA[p.tema][0], fTextos),
+      secao("contato", "Contato e endereço", [p.whatsapp || d.barbearia.telefone ? "WhatsApp ✓" : "sem WhatsApp", p.endRua ? "endereço ✓" : "sem endereço"].join(" · "), fContato),
+      secao("servicos", "Serviços na página", `${servicos.filter(s => s.visivel).length} de ${servicos.length}`, blocoServ),
+      secao("equipe", "Equipe na página", `${equipe.filter(u => u.visivel).length} aparecendo`, blocoEq),
+      secao("horarios", "Horários livres", p.mostrarHorarios ? "aparecem na página" : "escondidos", blocoHor),
+      secao("endereco", "Endereço do link", `${location.host}/${p.slug}`, blocoSlug)));
+}
+const secoesPaginaAbertas = new Set(["fotos"]);
+
+// ---------- QR CODE (gerado aqui, sem serviço de fora): byte, correção M, versões 1 a 9 ----------
+const QR_BLOCOS_M = [null, [10, [[1, 16]]], [16, [[1, 28]]], [26, [[1, 44]]], [18, [[2, 32]]], [24, [[2, 43]]], [16, [[4, 27]]],
+  [18, [[4, 31]]], [22, [[2, 38], [2, 39]]], [22, [[3, 36], [2, 37]]], [26, [[4, 43], [1, 44]]]];
+const QR_ALINHAMENTO = [null, [], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50]];
+function qrMul(x, y) { let z = 0; for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11d); z ^= ((y >>> i) & 1) * x; } return z & 0xff; }
+function qrDivisor(grau) {
+  const r = new Array(grau).fill(0); r[grau - 1] = 1; let raiz = 1;
+  for (let i = 0; i < grau; i++) { for (let j = 0; j < r.length; j++) { r[j] = qrMul(r[j], raiz); if (j + 1 < r.length) r[j] ^= r[j + 1]; } raiz = qrMul(raiz, 2); }
+  return r;
+}
+function qrResto(dados, divisor) {
+  const r = divisor.map(() => 0);
+  for (const b of dados) { const fator = b ^ r.shift(); r.push(0); divisor.forEach((c, i) => { r[i] ^= qrMul(c, fator); }); }
+  return r;
+}
+function gerarQr(texto) {
+  const bytes = [...new TextEncoder().encode(texto)];
+  let versao = 1;
+  const capacidade = v => QR_BLOCOS_M[v][1].reduce((s, [n, k]) => s + n * k, 0);
+  // Até a versão 9 (conferido com leitor de QR): o link da página cabe na versão 5.
+  while (versao <= 9 && 4 + 8 + bytes.length * 8 > capacidade(versao) * 8) versao++;
+  if (versao > 9) throw new Error("Texto grande demais para o QR Code.");
+  const bits = [];
+  const por = (v, n) => { for (let i = n - 1; i >= 0; i--) bits.push((v >>> i) & 1); };
+  por(4, 4); por(bytes.length, 8); bytes.forEach(b => por(b, 8));
+  const totalBits = capacidade(versao) * 8;
+  por(0, Math.min(4, totalBits - bits.length));
+  while (bits.length % 8) bits.push(0);
+  const dados = [];
+  for (let i = 0; i < bits.length; i += 8) dados.push(parseInt(bits.slice(i, i + 8).join(""), 2));
+  for (let pad = 0xec; dados.length < capacidade(versao); pad ^= 0xec ^ 0x11) dados.push(pad);
+  const [ecLen, grupos] = QR_BLOCOS_M[versao];
+  const divisor = qrDivisor(ecLen);
+  const blocos = []; let k = 0;
+  for (const [nBlocos, tam] of grupos) for (let b = 0; b < nBlocos; b++) { const d = dados.slice(k, k + tam); k += tam; blocos.push({ d, ec: qrResto(d, divisor) }); }
+  const final = [];
+  const maior = Math.max(...blocos.map(b => b.d.length));
+  for (let i = 0; i < maior; i++) for (const b of blocos) if (i < b.d.length) final.push(b.d[i]);
+  for (let i = 0; i < ecLen; i++) for (const b of blocos) final.push(b.ec[i]);
+  const n = versao * 4 + 17;
+  const mod = Array.from({ length: n }, () => new Array(n).fill(false));
+  const fun = Array.from({ length: n }, () => new Array(n).fill(false));
+  const set = (x, y, v) => { mod[y][x] = v; fun[y][x] = true; };
+  for (let i = 0; i < n; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+  const finder = (cx, cy) => { for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const x = cx + dx, y = cy + dy; if (x >= 0 && x < n && y >= 0 && y < n) { const dist = Math.max(Math.abs(dx), Math.abs(dy)); set(x, y, dist !== 2 && dist !== 4); } } };
+  finder(3, 3); finder(n - 4, 3); finder(3, n - 4);
+  const al = QR_ALINHAMENTO[versao];
+  for (let i = 0; i < al.length; i++) for (let j = 0; j < al.length; j++) {
+    if ((i === 0 && j === 0) || (i === 0 && j === al.length - 1) || (i === al.length - 1 && j === 0)) continue;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(al[i] + dx, al[j] + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+  }
+  const formato = mascara => {
+    const d = (0 << 3) | mascara;   // correção M = 00
+    let r = d; for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537);
+    const b = ((d << 10) | r) ^ 0x5412; const bit = i => ((b >>> i) & 1) === 1;
+    for (let i = 0; i <= 5; i++) set(8, i, bit(i));
+    set(8, 7, bit(6)); set(8, 8, bit(7)); set(7, 8, bit(8));
+    for (let i = 9; i < 15; i++) set(14 - i, 8, bit(i));
+    for (let i = 0; i < 8; i++) set(n - 1 - i, 8, bit(i));
+    for (let i = 8; i < 15; i++) set(8, n - 15 + i, bit(i));
+    set(8, n - 8, true);
+  };
+  formato(0);
+  if (versao >= 7) {
+    let r = versao; for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1f25);
+    const b = (versao << 12) | r;
+    for (let i = 0; i < 18; i++) { const v = ((b >>> i) & 1) === 1; const a = n - 11 + (i % 3), c = Math.floor(i / 3); set(a, c, v); set(c, a, v); }
+  }
+  let i = 0;
+  for (let dir = n - 1; dir >= 1; dir -= 2) {
+    if (dir === 6) dir = 5;
+    for (let vert = 0; vert < n; vert++) for (let j = 0; j < 2; j++) {
+      const x = dir - j, subindo = ((dir + 1) & 2) === 0, y = subindo ? n - 1 - vert : vert;
+      if (!fun[y][x] && i < final.length * 8) { mod[y][x] = ((final[i >>> 3] >>> (7 - (i & 7))) & 1) === 1; i++; }
+    }
+  }
+  const MASCARAS = [(x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, x => x % 3 === 0, (x, y) => (x + y) % 3 === 0,
+    (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0, (x, y) => (x * y) % 2 + (x * y) % 3 === 0,
+    (x, y) => ((x * y) % 2 + (x * y) % 3) % 2 === 0, (x, y) => ((x + y) % 2 + (x * y) % 3) % 2 === 0];
+  const aplicar = m => { for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (!fun[y][x] && MASCARAS[m](x, y)) mod[y][x] = !mod[y][x]; };
+  const penalidade = () => {
+    let p = 0;
+    for (let eixo = 0; eixo < 2; eixo++) for (let a = 0; a < n; a++) {
+      let corrida = 1;
+      for (let b = 1; b <= n; b++) {
+        const atual = b < n ? (eixo ? mod[b][a] : mod[a][b]) : null, ant = eixo ? mod[b - 1][a] : mod[a][b - 1];
+        if (atual === ant) corrida++; else { if (corrida >= 5) p += corrida - 2; corrida = 1; }
+      }
+      const linha = Array.from({ length: n }, (_, b) => (eixo ? mod[b][a] : mod[a][b]) ? 1 : 0).join("");
+      p += 40 * ((linha.match(/(?=10111010000|00001011101)/g) || []).length);
+    }
+    for (let y = 0; y < n - 1; y++) for (let x = 0; x < n - 1; x++) { const c = mod[y][x]; if (c === mod[y][x + 1] && c === mod[y + 1][x] && c === mod[y + 1][x + 1]) p += 3; }
+    const escuros = mod.flat().filter(Boolean).length;
+    p += 10 * Math.floor(Math.abs(escuros * 20 - n * n * 10) / (n * n));
+    return p;
+  };
+  let melhor = 0, menor = Infinity;
+  for (let m = 0; m < 8; m++) { aplicar(m); formato(m); const pen = penalidade(); if (pen < menor) { menor = pen; melhor = m; } aplicar(m); }
+  aplicar(melhor); formato(melhor);
+  return mod;
+}
+
+// PNG para imprimir (balcão, espelho): QR + nome + endereço, com a logo no topo se houver.
+async function baixarQrPagina(link, nome, logoId) {
+  try {
+    const mod = gerarQr(link);
+    const n = mod.length, tam = 12, margem = 4;
+    const ladoQr = (n + margem * 2) * tam;
+    let logo = null;
+    if (logoId) { try { logo = await createImageBitmap(await (await fetch(fotoUrl(logoId))).blob()); } catch { /* sem logo, segue */ } }
+    const topo = logo ? 152 : 40;
+    const y0 = topo + 84;
+    const canvas = document.createElement("canvas");
+    canvas.width = ladoQr + 80; canvas.height = y0 + ladoQr + 64;
+    const g = canvas.getContext("2d");
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, canvas.width, canvas.height);
+    if (logo) {
+      g.save(); g.beginPath(); g.arc(canvas.width / 2, 90, 50, 0, Math.PI * 2); g.clip();
+      g.drawImage(logo, canvas.width / 2 - 50, 40, 100, 100); g.restore();
+    }
+    g.fillStyle = "#1f2328"; g.textAlign = "center";
+    g.font = "bold 34px system-ui, sans-serif"; g.fillText(nome, canvas.width / 2, topo + 30, canvas.width - 40);
+    g.font = "22px system-ui, sans-serif"; g.fillText("Aponte a câmera e agende seu horário", canvas.width / 2, topo + 64, canvas.width - 40);
+    g.fillStyle = "#000000";
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (mod[y][x]) g.fillRect(40 + (x + margem) * tam, y0 + (y + margem) * tam, tam, tam);
+    g.fillStyle = "#1f2328"; g.font = "bold 24px system-ui, sans-serif";
+    g.fillText(link.replace(/^https?:\/\//, ""), canvas.width / 2, y0 + ladoQr + 34, canvas.width - 40);
+    const a = el("a", { href: canvas.toDataURL("image/png"), download: `qrcode-${link.split("/").pop()}.png`, hidden: true });
+    document.body.append(a); a.click(); a.remove();
+    avisar("QR Code baixado. Imprima e cole no balcão ou no espelho.");
+  } catch (e) { avisar(e.message, "erro"); }
+}
+
 function gruposDoMenu() {
   const p = usuario.perfil;
   if (p === "plataforma") return [{ id: "plataforma", titulo: "Plataforma", icone: "loja", itens: [["plataforma", "Barbearias", "loja"], ["pedidos", "Pedidos de teste", "clientes"], ["chamados", "Chamados", "suporte"]] }];
@@ -5854,7 +6242,7 @@ function gruposDoPerfil(p) {
   // Gerente/dono: menu lateral (organização de antes); Financeiro reúne tudo o que é financeiro.
   return [
     { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ["visao-dia", "Visão do dia", "lista"]] },
-    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
+    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"], ["minha-pagina", "Minha página", "loja"]] },
     { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["contas", "Despesas", "contas"], ["pagamento-equipe", "Pagamento da equipe", "equipe"], ["notas", "Notas em aberto", "contas"], ["contador", "Contador e dados", "contador"]] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos e estoque", "estoque"]] },
     { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"], ["assinatura", "Meu plano", "dinheiro"]] }
@@ -6010,6 +6398,7 @@ const ROTAS = {
   produtos: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaProdutos },
   clientes: { perfis: ["proprietario", "gerente", "caixa"], tela: () => telaClientes() },
   mensagens: { perfis: ["proprietario", "gerente", "caixa"], tela: telaMensagens },
+  "minha-pagina": { perfis: ["proprietario", "gerente"], tela: telaMinhaPagina },
   agenda: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgenda },
   "agenda-lote": { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgendaLote },
   "minha-producao": { perfis: ["barbeiro"], tela: telaMinhaProducao },

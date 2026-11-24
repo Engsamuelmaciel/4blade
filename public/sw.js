@@ -3,7 +3,7 @@
  * Guarda SOMENTE os arquivos da tela (para abrir sem internet).
  * NUNCA guarda nada de /api/ (dados e login sempre vão direto ao servidor).
  */
-const CACHE = "4blade-v46";
+const CACHE = "4blade-v47";
 
 const ARQUIVOS = [
   "/",
@@ -51,7 +51,10 @@ self.addEventListener("fetch", event => {
     req.method !== "GET" ||
     url.origin !== self.location.origin ||
     url.pathname === "/api" ||
-    url.pathname.startsWith("/api/")
+    url.pathname.startsWith("/api/") ||
+    // Página da barbearia (forblade.com.br/<endereço>), fotos e arquivos dela: sempre direto da rede, fora do app.
+    (req.mode === "navigate" && url.pathname !== "/" && url.pathname !== "/index.html") ||
+    url.pathname.startsWith("/f/") || url.pathname.startsWith("/pagina.")
   ) {
     return;
   }

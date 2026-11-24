@@ -1638,3 +1638,55 @@ button.ticket-at:focus-visible { outline: 3px solid var(--dourado); outline-offs
 .acoes-grupo > p { flex: 1 0 100%; margin: 0; }
 .painel-novo > .link-discreto { padding: 0 16px 14px; margin: 0; }
 a.forma-card { color: inherit; text-decoration: none; }
+
+/* ---------- Minha página (editor da página da barbearia) — 24/11/2026 ---------- */
+.mp-topo { display: grid; gap: 10px; }
+.mp-link-linha { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mp-link { font-weight: 800; font-size: 18px; color: var(--destaque); word-break: break-all; }
+.mp-topo > .suave { margin: 0; }
+.mp-numeros { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+.mp-numero { background: var(--cartao); border-radius: var(--raio); box-shadow: var(--sombra); padding: 10px; text-align: center; display: grid; gap: 2px; }
+.mp-numero strong { font-size: 22px; }
+.mp-numero span { font-size: 12px; color: var(--suave); font-weight: 700; }
+.mp-numeros-nota { grid-column: 1 / -1; margin: 0; font-size: 12px; }
+@media (max-width: 480px) { .mp-numeros { grid-template-columns: repeat(2, 1fr); } }
+.mp-secoes { display: grid; gap: 10px; }
+.mp-secao { background: var(--cartao); border-radius: 14px; box-shadow: var(--sombra); overflow: hidden; }
+.mp-secao > summary { list-style: none; cursor: pointer; display: grid; gap: 2px; padding: 14px 44px 14px 16px; position: relative; min-height: 56px; }
+.mp-secao > summary::-webkit-details-marker { display: none; }
+.mp-secao > summary::after { content: ""; position: absolute; right: 18px; top: 22px; width: 8px; height: 8px; border-right: 2px solid var(--suave); border-bottom: 2px solid var(--suave); transform: rotate(45deg); transition: transform .15s; }
+.mp-secao[open] > summary::after { transform: rotate(-135deg); top: 26px; }
+.mp-secao > summary small { color: var(--suave); }
+.mp-secao[open] > summary { border-bottom: 1px solid var(--borda); }
+.mp-secao-corpo { padding: 14px 16px 16px; display: grid; gap: 10px; }
+.mp-secao-corpo h4 { margin: 6px 0 0; }
+.mp-form { display: grid; gap: 4px; }
+.mp-form > .botao { justify-self: start; margin-top: 8px; }
+.mp-secao-corpo > .botao { justify-self: start; }
+.mp-foto-unica { display: flex; gap: 12px; align-items: center; }
+.mp-foto-unica > img, .mp-foto-vazia { width: 84px; height: 84px; object-fit: cover; border-radius: 12px; background: var(--neutro); flex-shrink: 0; }
+.mp-logo > img, .mp-logo .mp-foto-vazia { border-radius: 50%; }
+.mp-capa > img, .mp-capa .mp-foto-vazia { width: 132px; height: 74px; }
+.mp-foto-vazia { display: grid; place-items: center; font-size: 12px; color: var(--suave); }
+.mp-foto-unica small { display: block; }
+.mp-galeria { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.mp-galeria li { display: grid; gap: 4px; }
+.mp-galeria img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; background: var(--neutro); }
+.mp-galeria-acoes { display: flex; gap: 4px; justify-content: space-between; }
+.mp-galeria-acoes .botao { min-height: 32px; padding: 0 8px; }
+.mp-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.mp-item { border: 1px solid var(--borda); border-radius: 12px; padding: 8px 10px; display: grid; gap: 6px; }
+.mp-item.escondido { opacity: .7; }
+.mp-item-topo { display: flex; align-items: center; gap: 8px; }
+.mp-item-topo .marcar { flex: 1; margin: 0; }
+.mp-ordem { display: flex; gap: 4px; }
+.mp-foto-pessoa { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+.mp-descricao { width: 100%; min-height: 40px; border: 1px solid var(--campo-borda); border-radius: 10px; padding: 0 10px; background: var(--campo); color: var(--texto); font: inherit; }
+.mp-formas { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.mp-temas { grid-template-columns: repeat(2, 1fr); }
+.amostra-pg-classico span:first-child { background: #121417; }  .amostra-pg-classico span:last-child { background: #e0a330; }
+.amostra-pg-claro span:first-child { background: #f4f4f2; }     .amostra-pg-claro span:last-child { background: #24272c; }
+.amostra-pg-vintage span:first-child { background: #efe6d6; }   .amostra-pg-vintage span:last-child { background: #8b3a1e; }
+.amostra-pg-moderno span:first-child { background: #140f2c; }   .amostra-pg-moderno span:last-child { background: #00d2ff; }
+.ajuda.ok { color: var(--ok); font-weight: 700; }
+.ajuda.erro-texto { color: var(--erro); font-weight: 700; }
