@@ -1589,6 +1589,8 @@ button.ticket-at:focus-visible { outline: 3px solid var(--dourado); outline-offs
 .lote-tirar { align-self: center; width: 30px; height: 30px; border: 0; border-radius: 50%; background: var(--neutro-2); color: var(--suave); font-size: 18px; cursor: pointer; }
 .lote-tirar:hover { background: var(--erro-fundo); color: var(--erro); }
 .lote-msg { grid-column: 2 / -1; margin: 0; font-size: 13px; font-weight: 600; }
+.lote-linha .lote-repetir { grid-column: 2 / 4; }   /* horário fixo: 2ª linha, embaixo do dia e da hora */
+.lote-linha .lote-ate { grid-column: 4 / 5; }
 .lote-msg.erro { color: var(--erro); }
 .lote-msg.ok { color: var(--ok); }
 .lote-acoes { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1605,6 +1607,7 @@ button.ticket-at:focus-visible { outline: 3px solid var(--dourado); outline-offs
   .lote-servicoId, .lote-nome, .lote-barbeiroId, .lote-telefone { grid-column: 1 / -1; }
   .lote-data { padding-right: 0; }
   .lote-msg { grid-column: 1 / -1; }
+  .lote-linha .lote-repetir, .lote-linha .lote-ate { grid-column: auto; }
   .lote-linha .lote-data, .lote-linha .lote-hora { margin-top: 18px; }
 }
 @media (max-width: 699px) { .acoes-agenda [data-teste=link-lote] { display: none; } }

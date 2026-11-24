@@ -239,6 +239,23 @@ async function rodar(tela) {
     assert.match(await linhaL(2).locator(".lote-msg").textContent(), /Já existe outro atendimento/);
     await print("suporte-horarios-lote");
 
+    passo("horário fixo pelo lote, fora do funcionamento: avisa e marca com o aceite");
+    await page.click("button:has-text('Tirar os já marcados')");
+    await page.waitForSelector("[data-lote-linha='1'] [data-campo=repetir]");
+    await preencher(1, "hora", "21:00");
+    await linhaL(1).locator("[data-campo=repetir]").selectOption("1");
+    await page.waitForSelector("[data-lote-linha='1'] [data-campo=ate]");
+    assert.equal(await linhaL(1).locator("[data-campo=ate]").inputValue(), somarDias(diaLote, 56), "padrão: 8 semanas");
+    await preencher(1, "ate", somarDias(diaLote, 21));
+    await page.click("[data-teste=enviar-lote]");
+    await page.waitForSelector("[data-lote-linha='1'] .lote-msg:has-text('Fora do funcionamento')");
+    assert.match(await linhaL(1).locator(".lote-msg").textContent(), /Fora do funcionamento.*Marcar mesmo fora do funcionamento/);
+    await page.check("#c-loteFora");
+    await page.click("[data-teste=enviar-lote]");
+    await page.waitForSelector("[data-teste=lote-resumo].tudo-ok");
+    assert.match(await linhaL(1).locator(".lote-msg").textContent(), /Horário fixo: 4 marcado\(s\), toda .* às 21:00/);
+    await print("suporte-horario-fixo-fora-do-horario");
+
     // Aparecem para o gerente da barbearia
     await sair();
     await entrar("gerente.semana");

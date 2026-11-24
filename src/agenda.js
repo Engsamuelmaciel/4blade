@@ -276,13 +276,24 @@ export async function marcar(ctx) {
   }
 
   const regras = await carregarRegras(db, ctx.barbeariaId, data, datas.at(-1));
+  // Fora do funcionamento / dia fechado / fora do horário do profissional (25/11/2026): marca mesmo assim se quem marca
+  // confirmar (aceiteForaHorario), e fica auditado. Conflito com outro atendimento ou bloqueio continua recusado.
+  const aceiteFora = input.aceiteForaHorario === true;
+  const foraDoHorario = [];
   // O primeiro horário precisa ser válido (mensagem clara); os seguintes que não couberem são pulados e listados.
-  conferirHorario(regras(data, prof.id), ini, fim);
+  try { conferirHorario(regras(data, prof.id), ini, fim); }
+  catch (e) {
+    if (!(e instanceof HttpError) || e.status !== 409) throw e;
+    if (!aceiteFora) throw new HttpError(e.message, 409, { codigo: "fora_do_horario" });
+  }
   const pulados = [];
   const validas = [];
   for (const d of datas) {
     try { conferirHorario(regras(d, prof.id), ini, fim); validas.push(d); }
-    catch (e) { pulados.push({ data: d, motivo: e.message }); }
+    catch (e) {
+      if (aceiteFora && e instanceof HttpError && e.status === 409) { validas.push(d); foraDoHorario.push({ data: d, motivo: e.message }); }
+      else pulados.push({ data: d, motivo: e.message });
+    }
   }
 
   const comandos = [];
@@ -298,6 +309,7 @@ export async function marcar(ctx) {
       auditoria(ctx, "horario_fixo_criado", serieId, { depois: { barbeiro: prof.id, cliente: cliente.id, intervaloSemanas: rep.intervaloSemanas, hora: input.hora, de: data, ate: datas.at(-1) } })
     );
   }
+  if (foraDoHorario.length) comandos.push(auditoria(ctx, "marcou_fora_do_horario", prof.id, { hora: input.hora, dias: foraDoHorario }));
   const ids = validas.map(d => [d, crypto.randomUUID()]);
   for (const [d, id] of ids) comandos.push(...comandosDoHorario(ctx, { id, prof, cliente, data: d, ini, fim, servs, observacao, serieId }));
   await db.batch(comandos);

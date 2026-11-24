@@ -1633,13 +1633,14 @@ async function telaAgendaLote(suporteId = null) {
   if (!profs.length) return mostrar(cabecalho(titulo, "", voltar), el("p", { class: "vazio", text: suporteId ? "Essa barbearia ainda não tem profissional com agenda. Cadastre a equipe primeiro (botão Equipe)." : "Nenhum profissional com agenda. Cadastre em Equipe." }));
   if (!servicos.length) return mostrar(cabecalho(titulo, "", voltar), el("p", { class: "vazio", text: suporteId ? "Essa barbearia ainda não tem serviços cadastrados. Peça ao dono para cadastrar (Catálogo → Serviços)." : "Cadastre os serviços antes (Catálogo → Serviços)." }));
   const soUm = profs.length === 1;
-  const vazia = base => ({ data: base?.data || hoje, hora: "", barbeiroId: base?.barbeiroId || profs[0].id, servicoId: base?.servicoId || servicos[0].id, nome: "", telefone: "", estado: null, msg: "" });
+  const vazia = base => ({ data: base?.data || hoje, hora: "", barbeiroId: base?.barbeiroId || profs[0].id, servicoId: base?.servicoId || servicos[0].id, nome: "", telefone: "", repetir: "", ate: "", estado: null, msg: "" });
   let linhas = (lerRascunhoLote(suporteId) || []).filter(l => l && l.estado !== "ok");
   if (!linhas.length) linhas = [vazia(), vazia(), vazia()];
   const lista = el("div", { class: "lote-lista", "data-teste": "lote-lista" });
   const resumo = el("p", { class: "lote-resumo", "data-teste": "lote-resumo", role: "status" });
   const lgpd = caixaMarcar("Os clientes com telefone autorizaram o uso do telefone para o atendimento (LGPD)", { name: "loteLgpd" });
   const notaVencida = caixaMarcar("Marcar mesmo se o cliente tiver nota vencida", { name: "loteNota" });
+  const foraHorario = caixaMarcar("Marcar mesmo fora do funcionamento ou do horário do profissional", { name: "loteFora" });
   const guardar = () => salvarRascunhoLote(linhas.filter(l => l.estado !== "ok"), suporteId);
   const desenhar = () => {
     lista.replaceChildren(...linhas.map((l, i) => {
@@ -1658,6 +1659,8 @@ async function telaAgendaLote(suporteId = null) {
         inp("servicoId", { tag: "select", rotulo: "Serviço" }),
         inp("nome", { value: l.nome, rotulo: "Cliente", autocomplete: "off", maxlength: "80", placeholder: "Nome" }),
         inp("telefone", { value: l.telefone, rotulo: "Telefone (opcional)", inputmode: "tel", autocomplete: "off", placeholder: "(11) 90000-0000" }),
+        inp("repetir", { tag: "select", rotulo: "Horário fixo" }),
+        l.repetir ? inp("ate", { type: "date", value: l.ate, rotulo: "Repetir até" }) : null,
         travada ? el("span", { class: "lote-tirar" }) : el("button", { type: "button", class: "lote-tirar", "aria-label": `Tirar a linha ${i + 1}`, title: "Tirar esta linha", text: "×",
           onclick: () => { linhas.splice(i, 1); if (!linhas.length) linhas.push(vazia()); guardar(); desenhar(); } }),
         l.msg ? el("p", { class: `lote-msg ${l.estado === "ok" ? "ok" : "erro"}`, text: l.msg }) : null);
@@ -1669,6 +1672,15 @@ async function telaAgendaLote(suporteId = null) {
       if (sp) { sp.replaceChildren(...profs.map(p => el("option", { value: p.id, text: p.nome }))); sp.value = l.barbeiroId; }
       const ss = linhaEl.querySelector("[data-campo=servicoId]");
       ss.replaceChildren(...servicos.map(x => el("option", { value: x.id, text: `${x.nome} (${x.duracaoMin} min)` }))); ss.value = l.servicoId;
+      // Horário fixo (igual ao "Novo horário"): repete a cada N semanas até a data escolhida (padrão: 8 semanas).
+      const sr = linhaEl.querySelector("[data-campo=repetir]");
+      sr.replaceChildren(...[["", "Não repete"], ["1", "Toda semana"], ["2", "A cada 2 semanas"], ["3", "A cada 3 semanas"], ["4", "A cada 4 semanas"]].map(([v, t]) => el("option", { value: v, text: t })));
+      sr.value = l.repetir || "";
+      sr.addEventListener("change", () => {
+        if (l.repetir && !l.ate) l.ate = somaDias(l.data || hoje, 56);
+        if (!l.repetir) l.ate = "";
+        guardar(); desenhar();
+      });
     });
     aplicarMascaras(lista);
     contar();
@@ -1709,17 +1721,26 @@ async function telaAgendaLote(suporteId = null) {
             } else await api("/clientes", { metodo: "POST", corpo: { nome: l.nome.trim(), telefone: l.telefone, aceiteLgpd: lgpd.querySelector("input").checked } });
             l.estado = "ok"; l.msg = "Cliente cadastrado."; ok++; continue;
           }
-          await api(suporteId ? "/plataforma/barbearias/agenda-lote" : "/agenda", { metodo: "POST", corpo: {
+          const rm = await api(suporteId ? "/plataforma/barbearias/agenda-lote" : "/agenda", { metodo: "POST", corpo: {
             ...(suporteId ? { barbeariaId: suporteId } : {}),
             data: l.data, hora, barbeiroId: soUm ? profs[0].id : l.barbeiroId, servicoIds: [l.servicoId],
             cliente: { nome: l.nome.trim() || undefined, telefone: l.telefone, aceiteLgpd: lgpd.querySelector("input").checked },
-            ...(notaVencida.querySelector("input").checked ? { aceiteNotaVencida: true } : {})
+            ...(l.repetir ? { repetir: { intervaloSemanas: Number(l.repetir), ate: l.ate } } : {}),
+            ...(notaVencida.querySelector("input").checked ? { aceiteNotaVencida: true } : {}),
+            ...(foraHorario.querySelector("input").checked ? { aceiteForaHorario: true } : {})
           } });
-          l.estado = "ok"; l.msg = `Marcado: ${dataBR(l.data)} às ${hora}.`; ok++;
+          l.estado = "ok";
+          if (rm.serie) {
+            const sr = rm.serie;
+            l.msg = `Horário fixo: ${sr.criados} marcado(s), ${sr.intervaloSemanas === 1 ? `toda ${sr.diaSemana}` : `a cada ${sr.intervaloSemanas} semanas (${sr.diaSemana})`} às ${hora}, até ${dataBR(sr.datas.at(-1) || l.ate)}.`
+              + (sr.pulados.length ? ` Ficaram de fora: ${sr.pulados.map(x => dataBR(x.data)).join(", ")} (já ocupado ou bloqueado).` : "");
+          } else l.msg = `Marcado: ${dataBR(l.data)} às ${hora}.`;
+          ok++;
         } catch (e) {
           if (e.message === "Sessão encerrada") throw e;
           l.estado = "erro";
           l.msg = e.dados?.codigo === "nota_vencida" ? "Cliente com nota vencida: marque \"Marcar mesmo se o cliente tiver nota vencida\" e envie de novo."
+            : e.dados?.codigo === "fora_do_horario" ? `${e.message} Para marcar mesmo assim, marque "Marcar mesmo fora do funcionamento" logo abaixo e salve de novo.`
             : /LGPD/.test(e.message) ? "Cliente novo com telefone: marque a autorização do telefone (LGPD) logo abaixo e envie de novo." : e.message;
           erro++;
         }
@@ -1731,7 +1752,7 @@ async function telaAgendaLote(suporteId = null) {
     resumo.className = `lote-resumo ${erro ? "com-erro" : "tudo-ok"}`;
     if (ok) avisar(`${ok} salvo(s).`);
   });
-  const limparMarcados = () => { linhas = linhas.filter(l => l.estado !== "ok"); if (!linhas.length) linhas = [vazia()]; resumo.textContent = ""; guardar(); desenhar(); };
+  const limparMarcados = () => { linhas = linhas.filter(l => l.estado !== "ok"); if (!linhas.length) linhas = [vazia()]; resumo.textContent = ""; resumo.className = "lote-resumo"; guardar(); desenhar(); };
   mostrar(
     cabecalho(titulo, suporteId
       ? "Passe a agenda que a barbearia já tem: com hora, o cliente fica marcado na agenda dela; sem hora, só é cadastrado."
@@ -1746,7 +1767,7 @@ async function telaAgendaLote(suporteId = null) {
         botao("+ Linha", () => adicionar(1), "pequeno"),
         botao("+ 5 linhas", () => adicionar(5), "pequeno"),
         botao("Tirar os já marcados", limparMarcados, "pequeno")),
-      el("div", { class: "lote-confirmar" }, lgpd, notaVencida),
+      el("div", { class: "lote-confirmar" }, lgpd, notaVencida, foraHorario),
       enviarBtn,
       resumo,
       suporteId ? null : el("p", { class: "centro" }, el("a", { href: "#/agenda", text: "Ver na agenda" }), podeCadastrar ? " · " : null, podeCadastrar ? el("a", { href: "#/clientes", text: "Ver clientes" }) : null)));
@@ -5510,21 +5531,36 @@ function alertaAceite({ titulo, texto, detalhe = null, ok = "Aceito e quero cont
   });
 }
 // Marca (ou repete) pedindo o aceite quando o servidor avisa nota vencida.
+// Pede os aceites que o servidor exigir (nota vencida; fora do funcionamento/horário do profissional) e tenta de novo.
 async function comAceiteNota(chamar) {
-  try {
-    return await chamar({});
-  } catch (e) {
-    if (e.dados?.codigo !== "nota_vencida") throw e;
-    const n = e.dados.nota;
-    const sim = await alertaAceite({
-      titulo: "Cliente com nota vencida",
-      texto: `${n.cliente} deve ${reais(n.totalCentavos)} desde ${dataBR(n.desde)} (${n.dias} dias).`,
-      detalhe: "Para marcar mesmo assim, confirme que está ciente. Fica registrado quem aceitou. Aproveite para combinar o pagamento com o cliente.",
-      ok: "Estou ciente, marcar"
-    });
-    if (!sim) throw new Error("Horário não marcado (nota vencida).");
-    return chamar({ aceiteNotaVencida: true });
+  const extra = {};
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await chamar({ ...extra });
+    } catch (e) {
+      if (e.dados?.codigo === "nota_vencida" && !extra.aceiteNotaVencida) {
+        const n = e.dados.nota;
+        const sim = await alertaAceite({
+          titulo: "Cliente com nota vencida",
+          texto: `${n.cliente} deve ${reais(n.totalCentavos)} desde ${dataBR(n.desde)} (${n.dias} dias).`,
+          detalhe: "Para marcar mesmo assim, confirme que está ciente. Fica registrado quem aceitou. Aproveite para combinar o pagamento com o cliente.",
+          ok: "Estou ciente, marcar"
+        });
+        if (!sim) throw new Error("Horário não marcado (nota vencida).");
+        extra.aceiteNotaVencida = true;
+      } else if (e.dados?.codigo === "fora_do_horario" && !extra.aceiteForaHorario) {
+        const sim = await alertaAceite({
+          titulo: "Fora do horário",
+          texto: e.message,
+          detalhe: "Dá para marcar mesmo assim (por exemplo, um encaixe combinado com o cliente). Fica registrado quem marcou.",
+          ok: "Marcar mesmo assim"
+        });
+        if (!sim) throw new Error("Horário não marcado (fora do horário).");
+        extra.aceiteForaHorario = true;
+      } else throw e;
+    }
   }
+  return chamar({ ...extra });
 }
 function janelaBloquearCliente(c, recarregar) {
   return c.bloqueado

@@ -327,3 +327,8 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - Ao criar a nova senha pelo link, a pessoa já entra; as sessões abertas em outros aparelhos e os outros links pendentes deixam de valer. Tudo auditado (sem guardar o e-mail completo na auditoria).
 - **E-mail é opcional** para todos: a própria pessoa cadastra em Minha conta → "Meu e-mail"; o dono/gerente pode preencher no cadastro da equipe; o suporte, no "Editar dados" do dono. Quem não tem e-mail continua pedindo nova senha ao gerente (ou ao suporte, se for o dono).
 - Envio pelo Resend (remetente nao-responda@forblade.com.br). Sem a chave configurada, a tela avisa para pedir a senha ao gerente.
+
+## 24. Marcar fora do horário e horário fixo no lote (25/11/2026, pedido do responsável)
+- Horário fora do funcionamento, em dia fechado ou fora do horário do profissional: o sistema avisa e pergunta "Marcar mesmo assim?". Confirmando, marca e fica auditado quem marcou. Horário em cima de outro atendimento ou de um bloqueio continua recusado.
+- Vale no "Novo horário" (aviso na tela) e no "Vários de uma vez"/"Horários em lote" (caixa "Marcar mesmo fora do funcionamento ou do horário do profissional").
+- No lote, cada linha tem **Horário fixo** (não repete, toda semana, a cada 2, 3 ou 4 semanas) e **Repetir até** (padrão: 8 semanas; máximo 6 meses), igual ao "Novo horário". Datas já ocupadas ficam de fora e aparecem na mensagem da linha.
