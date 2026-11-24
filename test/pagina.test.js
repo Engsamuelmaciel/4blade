@@ -108,8 +108,10 @@ describe("página da barbearia", () => {
     assert.match(pg.texto, /instagram\.com\/navalhaeco/);
     const msg = decodeURIComponent(pg.texto.match(/id="pg-solicitar" data-evento="whatsapp" href="https:\/\/wa\.me\/5511900000000\?text=([^"]+)"/)[1]);
     assert.equal(msg, "Olá, Navalha & Co.! Vim pela sua página e quero agendar um horário.");
-    const msgCorte = decodeURIComponent(pg.texto.match(/href="https:\/\/wa\.me\/5511900000000\?text=([^"]*Corte%20masculino[^"]*)"/)[1]);
-    assert.equal(msgCorte, "Olá, Navalha & Co.! Vim pela sua página e quero agendar: Corte masculino (R$ 40,00, 30 min). Qual horário vocês têm?");
+    // Catálogo enxuto (25/11/2026): sem link "Agendar" por serviço; cada linha leva os dados para o "Solicitar meu horário" montar a mensagem
+    assert.doesNotMatch(pg.texto, /\?text=[^"]*Corte%20masculino/);
+    assert.match(pg.texto, /class="pg-servico" data-servico="[^"]+" data-nome="Corte masculino" data-preco="4000" data-dur="30"/);
+    assert.match(pg.texto, /aria-label="Escolher Corte masculino"/);
     assert.doesNotMatch(pg.texto, /Horários livres/, "agenda escondida por padrão");
     // esconde um serviço; liga os horários livres
     await post("/api/pagina/salvar", ger.token, { servicos: [{ id: barba.id, visivel: false }, { id: corte.id, visivel: true }], mostrarHorarios: true });

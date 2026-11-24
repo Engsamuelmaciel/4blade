@@ -35,8 +35,10 @@
     } else ajuda.hidden = true;
     botao.href = "https://wa.me/55" + whats + "?text=" + encodeURIComponent(texto);
   }
-  document.querySelectorAll(".pg-escolher").forEach(b => b.addEventListener("click", () => {
-    const li = b.closest(".pg-servico");
+  // Tocar em qualquer parte da linha (ou no +) escolhe/tira o serviço.
+  document.querySelectorAll(".pg-servico").forEach(li => li.addEventListener("click", () => {
+    const b = li.querySelector(".pg-escolher");
+    if (!b) return;
     const on = !li.classList.contains("escolhido");
     li.classList.toggle("escolhido", on);
     b.setAttribute("aria-pressed", on ? "true" : "false");

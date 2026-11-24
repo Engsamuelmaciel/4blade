@@ -56,24 +56,25 @@ ul { list-style: none; margin: 0; padding: 0; }
   background: linear-gradient(180deg, transparent, var(--fundo) 30%); }
 .pg-cta-ajuda { margin: 6px 0 0; text-align: center; font-size: 13px; font-weight: 700; color: var(--texto); }
 
-/* Serviços */
-.pg-servicos { display: grid; gap: 10px; }
-.pg-servico { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 12px; border: 1px solid var(--borda); border-radius: 14px; }
-.pg-servico.escolhido { border-color: var(--realce); box-shadow: 0 0 0 2px var(--realce) inset; }
-.pg-servico-txt { min-width: 0; display: grid; gap: 2px; }
-.pg-servico-txt strong { font-size: 16px; }
-.pg-servico-txt small { color: var(--suave); font-size: 14px; }
-.pg-servico-info { color: var(--suave); font-size: 13px; }
-.pg-servico-dir { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.pg-preco { font-weight: 800; color: var(--realce); font-size: 16px; white-space: nowrap; }
-.pg-escolher { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--borda); background: transparent; color: var(--texto);
-  font-size: 22px; font-weight: 700; cursor: pointer; }
+/* Serviços: linhas compactas (nome · tempo | preço | +); 2 colunas no computador; resto em "Ver mais" */
+.pg-servicos { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+@media (min-width: 720px) { .pg-servicos { grid-template-columns: 1fr 1fr; gap: 8px 12px; } }
+.pg-servico { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 8px 8px 14px;
+  border: 1px solid var(--borda); border-radius: 12px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.pg-servico.escolhido { border-color: var(--realce); box-shadow: 0 0 0 1px var(--realce) inset; }
+.pg-servico-txt { min-width: 0; display: grid; gap: 1px; }
+.pg-servico-txt strong { font-size: 15px; line-height: 1.25; }
+.pg-servico-info { color: var(--suave); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg-preco { font-weight: 800; color: var(--realce); font-size: 15px; white-space: nowrap; }
+.pg-escolher { width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--borda); background: transparent; color: var(--texto);
+  font-size: 19px; font-weight: 700; line-height: 1; cursor: pointer; }
 .pg-escolher[aria-pressed="true"] { background: var(--realce); border-color: var(--realce); color: var(--sobre-destaque); }
-@media (max-width: 420px) {
-  .pg-servico { flex-wrap: wrap; }
-  .pg-servico-dir { width: 100%; justify-content: flex-end; }
-  .pg-servico-dir .pg-preco { margin-right: auto; }
-}
+.pg-mais { margin-top: 6px; }
+.pg-mais > summary { list-style: none; cursor: pointer; text-align: center; padding: 10px; font-weight: 700; color: var(--realce);
+  border: 1px dashed var(--borda); border-radius: 12px; margin-bottom: 6px; }
+.pg-mais > summary::-webkit-details-marker { display: none; }
+.pg-mais .pg-mais-fechar, .pg-mais[open] .pg-mais-abrir { display: none; }
+.pg-mais[open] .pg-mais-fechar { display: inline; }
 
 /* Horários livres (só se o gerente ligar; tocar = WhatsApp) */
 .pg-dias { display: grid; gap: 8px; }

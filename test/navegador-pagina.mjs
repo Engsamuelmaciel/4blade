@@ -191,6 +191,14 @@ async function rodar(tela) {
     assert.ok(meta.width > 300);
     console.log(`  QR Code: docs/prints/pagina/${tela.nome}-qrcode.png (${meta.width}x${meta.height})`);
 
+    // Catálogo grande (como o da foto do responsável): +6 serviços → 8 no total; a página mostra 6 e o resto em "Ver mais"
+    await page.evaluate(async () => {
+      const t = localStorage.getItem("4blade.token");
+      for (const [nome, preco, dur] of [["Corte degradê", 4000, 30], ["Corte social", 3500, 30], ["Corte e barba", 6000, 60], ["Pigmentação", 3000, 30], ["Sobrancelha", 1500, 15], ["Progressiva", 9000, 90]]) {
+        await fetch("/api/servicos", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${t}` }, body: JSON.stringify({ nome, precoCentavos: preco, duracaoMin: dur }) });
+      }
+    });
+
     passo("abre o link público: capa, serviços, horários, fotos, equipe, endereço; escolhe 2 serviços → WhatsApp");
     const pub = await contexto.newPage();
     vigiar(pub);
@@ -203,19 +211,28 @@ async function rodar(tela) {
     assert.ok(await pub.locator("text=Horários livres").count());
     assert.match(await pub.textContent(".pg-local"), /Rua Exemplo, 123/);
     assert.match(await pub.textContent(".pg-servicos"), /Toalha quente e navalha/);
+    assert.equal(await pub.locator(".pg-secao > .pg-servicos > .pg-servico").count(), 6, "catálogo enxuto: 6 à vista");
+    assert.match(await pub.textContent(".pg-mais > summary"), /Ver mais 2 serviços/);
+    assert.equal(await pub.locator(".pg-servicos a:has-text('Agendar')").count(), 0, "sem um botão Agendar por linha");
+    const yGaleria = await pub.locator("#t-gal").evaluate(e => e.getBoundingClientRect().top + window.scrollY);
+    const yServ = await pub.locator("#t-serv").evaluate(e => e.getBoundingClientRect().top + window.scrollY);
+    console.log(`  distância Serviços → Fotos: ${Math.round(yGaleria - yServ)} px`);
     assert.equal(await pub.locator(".pg-dia details[open]").count(), 1, "só o primeiro dia de horários aberto");
     await pub.evaluate(() => document.querySelectorAll("img[loading=lazy]").forEach(i => { i.loading = "eager"; }));
     await pub.waitForFunction(() => [...document.images].filter(i => i.getAttribute("src")).every(i => i.complete && i.naturalWidth > 0));
     await pub.evaluate(() => Promise.all([...document.images].filter(i => i.getAttribute("src")).map(i => i.decode().catch(() => null))));
     await print("pagina-publica", { pg: pub });
     await pub.click('[data-nome="Corte"] .pg-escolher');
-    await pub.click('[data-nome="Barba"] .pg-escolher');
+    await pub.click('[data-nome="Barba"] .pg-servico-txt');   // tocar na linha também escolhe
     await pub.waitForSelector("#pg-escolhidos:not([hidden])");
     assert.match(await pub.textContent("#pg-escolhidos"), /2 serviços escolhidos · R\$ 70,00 · 1h/);
     const href = decodeURIComponent((await pub.getAttribute("#pg-solicitar", "href")).split("?text=")[1]);
     assert.equal(href, "Olá, Barbearia Semana Fictícia! Vim pela sua página e quero agendar: Barba + Corte (R$ 70,00, 1h). Qual horário vocês têm?");
     assert.match(await pub.getAttribute("#pg-solicitar", "href"), /^https:\/\/wa\.me\/5511900000000\?text=/);
-    await pub.evaluate(() => window.scrollTo(0, document.body.scrollHeight * 0.25));
+    await pub.click(".pg-mais > summary");
+    await pub.waitForSelector(".pg-mais[open] [data-nome='Progressiva']");
+    await pub.locator("#t-serv").scrollIntoViewIfNeeded();
+    await pub.evaluate(() => window.scrollBy(0, -20));
     await print("pagina-publica-servicos-escolhidos", { inteira: false, pg: pub });
     await pub.click(".pg-foto >> nth=0");
     await pub.waitForSelector("#pg-ampliar[open]");

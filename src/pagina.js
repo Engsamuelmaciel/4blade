@@ -340,14 +340,20 @@ function montarHtml({ p, c, aberto, horarios, origem, previa }) {
   };
   const ldJson = JSON.stringify(ld).replace(/</g, "\\u003c");
 
-  const servicosHtml = c.servicos.map(s => `
+  // Catálogo enxuto (25/11/2026): linha compacta (nome · tempo · preço · +), 2 colunas no computador; os 6 primeiros
+  // aparecem e o resto fica em "Ver mais N serviços" (sem JavaScript: <details>), para a galeria não ficar lá embaixo.
+  // Pedido: escolher com + e tocar em "Solicitar meu horário" (a mensagem leva os serviços escolhidos).
+  const VISIVEIS = 6;
+  const itemServico = s => `
       <li class="pg-servico" data-servico="${e(s.id)}" data-nome="${e(s.nome)}" data-preco="${s.precoCentavos}" data-dur="${s.duracaoMin}">
-        <div class="pg-servico-txt"><strong>${e(s.nome)}</strong>${s.descricao ? `<small>${e(s.descricao)}</small>` : ""}
-          <span class="pg-servico-info">${e(duracaoTexto(s.duracaoMin))}</span></div>
-        <div class="pg-servico-dir"><span class="pg-preco">${e(reais(s.precoCentavos))}</span>
-          ${c.whatsapp ? `<a class="pg-botao pequeno" data-evento="whatsapp" href="${e(linkWhats(c.whatsapp, mensagemWhats(nome, [s], null)))}" target="_blank" rel="noopener">Agendar</a>` : ""}
-          ${c.whatsapp ? `<button type="button" class="pg-escolher" aria-pressed="false" aria-label="Escolher ${e(s.nome)}">+</button>` : ""}</div>
-      </li>`).join("");
+        <div class="pg-servico-txt"><strong>${e(s.nome)}</strong>
+          <span class="pg-servico-info">${e(duracaoTexto(s.duracaoMin))}${s.descricao ? ` · ${e(s.descricao)}` : ""}</span></div>
+        <span class="pg-preco">${e(reais(s.precoCentavos))}</span>
+        ${c.whatsapp ? `<button type="button" class="pg-escolher" aria-pressed="false" aria-label="Escolher ${e(s.nome)}">+</button>` : ""}
+      </li>`;
+  const servicosHtml = `<ul class="pg-servicos">${c.servicos.slice(0, VISIVEIS).map(itemServico).join("")}</ul>` +
+    (c.servicos.length > VISIVEIS ? `<details class="pg-mais"><summary><span class="pg-mais-abrir">Ver mais ${c.servicos.length - VISIVEIS} serviço${c.servicos.length - VISIVEIS === 1 ? "" : "s"}</span><span class="pg-mais-fechar">Mostrar menos</span></summary>
+      <ul class="pg-servicos">${c.servicos.slice(VISIVEIS).map(itemServico).join("")}</ul></details>` : "");
   const galeriaHtml = c.galeria.map((f, i) => `<li><button type="button" class="pg-foto" data-foto="${i}" aria-label="Ampliar foto ${i + 1}${f.legenda ? `: ${e(f.legenda)}` : ""}">
       <img src="/f/${e(f.id)}" alt="${e(f.legenda || `Foto ${i + 1} da ${nome}`)}" loading="lazy"></button></li>`).join("");
   const equipeHtml = c.equipe.map(u => `<li class="pg-pessoa">${u.foto ? `<img src="/f/${e(u.foto)}" alt="${e(u.nome)}" loading="lazy">`
@@ -399,8 +405,8 @@ ${previa ? '<div class="pg-faixa-previa" role="status">Prévia: só você está 
   ${whats ? `<div class="pg-cta"><a class="pg-botao grande" id="pg-solicitar" data-evento="whatsapp" href="${e(whats)}" target="_blank" rel="noopener">Solicitar meu horário</a>
     <p class="pg-cta-ajuda" id="pg-escolhidos" hidden></p></div>` : ""}
   ${c.servicos.length ? `<section class="pg-secao" aria-labelledby="t-serv"><h2 id="t-serv">Serviços</h2>
-    ${c.whatsapp ? '<p class="pg-dica">Toque em + para escolher mais de um serviço e pedir tudo de uma vez.</p>' : ""}
-    <ul class="pg-servicos">${servicosHtml}</ul></section>` : ""}
+    ${c.whatsapp ? '<p class="pg-dica">Toque nos serviços que você quer e depois em <b>Solicitar meu horário</b>.</p>' : ""}
+    ${servicosHtml}</section>` : ""}
   ${horariosHtml ? `<section class="pg-secao" aria-labelledby="t-hor"><h2 id="t-hor">Horários livres</h2>
     <p class="pg-dica">Toque no horário para pedir pelo WhatsApp. A barbearia confirma com você.</p><ul class="pg-dias">${horariosHtml}</ul></section>` : ""}
   ${galeriaHtml ? `<section class="pg-secao" aria-labelledby="t-gal"><h2 id="t-gal">Fotos</h2><ul class="pg-galeria">${galeriaHtml}</ul></section>` : ""}
