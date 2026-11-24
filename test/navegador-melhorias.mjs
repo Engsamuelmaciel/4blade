@@ -190,6 +190,7 @@ async function rodar(tela) {
     await abrirHorarios(page, "Seu Zé Fictício");
     const hrefZe = await page.getAttribute('[data-agendamento="Seu Zé Fictício"] [data-whats=lembrete]', "href");
     assert.match(hrefZe, /^https:\/\/wa\.me\/\?text=/);
+    await acao(page, '[data-agendamento="Seu Zé Fictício"]', "[data-grupo=whats]");   // o aviso fica dentro do botão WhatsApp
     await page.waitForSelector('[data-agendamento="Seu Zé Fictício"] [data-teste=whats-sem-numero]');
     // "Outra mensagem": mensagens prontas da tela Mensagens, direto no WhatsApp
     await acao(page, '[data-agendamento="Seu Zé Fictício"]', 'button:has-text("Outra mensagem")');
