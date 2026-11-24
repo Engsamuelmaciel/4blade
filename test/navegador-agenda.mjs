@@ -244,6 +244,25 @@ async function rodar(tela) {
 
     const reais = problemas.filter(p => !/status of 40[039]/.test(p));   // 400 esperado: linha do lote sem o aceite LGPD
     assert.deepEqual(reais, [], `erros no console: ${reais.join(" | ")}`);
+    passo("relógio às 17:29 (minuto fora do passo de 5 min): a linha de agora fica entre 17:00 e 18:00 e a grade não prende a rolagem");
+    {
+      const p2 = await contexto.newPage();
+      await p2.clock.setFixedTime(new Date(`${HOJE}T20:29:00Z`));   // 17:29 em São Paulo
+      await p2.goto(`${base}/#/agenda`);
+      await p2.waitForSelector(".grade-agenda .grade-agora");
+      await p2.waitForFunction(() => !document.body.dataset.carregando);
+      const info = await p2.evaluate(() => {
+        const g = document.querySelector(".grade-rolagem");
+        const linha = document.querySelector(".grade-agora").getBoundingClientRect().top;
+        const horas = [...document.querySelectorAll(".grade-hora")].map(h => [h.textContent.trim(), h.getBoundingClientRect().top]);
+        return { sobra: g.scrollHeight - g.clientHeight, oy: getComputedStyle(g).overflowY, linha, h17: horas.find(h => h[0] === "17:00")?.[1], h18: horas.find(h => h[0] === "18:00")?.[1] };
+      });
+      console.log("  medida:", JSON.stringify(info));
+      assert.equal(info.oy, "hidden", "a grade só rola para o lado");
+      assert.ok(info.sobra <= 1, `grade sem altura sobrando (${info.sobra}px)`);
+      assert.ok(info.h17 !== undefined && info.linha > info.h17 && info.linha < info.h18, `linha de agora entre 17:00 e 18:00 (${JSON.stringify(info)})`);
+      await p2.close();
+    }
     passo("OK — nenhum erro no console (inclui bloqueios de CSP)");
   } finally {
     await navegador.close();

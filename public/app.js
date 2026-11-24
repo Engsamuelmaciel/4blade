@@ -1812,7 +1812,7 @@ function gradeAgenda(ag, d, profs, disp) {
   let ini = marcas.length ? Math.min(...marcas) : 8 * 60, fim = marcas.length ? Math.max(...marcas) : 20 * 60;
   ini = Math.floor(ini / 60) * 60; fim = Math.min(24 * 60, Math.max(ini + 60, Math.ceil(fim / 60) * 60));
   const linhas = (fim - ini) / MIN_LINHA;
-  const linha = t => (Math.max(ini, Math.min(fim, t)) - ini) / MIN_LINHA + 2;   // linha 1 = cabeçalho
+  const linha = t => Math.floor((Math.max(ini, Math.min(fim, t)) - ini) / MIN_LINHA) + 2;   // inteiro: a linha de "agora" (ex.: 17:29) cairia fora da grade   // linha 1 = cabeçalho
   const grade = el("div", { class: "grade-agenda", "data-grade": d });
   grade.style.setProperty("--cols", String(profs.length));
   grade.style.setProperty("--linhas", String(linhas));
@@ -1866,7 +1866,7 @@ function gradeAgenda(ag, d, profs, disp) {
   if (hoje) {
     const agora = new Date(Date.now() - 3 * 3600 * 1000);
     const m = agora.getUTCHours() * 60 + agora.getUTCMinutes();
-    if (m >= ini && m <= fim) { const l = posicionar(el("div", { class: "grade-agora", "aria-hidden": "true" }), linha(m), 1, 2); l.style.gridColumn = "2 / -1"; filhos.push(l); }
+    if (m >= ini && m < fim) { const l = posicionar(el("div", { class: "grade-agora", "aria-hidden": "true" }), linha(m), 1, 2); l.style.gridColumn = "2 / -1"; filhos.push(l); }
   }
   grade.append(...filhos);
   ativarArrastar(grade, { ini, colunas });
@@ -1984,7 +1984,7 @@ function gradeSemana(ag, d0, profs, disps, oc) {
   let ini = marcas.length ? Math.min(...marcas) : 8 * 60, fim = marcas.length ? Math.max(...marcas) : 20 * 60;
   ini = Math.floor(ini / 60) * 60; fim = Math.min(24 * 60, Math.max(ini + 60, Math.ceil(fim / 60) * 60));
   const linhas = (fim - ini) / MIN_LINHA;
-  const linha = t => (Math.max(ini, Math.min(fim, t)) - ini) / MIN_LINHA + 2;
+  const linha = t => Math.floor((Math.max(ini, Math.min(fim, t)) - ini) / MIN_LINHA) + 2;   // inteiro: a linha de "agora" (ex.: 17:29) cairia fora da grade
   // Lado a lado só quando se cruzam (19/11/2026): os atendimentos são agrupados em "blocos" que se sobrepõem;
   // dentro do bloco cada um ganha uma faixa; fora disso o cartão usa a largura toda do dia (dá para ler o nome).
   // O dia é dividido em L subcolunas (mínimo múltiplo comum das faixas dos blocos, até 12).
@@ -2077,7 +2077,7 @@ function gradeSemana(ag, d0, profs, disps, oc) {
   if (dias.includes(ag.hoje)) {
     const agora = new Date(Date.now() - 3 * 3600 * 1000);
     const m = agora.getUTCHours() * 60 + agora.getUTCMinutes();
-    if (m >= ini && m <= fim) { const l = posicionar(el("div", { class: "grade-agora", "aria-hidden": "true" }), linha(m), 1, colDia[ag.hoje]); l.style.gridColumn = `${colDia[ag.hoje]} / span ${faixasDia[ag.hoje].n}`; filhos.push(l); }
+    if (m >= ini && m < fim) { const l = posicionar(el("div", { class: "grade-agora", "aria-hidden": "true" }), linha(m), 1, colDia[ag.hoje]); l.style.gridColumn = `${colDia[ag.hoje]} / span ${faixasDia[ag.hoje].n}`; filhos.push(l); }
   }
   grade.append(...filhos);
   ativarArrastar(grade, { ini, colunas });
@@ -6792,8 +6792,8 @@ function blocoAparencia() {
 }
 
 // Sem zoom no celular (25/11/2026): o iPhone ignora "user-scalable=no"; os gestos de pinça são barrados aqui.
+// (Sem ouvir "touchmove" na tela toda: isso deixava a rolagem pesada no Android.)
 ["gesturestart", "gesturechange"].forEach(t => document.addEventListener(t, ev => ev.preventDefault(), { passive: false }));
-document.addEventListener("touchmove", ev => { if (ev.touches && ev.touches.length > 1) ev.preventDefault(); }, { passive: false });
 
 async function iniciar() {
   const btnConta = document.getElementById("btn-conta");

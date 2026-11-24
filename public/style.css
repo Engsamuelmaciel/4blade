@@ -1033,7 +1033,7 @@ a.chip-modelo { display: inline-flex; align-items: center; text-decoration: none
 /* ---------- Agenda em grade (17/11/2026): horas à esquerda, uma coluna por profissional ---------- */
 .modo-dia { margin-bottom: 10px; }
 .grade-envolve { display: grid; gap: 8px; margin-bottom: 8px; }
-.grade-rolagem { overflow-x: auto; background: var(--cartao); border-radius: 14px; box-shadow: var(--sombra); -webkit-overflow-scrolling: touch; }
+.grade-rolagem { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; background: var(--cartao); border-radius: 14px; box-shadow: var(--sombra); -webkit-overflow-scrolling: touch; }
 .grade-agenda { --altura: 8px; display: grid; position: relative; min-width: 100%;
   grid-template-columns: 50px repeat(var(--cols), minmax(136px, 1fr));
   grid-template-rows: 60px repeat(var(--linhas), var(--altura)); }
