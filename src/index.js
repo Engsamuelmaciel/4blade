@@ -30,6 +30,7 @@ import { rotasContador } from "./contador.js";
 import { rotasFinanceiro } from "./financeiro.js";
 import { rotasSuporte, rotasSuportePlataforma } from "./suporte.js";
 import { rotaSolicitarTeste, rotasSolicitacoesPlataforma } from "./solicitacoes.js";
+import { rotasRecuperarSenha, comandosEmail, lerEmail, emailAtivo } from "./recuperar-senha.js";
 import { rotasPublicasAssinatura, rotasAssinatura, situacaoAssinatura, SQL_PLANO, cobrancaAtiva } from "./assinatura.js";
 
 export const VERSAO = "0.4.0";
@@ -70,7 +71,8 @@ const CAMPOS_BARBEARIA = `
   b.nome AS barbearia_nome, ${SQL_PLANO} AS barbearia_plano, b.plano AS barbearia_plano_coluna,
   b.barbeiros_adicionais AS barbearia_adicionais, b.bloqueada AS barbearia_bloqueada,
   a.origem AS a_origem, a.pago_ate AS a_pago_ate, a.teste_ate AS a_teste_ate,
-  a.ultimo_pagamento_em AS a_ultimo_pagamento_em, a.cancelada AS a_cancelada`;
+  a.ultimo_pagamento_em AS a_ultimo_pagamento_em, a.cancelada AS a_cancelada,
+  (SELECT ue.email FROM usuarios_emails ue WHERE ue.usuario_id = u.id) AS email_recuperacao`;
 const JUNTA_BARBEARIA = "LEFT JOIN barbearias b ON b.id = u.barbearia_id LEFT JOIN assinaturas a ON a.barbearia_id = u.barbearia_id";
 
 // Cobrança desligada: ninguém é bloqueado nem avisado por mensalidade.
@@ -111,6 +113,8 @@ export function publicUser(user, env) {
     nome: user.nome,
     perfil: user.perfil,
     trocaObrigatoria: Boolean(user.trocar_senha),
+    email: user.email_recuperacao || null,
+    emailAtivo: emailAtivo(env),
     telaInicial: TELA_INICIAL[user.perfil],
     cobrancaAtiva: cobrancaAtiva(env),
     barbearia: user.barbearia_id
@@ -210,6 +214,13 @@ export default {
         return json({ usuario: { id, login, nome, perfil: "plataforma" }, senhaProvisoria: senha }, 201);
       }
 
+      // ---------- ESQUECI MINHA SENHA (link por e-mail) ----------
+      {
+        const limitar = (acao, id, max, seg, maxIp) => limitRequest(db, ipHash, acao, id, max, seg, maxIp);
+        const r = await rotasRecuperarSenha({ db, request, env, ipHash, limitar }, path, method);
+        if (r) return r;
+      }
+
       // ---------- LOGIN ----------
       if (path === "/auth/login" && method === "POST") {
         const input = await readJson(request);
@@ -285,6 +296,16 @@ export default {
           auditoria(ctx, "senha_trocada", user.id)
         ]);
         return json({ mensagem: "Senha alterada. Entre novamente com a nova senha." });
+      }
+
+      // Meu e-mail (para recuperar a senha). Vazio = tirar.
+      if (path === "/auth/meu-email" && method === "POST") {
+        const input = await readJson(request);
+        const email = lerEmail(input.email ?? null);
+        if (email === false) return fail("E-mail inválido.");
+        const antes = user.email_recuperacao || null;
+        await db.batch([...comandosEmail(db, user.id, email, user.id), auditoria(ctx, "email_alterado", user.id, { antes: antes ? "tinha" : "sem", depois: email ? "tem" : "sem" })]);
+        return json({ email });
       }
 
       if (path === "/auth/logout" && method === "POST") {

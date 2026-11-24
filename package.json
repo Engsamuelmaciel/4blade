@@ -6,7 +6,7 @@
   "scripts": {
     "test": "node --test --no-warnings test/*.test.js",
     "tela": "node test/servidor-local.mjs 8787",
-    "teste-navegador": "node test/navegador-e1.mjs && node test/navegador-e2.mjs && node test/navegador-e3.mjs && node test/navegador-e4.mjs && node test/navegador-melhorias.mjs && node test/navegador-assinatura.mjs && node test/navegador-ajuda.mjs && node test/navegador-financeiro.mjs && node test/navegador-notificacoes.mjs && node test/navegador-equipe.mjs && node test/navegador-agenda.mjs && node test/navegador-pagina.mjs",
+    "teste-navegador": "node test/navegador-e1.mjs && node test/navegador-e2.mjs && node test/navegador-e3.mjs && node test/navegador-e4.mjs && node test/navegador-melhorias.mjs && node test/navegador-assinatura.mjs && node test/navegador-ajuda.mjs && node test/navegador-financeiro.mjs && node test/navegador-notificacoes.mjs && node test/navegador-equipe.mjs && node test/navegador-agenda.mjs && node test/navegador-pagina.mjs && node test/navegador-senha.mjs",
     "tutoriais": "node test/gerar-tutoriais.mjs",
     "dev": "wrangler dev",
     "demo": "node --no-warnings test/servidor-local.mjs 8787 --demo --semana"

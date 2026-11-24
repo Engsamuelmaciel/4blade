@@ -387,7 +387,7 @@ function telaLogin(mensagem = "") {
     campo("Usuário", { name: "login", autocomplete: "username", autocapitalize: "none", spellcheck: "false", required: true }),
     campo("Senha", { name: "senha", type: "password", autocomplete: "current-password", required: true }),
     el("button", { type: "submit", class: "botao principal", text: "Entrar" }),
-    el("p", { class: "suave centro", text: "Esqueceu a senha? Peça ao gerente ou ao proprietário da barbearia." }),
+    el("p", { class: "centro" }, el("a", { href: "#/esqueci", "data-teste": "link-esqueci", text: "Esqueci minha senha" })),
     el("p", { class: "centro chamada-planos" }, "Ainda não usa o 4blade? ", el("a", { href: "#/planos", "data-teste": "link-planos", text: "Conheça os planos" })));
   form.addEventListener("submit", ev => {
     ev.preventDefault();
@@ -432,6 +432,66 @@ function telaTrocarSenha(senhaAtual = "") {
     });
   });
   mostrar(el("section", { class: "estreito" }, form));
+}
+
+// ---------- ESQUECI MINHA SENHA (25/11/2026): link por e-mail ----------
+function telaEsqueci() {
+  atualizarTopo();
+  const resposta = el("div", { "data-teste": "esqueci-resposta", "aria-live": "polite" });
+  const form = el("form", { class: "cartao" },
+    el("h2", { text: "Esqueci minha senha" }),
+    el("p", { class: "suave", text: "Digite o seu usuário (ou o e-mail cadastrado). Se houver e-mail cadastrado, mandamos um link para você criar uma nova senha." }),
+    campo("Usuário ou e-mail", { name: "login", autocomplete: "username", autocapitalize: "none", spellcheck: "false", required: true, maxlength: "120" }),
+    el("button", { type: "submit", class: "botao principal", text: "Enviar o link" }),
+    resposta,
+    el("p", { class: "suave", text: "Não tem e-mail cadastrado? Peça uma nova senha ao gerente da barbearia (ou ao suporte do 4blade, se você for o dono)." }),
+    el("p", { class: "centro" }, el("a", { href: "#/entrar", text: "‹ Voltar para entrar" })));
+  form.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(form, async () => {
+      const r = await api("/auth/esqueci", { metodo: "POST", corpo: { login: form.login.value.trim() } });
+      resposta.replaceChildren(el("p", { class: "info", role: "status", text: r.mensagem }));
+    });
+  });
+  mostrar(el("section", { class: "estreito" }, form));
+}
+
+function telaRedefinirSenha(token) {
+  atualizarTopo();
+  const form = el("form", { class: "cartao" },
+    el("h2", { text: "Criar nova senha" }),
+    campo("Nova senha", { name: "nova", type: "password", autocomplete: "new-password", required: true, minlength: "8" }, "Mínimo de 8 caracteres, diferente do seu usuário."),
+    campo("Repita a nova senha", { name: "nova2", type: "password", autocomplete: "new-password", required: true, minlength: "8" }),
+    el("button", { type: "submit", class: "botao principal", text: "Salvar nova senha" }),
+    el("p", { class: "centro" }, el("a", { href: "#/esqueci", text: "Pedir um novo link" })));
+  form.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(form, async () => {
+      if (form.nova.value !== form.nova2.value) throw new Error("As duas senhas novas não são iguais.");
+      const r = await api("/auth/redefinir", { metodo: "POST", corpo: { token: token || "", novaSenha: form.nova.value } });
+      // Entra direto com a senha nova (o link não fica no endereço).
+      const l = await api("/auth/login", { metodo: "POST", corpo: { login: r.login, senha: form.nova.value } });
+      localStorage.setItem(CHAVE_TOKEN, l.token);
+      usuario = l.usuario;
+      history.replaceState(null, "", "/#/");
+      avisar("Senha criada. Você já está dentro.");
+      irParaInicial();
+    });
+  });
+  mostrar(el("section", { class: "estreito" }, form));
+}
+
+// E-mail para recuperar a senha ("Minha conta").
+function janelaMeuEmail() {
+  return abrirJanela("Meu e-mail", [
+    el("p", { class: "suave", text: "Usado só para mandar o link de \"Esqueci minha senha\". Deixe vazio para tirar." }),
+    campo("E-mail", { name: "email", type: "email", autocomplete: "email", autocapitalize: "none", spellcheck: "false", maxlength: "120", value: usuario.email || "" })
+  ], { ok: "Salvar", aoConfirmar: async form => {
+    const r = await api("/auth/meu-email", { metodo: "POST", corpo: { email: form.email.value.trim() } });
+    usuario.email = r.email;
+    avisar(r.email ? "E-mail salvo." : "E-mail retirado.");
+    return true;
+  } });
 }
 
 // ---------- PLANOS, ASSINAR e TEXTOS LEGAIS (sem login) ----------
@@ -1262,13 +1322,14 @@ function janelaEditarBarbearia(b) {
     campo("Nome do proprietário", { name: "propNome", required: true, value: p.nome || "" }),
     campo("Usuário de acesso", { name: "propLogin", required: true, value: p.login || "", autocapitalize: "none", spellcheck: "false" }, "Se trocar, o dono passa a entrar com o usuário novo (a senha continua a mesma)."),
     campo("WhatsApp do proprietário (opcional)", { name: "propTel", inputmode: "tel", value: p.telefone ? fone(p.telefone) : "" }, "Com o WhatsApp preenchido, o envio do acesso vai direto para ele."),
+    campo("E-mail do proprietário (opcional)", { name: "propEmail", type: "email", value: p.email || "", autocapitalize: "none", spellcheck: "false", maxlength: "120" }, "Para o dono recuperar a senha sozinho (\"Esqueci minha senha\")."),
     campo("Motivo", { name: "motivo", required: true, minlength: "3", value: "Atualização de cadastro" })
   ], {
     ok: "Salvar",
     aoConfirmar: async form => {
       await api("/plataforma/barbearias/editar", { metodo: "POST", corpo: {
         id: b.id, nome: form.nome.value, telefone: form.telefone.value, motivo: form.motivo.value,
-        proprietario: { nome: form.propNome.value, login: form.propLogin.value.trim().toLowerCase(), telefone: form.propTel.value }
+        proprietario: { nome: form.propNome.value, login: form.propLogin.value.trim().toLowerCase(), telefone: form.propTel.value, email: form.propEmail.value.trim() }
       } });
       avisar("Dados atualizados.");
       telaPlataforma();
@@ -4814,6 +4875,7 @@ function formUsuario(perfis) {
     campo("Nome", { name: "nome", required: true, autocomplete: "off" }),
     campo("Usuário de acesso", { name: "login", required: true, autocapitalize: "none", spellcheck: "false", autocomplete: "off" }, "Minúsculas, sem espaço. Ex.: pedro.silva"),
     campo("Telefone (opcional)", { name: "telefone", inputmode: "tel", autocomplete: "off" }),
+    campo("E-mail (opcional)", { name: "email", type: "email", autocapitalize: "none", spellcheck: "false", autocomplete: "off", maxlength: "120" }, "Para a pessoa recuperar a senha sozinha (\"Esqueci minha senha\")."),
     blocoComissao,
     campoSalarioBase(),
     el("button", { type: "submit", class: "botao principal", text: "Criar acesso" }));
@@ -4826,6 +4888,7 @@ function formUsuario(perfis) {
       const corpo = {
         perfil: form.perfil.value, nome: form.nome.value, login: form.login.value.trim().toLowerCase(),
         telefone: form.telefone.value || undefined,
+        email: form.email.value.trim() || undefined,
         ...(form.perfil.value === "caixa" ? {} : lerComissoes(form)),
         ...lerSalarioBase(form)
       };
@@ -4842,6 +4905,7 @@ function janelaUsuario(u) {
   return abrirJanela(`Editar ${u.nome}`, [
     campo("Nome", { name: "nome", value: u.nome, required: true }),
     campo("Telefone", { name: "telefone", value: u.telefone ? fone(u.telefone) : "", inputmode: "tel" }),
+    campo("E-mail (para recuperar a senha)", { name: "email", type: "email", value: u.email || "", autocapitalize: "none", spellcheck: "false", maxlength: "120" }),
     atendeAgenda ? camposComissao(u) : null,
     // salário: o dono define o de todos (inclusive o próprio); o gerente, de quem ele gerencia
     u.id !== usuario.id || usuario.perfil === "proprietario" ? campoSalarioBase(u) : null
@@ -4850,7 +4914,7 @@ function janelaUsuario(u) {
     aoConfirmar: async form => {
       await api("/usuarios/alterar", {
         metodo: "POST",
-        corpo: { id: u.id, nome: form.nome.value, telefone: form.telefone.value || null, ...(atendeAgenda ? lerComissoes(form) : {}),
+        corpo: { id: u.id, nome: form.nome.value, telefone: form.telefone.value || null, email: form.email.value.trim(), ...(atendeAgenda ? lerComissoes(form) : {}),
           ...(form.salBase ? lerSalarioBase(form, Boolean(u.salarioCentavos)) : {}) }
       });
       avisar("Dados salvos.");
@@ -6515,7 +6579,9 @@ const ROTAS_PUBLICAS = {
   duvidas: telaDuvidas,
   assinar: plano => telaAssinar(plano),
   termos: () => telaLegal("termos"),
-  privacidade: () => telaLegal("privacidade")
+  privacidade: () => telaLegal("privacidade"),
+  esqueci: telaEsqueci,
+  "redefinir-senha": token => telaRedefinirSenha(token)
 };
 
 async function montarTela(fn, parametro) {
@@ -6534,6 +6600,11 @@ async function montarTela(fn, parametro) {
 
 async function rotear() {
   if (janela.open) janela.close();
+  {
+    // Link do e-mail aberto num aparelho onde alguém já está dentro: mostra a tela do link mesmo assim.
+    const [nomeL, parL] = location.hash.replace(/^#\/?/, "").split("/");
+    if (nomeL === "redefinir-senha") { atualizarTopo(); return montarTela(telaRedefinirSenha, parL); }
+  }
   if (!usuario) {
     const [nomeP, parP] = location.hash.replace(/^#\/?/, "").split("/");
     if (Object.hasOwn(ROTAS_PUBLICAS, nomeP)) { atualizarTopo(); return montarTela(ROTAS_PUBLICAS[nomeP], parP); }
@@ -6586,6 +6657,7 @@ function janelaConta() {
         el("span", { text: `${NOME_PERFIL[usuario.perfil]} · usuário ${usuario.login}` }),
         b ? el("span", { text: `${b.nome} · Plano ${NOME_PLANO[b.plano] || b.plano}` }) : null)),
     blocoAparencia(),
+    el("button", { type: "button", class: "botao largo", "data-teste": "meu-email", text: usuario.email ? `Meu e-mail: ${usuario.email}` : "Cadastrar meu e-mail (para recuperar a senha)", onclick: () => janelaMeuEmail() }),
     el("button", { type: "button", class: "botao largo", id: "btn-trocar-senha", "data-teste": "trocar-senha", text: "Trocar minha senha", onclick: () => janelaTrocarMinhaSenha() }),
     el("button", { type: "button", class: "botao perigo largo", id: "btn-sair", text: "Sair do sistema", onclick: sairDoSistema })
   ], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });

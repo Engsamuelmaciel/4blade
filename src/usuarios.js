@@ -5,6 +5,7 @@ import {
   json, fail, HttpError, readJson, validId, validLogin, normalizarLogin, textoLimpo, normalizarTelefone, validBp,
   exigirMotivo, hashPassword, gerarSenhaProvisoria, auditoria, diferenca
 } from "./util.js";
+import { comandosEmail, lerEmail } from "./recuperar-senha.js";
 import { isGestao, podeGerenciarPerfil, limiteDoPerfil, atende, PERFIS_EQUIPE, SEM_LIMITE } from "./perfis.js";
 
 export function exigirBarbearia(ctx) {
@@ -29,7 +30,7 @@ function lerSalario(v) {
 const comandoSalario = (ctx, usuarioId, valor) => ctx.db.prepare(`INSERT INTO usuarios_salarios (usuario_id, barbearia_id, salario_centavos, atualizado_por) VALUES (?, ?, ?, ?)
   ON CONFLICT(usuario_id) DO UPDATE SET salario_centavos = excluded.salario_centavos, atualizado_em = CURRENT_TIMESTAMP, atualizado_por = excluded.atualizado_por`)
   .bind(usuarioId, ctx.barbeariaId, valor, ctx.user.id);
-const LER_COM_SALARIO = "SELECT usuarios.*, (SELECT s.salario_centavos FROM usuarios_salarios s WHERE s.usuario_id = usuarios.id) AS salario_centavos FROM usuarios WHERE id = ? AND barbearia_id = ?";
+const LER_COM_SALARIO = "SELECT usuarios.*, (SELECT s.salario_centavos FROM usuarios_salarios s WHERE s.usuario_id = usuarios.id) AS salario_centavos, (SELECT e.email FROM usuarios_emails e WHERE e.usuario_id = usuarios.id) AS email FROM usuarios WHERE id = ? AND barbearia_id = ?";
 
 function usuarioPublico(u, quemVe) {
   return {
@@ -37,6 +38,7 @@ function usuarioPublico(u, quemVe) {
     login: u.login,
     nome: u.nome,
     telefone: u.telefone || null,
+    email: u.email || null,   // para recuperar a senha (opcional; 25/11/2026)
     perfil: u.perfil,
     comissaoServicoBp: Number(u.comissao_servico_bp),
     comissaoProdutoBp: Number(u.comissao_produto_bp),
@@ -79,7 +81,8 @@ export async function rotasUsuarios(ctx, path, method) {
 
   if (path === "/usuarios" && method === "GET") {
     const r = await db.prepare(`
-      SELECT usuarios.*, (SELECT s.salario_centavos FROM usuarios_salarios s WHERE s.usuario_id = usuarios.id) AS salario_centavos
+      SELECT usuarios.*, (SELECT s.salario_centavos FROM usuarios_salarios s WHERE s.usuario_id = usuarios.id) AS salario_centavos,
+        (SELECT e.email FROM usuarios_emails e WHERE e.usuario_id = usuarios.id) AS email
       FROM usuarios WHERE barbearia_id = ?
       ORDER BY ativo DESC, CASE perfil WHEN 'proprietario' THEN 0 WHEN 'gerente' THEN 1 WHEN 'barbeiro' THEN 2 ELSE 3 END, nome
     `).bind(ctx.barbeariaId).all();
@@ -104,6 +107,8 @@ export async function rotasUsuarios(ctx, path, method) {
     }
     const com = lerComissoes(input, perfil);
     const salario = lerSalario(input.salarioCentavos);
+    const email = lerEmail(input.email);
+    if (email === false) return fail("E-mail inválido.");
     if (await db.prepare("SELECT 1 FROM usuarios WHERE login = ?").bind(login).first()) {
       return fail("Esse usuário de acesso já existe. Escolha outro.", 409);
     }
@@ -123,7 +128,8 @@ export async function rotasUsuarios(ctx, path, method) {
     }
     await db.batch([
       auditoria(ctx, "usuario_criado", id, { depois: { login, nome, telefone, perfil, ...com, ...(salario !== undefined ? { salario } : {}) } }),
-      ...(salario !== undefined ? [comandoSalario(ctx, id, salario)] : [])
+      ...(salario !== undefined ? [comandoSalario(ctx, id, salario)] : []),
+      ...(email ? comandosEmail(db, id, email, user.id) : [])
     ]);
     const novo = await db.prepare(LER_COM_SALARIO).bind(id, ctx.barbeariaId).first();
     return json({ usuario: usuarioPublico(novo, user), senhaProvisoria: senha }, 201);
@@ -149,6 +155,10 @@ export async function rotasUsuarios(ctx, path, method) {
     const salarioNovo = lerSalario(input.salarioCentavos);
     const salarioAntes = Number((await db.prepare("SELECT salario_centavos FROM usuarios_salarios WHERE usuario_id = ?").bind(alvo.id).first())?.salario_centavos || 0);
     const mudaSalario = salarioNovo !== undefined && salarioNovo !== salarioAntes;
+    const emailNovo = lerEmail(input.email);
+    if (emailNovo === false) return fail("E-mail inválido.");
+    const emailAntes = (await db.prepare("SELECT email FROM usuarios_emails WHERE usuario_id = ?").bind(alvo.id).first())?.email || null;
+    const mudaEmail = emailNovo !== undefined && emailNovo !== emailAntes;
     const novo = {
       nome: alvo.nome,
       telefone: alvo.telefone,
@@ -177,7 +187,7 @@ export async function rotasUsuarios(ctx, path, method) {
       comissao_produto_bp: Number(alvo.comissao_produto_bp), ativo: Number(alvo.ativo)
     };
     const dif = diferenca(antes, novo);
-    if (!dif.mudou && !mudaSalario) return fail("Nada foi alterado.");
+    if (!dif.mudou && !mudaSalario && !mudaEmail) return fail("Nada foi alterado.");
     const desativando = alvo.ativo && !novo.ativo;
     const reativando = !alvo.ativo && novo.ativo;
     const motivo = desativando || reativando ? exigirMotivo(input.motivo) : (textoLimpo(input.motivo, 3, 300) || null);
@@ -207,6 +217,10 @@ export async function rotasUsuarios(ctx, path, method) {
     if (mudaSalario) {
       comandos.push(comandoSalario(ctx, alvo.id, salarioNovo),
         auditoria(ctx, "salario_alterado", alvo.id, { antes: { salario: salarioAntes }, depois: { salario: salarioNovo } }));
+    }
+    if (mudaEmail) {
+      comandos.push(...comandosEmail(db, alvo.id, emailNovo, user.id),
+        auditoria(ctx, "email_alterado", alvo.id, { antes: emailAntes ? "tinha" : "sem", depois: emailNovo ? "tem" : "sem" }));
     }
     if (desativando) {
       comandos.push(db.prepare(

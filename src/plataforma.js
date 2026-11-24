@@ -8,6 +8,7 @@ import { MODELOS_PADRAO } from "./cadastros.js";
 import { SQL_PLANO, assinaturaPublica, alterarPlanoAssinatura } from "./assinatura.js";
 import { SQL_USO_RESUMO } from "./uso.js";
 import { marcar } from "./agenda.js";
+import { comandosEmail, lerEmail } from "./recuperar-senha.js";
 
 function barbeariaPublica(b) {
   return {
@@ -25,7 +26,7 @@ function barbeariaPublica(b) {
     bloqueada: Boolean(b.bloqueada),
     motivoBloqueio: b.motivo_bloqueio || null,
     criadoEm: b.criado_em,
-    proprietario: b.prop_login ? { id: b.prop_id, nome: b.prop_nome, login: b.prop_login, telefone: b.prop_tel || null, trocaPendente: Boolean(b.prop_troca) } : null,
+    proprietario: b.prop_login ? { id: b.prop_id, nome: b.prop_nome, login: b.prop_login, telefone: b.prop_tel || null, email: b.prop_email || null, trocaPendente: Boolean(b.prop_troca) } : null,
     usuariosAtivos: {
       gerente: Number(b.n_gerente || 0),
       barbeiro: Number(b.n_barbeiro || 0),
@@ -42,6 +43,7 @@ const SELECT_BARBEARIAS = `
     a.pago_ate AS a_pago_ate, a.proximo_vencimento AS a_proximo, a.cancelada AS a_cancelada, a.cancelada_em AS a_cancelada_em,
     a.ultimo_pagamento_em AS a_ultimo_pag, a.email AS a_email,
     p.id AS prop_id, p.telefone AS prop_tel, p.nome AS prop_nome, p.login AS prop_login, p.trocar_senha AS prop_troca,
+    (SELECT e.email FROM usuarios_emails e WHERE e.usuario_id = p.id) AS prop_email,
     (SELECT COUNT(*) FROM usuarios x WHERE x.barbearia_id = b.id AND x.ativo = 1 AND x.perfil = 'gerente') AS n_gerente,
     (SELECT COUNT(*) FROM usuarios x WHERE x.barbearia_id = b.id AND x.ativo = 1 AND x.perfil = 'barbeiro') AS n_barbeiro,
     (SELECT COUNT(*) FROM usuarios x WHERE x.barbearia_id = b.id AND x.ativo = 1 AND x.perfil = 'caixa') AS n_caixa,
@@ -223,7 +225,8 @@ export async function rotasPlataforma(ctx, path, method) {
     const motivo = exigirMotivo(input.motivo);
     const b = await db.prepare("SELECT id, nome, telefone FROM barbearias WHERE id = ?").bind(input.id).first();
     if (!b) return fail("Barbearia não encontrada.", 404);
-    const prop = await db.prepare("SELECT id, nome, login, telefone FROM usuarios WHERE barbearia_id = ? AND perfil = 'proprietario'").bind(b.id).first();
+    const prop = await db.prepare(`SELECT id, nome, login, telefone, (SELECT e.email FROM usuarios_emails e WHERE e.usuario_id = usuarios.id) AS email
+      FROM usuarios WHERE barbearia_id = ? AND perfil = 'proprietario'`).bind(b.id).first();
     if (!prop) return fail("Proprietário não encontrado.", 404);
     const tel = (v, rotulo) => {
       if (v === undefined) return undefined;
@@ -238,12 +241,14 @@ export async function rotasPlataforma(ctx, path, method) {
       telefone: input.telefone === undefined ? b.telefone : tel(input.telefone, "Telefone da barbearia"),
       prop_nome: p.nome === undefined ? prop.nome : textoLimpo(p.nome),
       prop_login: p.login === undefined ? prop.login : normalizarLogin(p.login),
-      prop_tel: p.telefone === undefined ? prop.telefone : tel(p.telefone, "Telefone do proprietário")
+      prop_tel: p.telefone === undefined ? prop.telefone : tel(p.telefone, "Telefone do proprietário"),
+      prop_email: p.email === undefined ? (prop.email || null) : lerEmail(p.email)
     };
+    if (novo.prop_email === false) return fail("E-mail do proprietário inválido.");
     if (!novo.nome) return fail("Nome da barbearia inválido (2 a 80 letras).");
     if (!novo.prop_nome) return fail("Nome do proprietário inválido.");
     if (!validLogin(novo.prop_login)) return fail("Usuário inválido: use 3 a 30 letras minúsculas, números, ponto ou hífen.");
-    const antes = { nome: b.nome, telefone: b.telefone || null, prop_nome: prop.nome, prop_login: prop.login, prop_tel: prop.telefone || null };
+    const antes = { nome: b.nome, telefone: b.telefone || null, prop_nome: prop.nome, prop_login: prop.login, prop_tel: prop.telefone || null, prop_email: prop.email || null };
     const dif = diferenca(antes, { ...novo, telefone: novo.telefone || null, prop_tel: novo.prop_tel || null });
     if (!dif.mudou) return fail("Nada foi alterado.");
     if (novo.prop_login !== prop.login && await db.prepare("SELECT 1 FROM usuarios WHERE login = ?").bind(novo.prop_login).first()) {
@@ -253,7 +258,8 @@ export async function rotasPlataforma(ctx, path, method) {
       db.prepare("UPDATE barbearias SET nome = ?, telefone = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?").bind(novo.nome, novo.telefone || null, b.id),
       db.prepare("UPDATE usuarios SET nome = ?, login = ?, telefone = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND barbearia_id = ?")
         .bind(novo.prop_nome, novo.prop_login, novo.prop_tel || null, prop.id, b.id),
-      auditoria({ ...ctx, barbeariaId: b.id }, "barbearia_dados_editados", b.id, { motivo, antes: dif.antes, depois: dif.depois })
+      auditoria({ ...ctx, barbeariaId: b.id }, "barbearia_dados_editados", b.id, { motivo, antes: dif.antes, depois: dif.depois }),
+      ...(novo.prop_email !== (prop.email || null) ? comandosEmail(db, prop.id, novo.prop_email, ctx.user.id) : [])
     ];
     // Usuário trocado: quem estava dentro entra de novo com o usuário novo.
     if (novo.prop_login !== prop.login) {

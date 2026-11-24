@@ -321,3 +321,9 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - Telefone que já existe na barbearia (ou repetido na lista) é pulado. Linhas com problema voltam com o motivo e ficam na caixa para corrigir.
 - Os clientes entram só na barbearia escolhida; o envio fica na auditoria da barbearia (quem, quando, quantos).
 - **Horários em lote (25/11/2026):** no mesmo painel, botão **Horários em lote**: a tela "Vários de uma vez" da barbearia, usada pelo suporte para passar a agenda que ela já tem (dia, hora, profissional, serviço, cliente). Valem as mesmas regras da agenda (funcionamento, horário de trabalho, conflito, LGPD, nota vencida). Sem hora, só cadastra o cliente. Cada horário fica auditado em nome do suporte.
+
+## 23. Esqueci minha senha (25/11/2026, pedido do responsável)
+- Na tela de entrar, **"Esqueci minha senha"**: a pessoa digita o usuário ou o e-mail cadastrado. Se houver e-mail, o sistema manda um link (vale 1 hora, uma vez só) para criar a nova senha. A resposta na tela é sempre a mesma (não revela quem tem cadastro). No máximo 3 pedidos por hora para o mesmo usuário.
+- Ao criar a nova senha pelo link, a pessoa já entra; as sessões abertas em outros aparelhos e os outros links pendentes deixam de valer. Tudo auditado (sem guardar o e-mail completo na auditoria).
+- **E-mail é opcional** para todos: a própria pessoa cadastra em Minha conta → "Meu e-mail"; o dono/gerente pode preencher no cadastro da equipe; o suporte, no "Editar dados" do dono. Quem não tem e-mail continua pedindo nova senha ao gerente (ou ao suporte, se for o dono).
+- Envio pelo Resend (remetente nao-responda@forblade.com.br). Sem a chave configurada, a tela avisa para pedir a senha ao gerente.

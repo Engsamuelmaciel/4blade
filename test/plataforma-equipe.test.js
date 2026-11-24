@@ -26,7 +26,7 @@ describe("suporte edita a barbearia e o usuário do dono", () => {
     assert.equal(r.status, 200, JSON.stringify(r.dados));
     assert.equal(r.dados.barbearia.nome, "Barbearia Editada");
     assert.equal(r.dados.barbearia.telefone, "1133334444");
-    assert.deepEqual({ ...r.dados.barbearia.proprietario, id: undefined }, { id: undefined, nome: "Dono Editado", login: "joao.editado", telefone: "11900000101", trocaPendente: false });
+    assert.deepEqual({ ...r.dados.barbearia.proprietario, id: undefined }, { id: undefined, nome: "Dono Editado", login: "joao.editado", telefone: "11900000101", email: null, trocaPendente: false });
     assert.equal((await get("/api/servicos", a.prop)).status, 401, "sessão antiga encerrada ao trocar o usuário");
     assert.equal((await login("dono.ed1", "Nova-dono.ed1-senha")).status, 401);
     assert.equal((await login("joao.editado", "Nova-dono.ed1-senha")).status, 200, "mesma senha, usuário novo");

@@ -26,6 +26,11 @@ function estatico(caminho) {
   return new Response(readFileSync(f), { headers: { "Content-Type": TIPOS[extname(f)] || "application/octet-stream", ...cabecalhos } });
 }
 
+// E-mail de mentira (nada sai de verdade): o último fica em /__teste/ultimo-email (só local).
+const emails = [];
+amb.env.RESEND_API_KEY = "chave-falsa-local";
+amb.env.EMAIL_FETCH = async (_url, init) => { emails.push(JSON.parse(init.body)); return new Response("{}", { status: 200 }); };
+
 await amb.criarPlataforma("suporte");
 console.log("plataforma de teste pronta (usuário suporte, senha Nova-suporte-senha)");
 if (process.argv.includes("--semana")) {
@@ -46,6 +51,9 @@ http.createServer(async (req, res) => {
     const u = await amb.env.DB.prepare("SELECT barbearia_id FROM usuarios WHERE login = ?").bind(url.searchParams.get("login")).first();
     await amb.env.DB.prepare("UPDATE assinaturas SET pago_ate = ? WHERE barbearia_id = ?").bind(url.searchParams.get("data"), u.barbearia_id).run();
     res.writeHead(200); return res.end("ok");
+  }
+  if (url.pathname === "/__teste/ultimo-email") {
+    res.writeHead(200, { "Content-Type": "application/json" }); return res.end(JSON.stringify(emails.at(-1) || null));
   }
   if (url.pathname === "/__teste/cobranca") {   // liga/desliga a cobrança on-line (COBRANCA_ON_LINE)
     if (url.searchParams.get("on") === "1") amb.env.COBRANCA_ON_LINE = "sim"; else delete amb.env.COBRANCA_ON_LINE;
