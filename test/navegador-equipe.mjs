@@ -218,6 +218,27 @@ async function rodar(tela) {
     assert.match(await page.textContent("[data-teste=resumo-clientes-lote]"), /3 cadastrado\(s\) · 1 já existia/);
     assert.equal(await page.inputValue("#c-listaClientes"), "", "nada com erro fica na caixa");
     await print("suporte-clientes-lote-resultado");
+    passo("suporte marca horários em lote na barbearia (passar a agenda que ela já tem)");
+    await page.goto(`${base}/#/plataforma`);
+    await page.click('[data-barbearia="Barbearia Semana Fictícia"] [data-teste=horarios-lote-suporte]');
+    await page.waitForSelector("[data-lote-linha='3']");
+    await pronto();
+    assert.match(await page.textContent("h2"), /Horários em lote · Barbearia Semana Fictícia/);
+    assert.equal(await page.locator("[data-teste=sem-funcionamento]").count(), 0);
+    const diaLote = somarDias(hojeBrasil(), 20);
+    const linhaL = k => page.locator(`[data-lote-linha='${k}']`);
+    const preencher = async (k, campo, valor) => { const c = linhaL(k).locator(`[data-campo=${campo}]`); await c.fill(valor); await c.dispatchEvent("input"); };
+    for (const k of [1, 2, 3]) await preencher(k, "data", diaLote);
+    await preencher(1, "hora", "09:00"); await preencher(1, "nome", "Agenda Lote Um"); await preencher(1, "telefone", "11 96666-0001");
+    await preencher(2, "hora", "09:00"); await preencher(2, "nome", "Agenda Lote Dois");   // mesmo horário do mesmo profissional: conflito
+    await preencher(3, "hora", ""); await preencher(3, "nome", "Agenda Lote Três"); await preencher(3, "telefone", "11 96666-0003");   // sem hora: só cadastra
+    await page.check("#c-loteLgpd");
+    await page.click("[data-teste=enviar-lote]");
+    await page.waitForSelector("[data-teste=lote-resumo].com-erro");
+    assert.match(await page.textContent("[data-teste=lote-resumo]"), /2 salvo\(s\)\. 1 com problema/);
+    assert.match(await linhaL(2).locator(".lote-msg").textContent(), /Já existe outro atendimento/);
+    await print("suporte-horarios-lote");
+
     // Aparecem para o gerente da barbearia
     await sair();
     await entrar("gerente.semana");
@@ -225,6 +246,9 @@ async function rodar(tela) {
     await page.fill("input.busca-viva", "Lote Fictício");
     await page.waitForSelector('[data-cliente="Lote Fictício Três"]');
     assert.equal(await page.locator('[data-cliente^="Lote Fictício"]').count(), 3);
+    await page.fill("input.busca-viva", "Agenda Lote");
+    await page.waitForSelector('[data-cliente="Agenda Lote Três"]');
+    assert.equal(await page.locator('[data-cliente^="Agenda Lote"]').count(), 3, "o marcado, o só cadastrado e o da linha em conflito (a marcação já cadastra o cliente, como no Novo horário)");
     await sair();
 
     const reais = problemas.filter(p => !/status of 40[39]/.test(p));

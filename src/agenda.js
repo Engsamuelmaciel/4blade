@@ -248,7 +248,7 @@ function comandosDoHorario(ctx, { id, prof, cliente, data, ini, fim, servs, obse
 
 const NOME_DIA_SEMANA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 
-async function marcar(ctx) {
+export async function marcar(ctx) {
   const { db, user, request } = ctx;
   const input = await readJson(request);
   const prof = await profissional(ctx, input.barbeiroId);

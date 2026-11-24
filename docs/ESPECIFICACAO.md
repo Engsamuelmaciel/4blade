@@ -320,3 +320,4 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - Antes de enviar, aparece uma prévia (quantos, com e sem telefone). Cliente com telefone só entra com a confirmação de que a barbearia tem a autorização (LGPD).
 - Telefone que já existe na barbearia (ou repetido na lista) é pulado. Linhas com problema voltam com o motivo e ficam na caixa para corrigir.
 - Os clientes entram só na barbearia escolhida; o envio fica na auditoria da barbearia (quem, quando, quantos).
+- **Horários em lote (25/11/2026):** no mesmo painel, botão **Horários em lote**: a tela "Vários de uma vez" da barbearia, usada pelo suporte para passar a agenda que ela já tem (dia, hora, profissional, serviço, cliente). Valem as mesmas regras da agenda (funcionamento, horário de trabalho, conflito, LGPD, nota vencida). Sem hora, só cadastra o cliente. Cada horário fica auditado em nome do suporte.

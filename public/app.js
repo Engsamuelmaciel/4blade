@@ -1230,6 +1230,7 @@ async function telaPlataforma() {
         botao("Editar dados", () => janelaEditarBarbearia(b), "pequeno"),
         botao("Equipe", () => janelaEquipeBarbearia(b), "pequeno"),
         el("a", { class: "botao pequeno", href: `#/uso/${b.id}`, "data-teste": "ver-uso", text: "Uso do app" }),
+        el("a", { class: "botao pequeno", href: `#/horarios-lote/${b.id}`, "data-teste": "horarios-lote-suporte", text: "Horários em lote" }),
         el("a", { class: "botao pequeno", href: `#/clientes-lote/${b.id}`, "data-teste": "clientes-lote-suporte", text: "Clientes em lote" }),
         botao("Enviar acesso ao dono", () => pedirMotivo(
           "Enviar acesso ao dono",
@@ -1547,26 +1548,38 @@ function calendarioAno(oc, ano, irPara) {
 // Para passar o caderno para o sistema: várias linhas (dia, hora, profissional, serviço, cliente) enviadas de uma vez.
 // Cada linha vira um horário comum pela mesma rota do "Novo horário" (mesmas regras e conferências); o resultado aparece
 // em cada linha (marcado ✓ ou o motivo). O rascunho fica guardado no aparelho até ser enviado.
-const chaveLote = () => `4blade.loteRascunho.${usuario?.id || ""}`;
-function lerRascunhoLote() { try { return JSON.parse(localStorage.getItem(chaveLote()) || "null"); } catch { return null; } }
-function salvarRascunhoLote(linhas) { try { localStorage.setItem(chaveLote(), JSON.stringify(linhas)); } catch { /* sem espaço */ } }
+const chaveLote = (sufixo = "") => `4blade.loteRascunho.${usuario?.id || ""}${sufixo ? `.${sufixo}` : ""}`;
+function lerRascunhoLote(sufixo) { try { return JSON.parse(localStorage.getItem(chaveLote(sufixo)) || "null"); } catch { return null; } }
+function salvarRascunhoLote(linhas, sufixo) { try { localStorage.setItem(chaveLote(sufixo), JSON.stringify(linhas)); } catch { /* sem espaço */ } }
 let voltarLote = "#/clientes";
-async function telaAgendaLote() {
+// Suporte (25/11/2026): a mesma tela, para passar a agenda de uma barbearia na implantação (rota horarios-lote/<id>).
+const telaHorariosLoteSuporte = id => telaAgendaLote(id);
+async function telaAgendaLote(suporteId = null) {
   const hoje = hojeLocal();
   const podeCadastrar = usuario.perfil !== "barbeiro";   // barbeiro não cadastra cliente avulso (só marcando horário)
-  const [ag, servicos] = await Promise.all([api(`/agenda?data=${hoje}`), carregarServicos()]);
-  const profs = ag.profissionais;
-  if (!profs.length) return mostrar(cabecalho("Vários de uma vez", "", voltarLote), el("p", { class: "vazio", text: "Nenhum profissional com agenda. Cadastre em Equipe." }));
-  if (!servicos.length) return mostrar(cabecalho("Vários de uma vez", "", voltarLote), el("p", { class: "vazio", text: "Cadastre os serviços antes (Catálogo → Serviços)." }));
+  let profs, servicos, barbeariaSuporte = null, semFuncionamento = false;
+  if (suporteId) {
+    const d = await api(`/plataforma/barbearias/agenda-lote?id=${encodeURIComponent(suporteId)}`);
+    ({ profissionais: profs, servicos } = d);
+    barbeariaSuporte = d.barbearia;
+    semFuncionamento = !d.temFuncionamento;
+  } else {
+    const [ag, sv] = await Promise.all([api(`/agenda?data=${hoje}`), carregarServicos()]);
+    profs = ag.profissionais; servicos = sv;
+  }
+  const voltar = suporteId ? "#/plataforma" : voltarLote;
+  const titulo = suporteId ? `Horários em lote · ${barbeariaSuporte.nome}` : "Vários de uma vez";
+  if (!profs.length) return mostrar(cabecalho(titulo, "", voltar), el("p", { class: "vazio", text: suporteId ? "Essa barbearia ainda não tem profissional com agenda. Cadastre a equipe primeiro (botão Equipe)." : "Nenhum profissional com agenda. Cadastre em Equipe." }));
+  if (!servicos.length) return mostrar(cabecalho(titulo, "", voltar), el("p", { class: "vazio", text: suporteId ? "Essa barbearia ainda não tem serviços cadastrados. Peça ao dono para cadastrar (Catálogo → Serviços)." : "Cadastre os serviços antes (Catálogo → Serviços)." }));
   const soUm = profs.length === 1;
   const vazia = base => ({ data: base?.data || hoje, hora: "", barbeiroId: base?.barbeiroId || profs[0].id, servicoId: base?.servicoId || servicos[0].id, nome: "", telefone: "", estado: null, msg: "" });
-  let linhas = (lerRascunhoLote() || []).filter(l => l && l.estado !== "ok");
+  let linhas = (lerRascunhoLote(suporteId) || []).filter(l => l && l.estado !== "ok");
   if (!linhas.length) linhas = [vazia(), vazia(), vazia()];
   const lista = el("div", { class: "lote-lista", "data-teste": "lote-lista" });
   const resumo = el("p", { class: "lote-resumo", "data-teste": "lote-resumo", role: "status" });
   const lgpd = caixaMarcar("Os clientes com telefone autorizaram o uso do telefone para o atendimento (LGPD)", { name: "loteLgpd" });
   const notaVencida = caixaMarcar("Marcar mesmo se o cliente tiver nota vencida", { name: "loteNota" });
-  const guardar = () => salvarRascunhoLote(linhas.filter(l => l.estado !== "ok"));
+  const guardar = () => salvarRascunhoLote(linhas.filter(l => l.estado !== "ok"), suporteId);
   const desenhar = () => {
     lista.replaceChildren(...linhas.map((l, i) => {
       const travada = l.estado === "ok";
@@ -1628,10 +1641,15 @@ async function telaAgendaLote() {
         if (soCadastro && (!l.nome.trim() || !l.telefone.replace(/\D/g, ""))) { l.estado = "erro"; l.msg = "Para só cadastrar (sem hora), informe o nome e o telefone. Para marcar, preencha a hora."; erro++; continue; }
         try {
           if (soCadastro) {
-            await api("/clientes", { metodo: "POST", corpo: { nome: l.nome.trim(), telefone: l.telefone, aceiteLgpd: lgpd.querySelector("input").checked } });
+            if (suporteId) {
+              const rc = await api("/plataforma/barbearias/clientes-lote", { metodo: "POST", corpo: { barbeariaId: suporteId, clientes: [{ nome: l.nome.trim(), telefone: l.telefone }], aceiteLgpd: lgpd.querySelector("input").checked } });
+              const res = rc.resultados[0];
+              if (res.situacao !== "ok") { l.estado = "erro"; l.msg = res.mensagem; erro++; continue; }
+            } else await api("/clientes", { metodo: "POST", corpo: { nome: l.nome.trim(), telefone: l.telefone, aceiteLgpd: lgpd.querySelector("input").checked } });
             l.estado = "ok"; l.msg = "Cliente cadastrado."; ok++; continue;
           }
-          await api("/agenda", { metodo: "POST", corpo: {
+          await api(suporteId ? "/plataforma/barbearias/agenda-lote" : "/agenda", { metodo: "POST", corpo: {
+            ...(suporteId ? { barbeariaId: suporteId } : {}),
             data: l.data, hora, barbeiroId: soUm ? profs[0].id : l.barbeiroId, servicoIds: [l.servicoId],
             cliente: { nome: l.nome.trim() || undefined, telefone: l.telefone, aceiteLgpd: lgpd.querySelector("input").checked },
             ...(notaVencida.querySelector("input").checked ? { aceiteNotaVencida: true } : {})
@@ -1654,9 +1672,12 @@ async function telaAgendaLote() {
   });
   const limparMarcados = () => { linhas = linhas.filter(l => l.estado !== "ok"); if (!linhas.length) linhas = [vazia()]; resumo.textContent = ""; guardar(); desenhar(); };
   mostrar(
-    cabecalho("Vários de uma vez", podeCadastrar
+    cabecalho(titulo, suporteId
+      ? "Passe a agenda que a barbearia já tem: com hora, o cliente fica marcado na agenda dela; sem hora, só é cadastrado."
+      : podeCadastrar
       ? "Passe o caderno para o sistema: com hora, o cliente já fica marcado na agenda; sem hora, só é cadastrado."
-      : "Passe os horários do caderno para a agenda e salve tudo de uma vez.", voltarLote),
+      : "Passe os horários do caderno para a agenda e salve tudo de uma vez.", voltar),
+    semFuncionamento ? el("p", { class: "aviso-nota", "data-teste": "sem-funcionamento", role: "alert", text: "Essa barbearia ainda não cadastrou os dias e horários de funcionamento: a agenda não aceita horário até isso ser feito (Equipe e ajustes → Funcionamento, pelo dono ou gerente). Sem hora, dá para só cadastrar os clientes." }) : null,
     el("section", { class: "cartao lote" },
       el("p", { class: "suave", text: "A linha nova já vem com o dia, o profissional e o serviço da linha de cima. O que você digitar fica guardado neste aparelho até salvar." }),
       lista,
@@ -1667,7 +1688,7 @@ async function telaAgendaLote() {
       el("div", { class: "lote-confirmar" }, lgpd, notaVencida),
       enviarBtn,
       resumo,
-      el("p", { class: "centro" }, el("a", { href: "#/agenda", text: "Ver na agenda" }), podeCadastrar ? " · " : null, podeCadastrar ? el("a", { href: "#/clientes", text: "Ver clientes" }) : null)));
+      suporteId ? null : el("p", { class: "centro" }, el("a", { href: "#/agenda", text: "Ver na agenda" }), podeCadastrar ? " · " : null, podeCadastrar ? el("a", { href: "#/clientes", text: "Ver clientes" }) : null)));
   desenhar();
 }
 
@@ -5628,7 +5649,7 @@ setInterval(() => { if (document.visibilityState === "visible" && Date.now() - u
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Date.now() - ultimoSinalUso > 55000) enviarUso(); });
 
 const NOME_TELA = {
-  "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", "agenda-lote": "Vários de uma vez", "clientes-lote": "Clientes em lote", "minha-pagina": "Minha página", "minha-producao": "Minha produção", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
+  "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", "agenda-lote": "Vários de uma vez", "clientes-lote": "Clientes em lote", "horarios-lote": "Horários em lote", "minha-pagina": "Minha página", "minha-producao": "Minha produção", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
   clientes: "Clientes", mensagens: "Mensagens", notas: "Notas", notificacoes: "Notificações", financeiro: "Relatório financeiro",
   "pagamento-equipe": "Pagamento da equipe", comissoes: "Comissões e vales", contas: "Despesas", contador: "Contador e dados",
   servicos: "Serviços", produtos: "Produtos", estoque: "Estoque", equipe: "Equipe", funcionamento: "Funcionamento", assinatura: "Meu plano",
@@ -6450,6 +6471,7 @@ const ROTAS = {
   plataforma: { perfis: ["plataforma"], tela: telaPlataforma },
   uso: { perfis: ["plataforma"], tela: telaUsoApp },
   "clientes-lote": { perfis: ["plataforma"], tela: telaClientesLoteSuporte },
+  "horarios-lote": { perfis: ["plataforma"], tela: telaHorariosLoteSuporte },
   inicio: { perfis: ["proprietario", "gerente", "barbeiro"], tela: () => (gestao() ? telaPainel() : telaAgenda()) },
   caixa: { perfis: ["caixa", "proprietario", "gerente"], tela: telaCaixa },
   funcionamento: { perfis: ["proprietario", "gerente"], tela: telaFuncionamento },

@@ -7,6 +7,7 @@ import { PLANOS, limiteDoPerfil, PERFIS_EQUIPE, valorDoPlano } from "./perfis.js
 import { MODELOS_PADRAO } from "./cadastros.js";
 import { SQL_PLANO, assinaturaPublica, alterarPlanoAssinatura } from "./assinatura.js";
 import { SQL_USO_RESUMO } from "./uso.js";
+import { marcar } from "./agenda.js";
 
 function barbeariaPublica(b) {
   return {
@@ -320,6 +321,40 @@ export async function rotasPlataforma(ctx, path, method) {
   // Clientes em lote (25/11/2026, pedido do responsável): o suporte passa a lista de clientes da barbearia (ex.: caderno ou
   // planilha) na implantação. Nome obrigatório; telefone opcional (sem telefone = marcador "sem:<id>", como no app);
   // telefone já cadastrado nessa barbearia é pulado (não duplica). Até 200 por envio. Tudo numa gravação só + auditoria.
+  // Marcar horários em lote pelo suporte (implantação: passar a agenda que a barbearia já tem).
+  // Usa a MESMA marcação da agenda (regras de funcionamento, conflito, cliente, LGPD, nota vencida), como se fosse
+  // a recepção daquela barbearia: vê a agenda de todos e precisa escolher o profissional. Quem marcou = o suporte (auditado).
+  if (path === "/plataforma/barbearias/agenda-lote" && method === "GET") {
+    const id = new URL(request.url).searchParams.get("id");
+    if (!validId(id)) return fail("Barbearia inválida.");
+    const b = await db.prepare("SELECT id, nome FROM barbearias WHERE id = ?").bind(id).first();
+    if (!b) return fail("Barbearia não encontrada.", 404);
+    const [profs, servs, func] = await Promise.all([
+      db.prepare(`SELECT id, nome FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('proprietario','gerente','barbeiro') ORDER BY nome`).bind(b.id).all(),
+      db.prepare("SELECT id, nome, duracao_min, preco_centavos FROM servicos WHERE barbearia_id = ? AND ativo = 1 ORDER BY nome").bind(b.id).all(),
+      db.prepare("SELECT COUNT(*) n FROM funcionamento WHERE barbearia_id = ? AND aberto = 1").bind(b.id).first()
+    ]);
+    return json({
+      barbearia: { id: b.id, nome: b.nome },
+      profissionais: profs.results,
+      servicos: servs.results.map(x => ({ id: x.id, nome: x.nome, duracaoMin: x.duracao_min, precoCentavos: x.preco_centavos })),
+      temFuncionamento: Number(func?.n || 0) > 0
+    });
+  }
+  if (path === "/plataforma/barbearias/agenda-lote" && method === "POST") {
+    const input = await readJson(request);
+    if (!validId(input.barbeariaId)) return fail("Barbearia inválida.");
+    const b = await db.prepare("SELECT id, nome FROM barbearias WHERE id = ?").bind(input.barbeariaId).first();
+    if (!b) return fail("Barbearia não encontrada.", 404);
+    if (!validId(input.barbeiroId)) return fail("Escolha o profissional.");
+    const { barbeariaId, ...corpo } = input;
+    const comoRecepcao = { ...ctx.user, perfil: "caixa", barbearia_id: b.id, barbearia_nome: b.nome };
+    return marcar({
+      ...ctx, user: comoRecepcao, barbeariaId: b.id,
+      request: new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(corpo) })
+    });
+  }
+
   if (path === "/plataforma/barbearias/clientes-lote" && method === "POST") {
     const input = await readJson(request, 64 * 1024);
     if (!validId(input.barbeariaId)) return fail("Barbearia inválida.");
