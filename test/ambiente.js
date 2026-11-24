@@ -8,6 +8,17 @@ export const TOKEN_SETUP = "token-de-teste-apenas-local";
 
 export const TOKEN_WEBHOOK = "webhook-de-teste-apenas-local";
 
+// Armazenamento de fotos de mentira (no lugar do R2 da Cloudflare): guarda em memória.
+export function fotosFalsas() {
+  const mapa = new Map();
+  return {
+    mapa,
+    async put(chave, dados, opcoes) { mapa.set(chave, { dados: new Uint8Array(dados), tipo: opcoes?.httpMetadata?.contentType }); },
+    async get(chave) { const o = mapa.get(chave); return o ? { body: o.dados, httpMetadata: { contentType: o.tipo } } : null; },
+    async delete(chave) { mapa.delete(chave); }
+  };
+}
+
 export function ambiente() {
   const asaas = asaasFalso();
   const env = {
@@ -17,17 +28,19 @@ export function ambiente() {
     ASAAS_API_KEY: "chave-falsa-de-teste",
     ASAAS_WEBHOOK_TOKEN: TOKEN_WEBHOOK,
     ASAAS_FETCH: asaas.buscar,
-    ASSETS: { fetch: async () => new Response("TELA", { status: 200 }) }
+    ASSETS: { fetch: async () => new Response("TELA", { status: 200 }) },
+    FOTOS: fotosFalsas()
   };
 
-  async function chamar(caminho, { metodo = "GET", corpo, token, ip = "10.0.0.1", headers = {} } = {}) {
+  async function chamar(caminho, { metodo = "GET", corpo, bruto, token, ip = "10.0.0.1", headers = {} } = {}) {
     const h = { "CF-Connecting-IP": ip, ...headers };
     if (corpo !== undefined) h["Content-Type"] = "application/json";
+    if (bruto !== undefined) { h["Content-Type"] = "application/octet-stream"; h["Content-Length"] = String(bruto.length); }
     if (token) h.Authorization = `Bearer ${token}`;
     env.DB.contador.n = 0;
     const resp = await worker.fetch(
       new Request(`https://4blade.teste${caminho}`, {
-        method: metodo, headers: h, body: corpo !== undefined ? JSON.stringify(corpo) : undefined
+        method: metodo, headers: h, body: bruto !== undefined ? bruto : corpo !== undefined ? JSON.stringify(corpo) : undefined
       }),
       env
     );

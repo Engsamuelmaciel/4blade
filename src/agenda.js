@@ -760,7 +760,7 @@ async function buscarClientes(ctx) {
 // Livres = inícios de 30 em 30 minutos (a partir da abertura) em que cabe a duração pedida; hoje, só a partir de agora.
 // Horários livres de um profissional num dia: de 30 em 30 minutos (pedido de 16/11/2026) + logo depois de cada
 // atendimento/bloqueio/intervalo (um serviço de 1h30 às 10:00 libera 11:30), onde cabe a duração; hoje, só a partir de agora.
-function iniciosLivres(janela, ocupados, duracao, data, hoje, agoraMin) {
+export function iniciosLivres(janela, ocupados, duracao, data, hoje, agoraMin) {
   if (data < hoje) return [];
   const inicios = new Set();
   for (let t = janela.ini; t < janela.fim; t += 30) inicios.add(t);

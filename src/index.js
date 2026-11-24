@@ -22,6 +22,7 @@ import { rotasPromissorias } from "./promissorias.js";
 import { rotasNotificacoes } from "./notificacoes.js";
 import { rotasEquipe } from "./equipe.js";
 import { rotaUso, usoDaBarbearia } from "./uso.js";
+import { rotaPublicaPagina, rotaEventoPagina, rotasPagina } from "./pagina.js";
 import { rotasCaixa } from "./caixa.js";
 import { rotasEstoque, rotasVendas } from "./estoque.js";
 import { rotasGestao } from "./gestao.js";
@@ -139,6 +140,11 @@ export default {
 
     // Tudo que não é /api/ é a tela (arquivos da pasta public/).
     if (url.pathname !== "/api" && !url.pathname.startsWith("/api/")) {
+      // Página da barbearia (forblade.com.br/<endereço>) e fotos dela (/f/<id>); o resto é a tela do app.
+      try {
+        const pg = await rotaPublicaPagina(request, env);
+        if (pg) return pg;
+      } catch (e) { console.error("Página da barbearia:", e?.message || e); }
       if (env.ASSETS) return env.ASSETS.fetch(request);
       return fail("Rota não encontrada", 404);
     }
@@ -171,6 +177,9 @@ export default {
         db, request, env, ipHash, limitar: (chave, max, seg) => rateLimit(db, chave, max, seg)
       }, path, method);
       if (publica) return publica;
+      if (path === "/pagina/evento" && method === "POST") {
+        return rotaEventoPagina({ db, request, limitar: (chave, max, seg) => rateLimit(db, `${chave}:${ipHash}`, max, seg) });
+      }
       if (path === "/solicitar-teste" && method === "POST") {
         return rotaSolicitarTeste({ db, request, ipHash, limitar: (chave, max, seg) => rateLimit(db, chave, max, seg) });
       }
@@ -301,7 +310,7 @@ export default {
       // ---------- DADOS DA BARBEARIA: exige usuário de barbearia ----------
       const r = (await rotaUso(ctx, path, method)) || (await rotasFuncionamento(ctx, path, method)) || (await rotasAgenda(ctx, path, method)) ||
         (await rotasCaixa(ctx, path, method)) || (await rotasEstoque(ctx, path, method)) || (await rotasVendas(ctx, path, method)) ||
-        (await rotasGestao(ctx, path, method)) || (await rotasFinanceiro(ctx, path, method)) || (await rotasContador(ctx, path, method)) || (await rotasMensagens(ctx, path, method)) || (await rotasPromissorias(ctx, path, method)) || (await rotasNotificacoes(ctx, path, method)) || (await rotasEquipe(ctx, path, method)) || (await rotasAssinatura(ctx, path, method)) || (await rotasSuporte(ctx, path, method)) || (await rotasUsuarios(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
+        (await rotasGestao(ctx, path, method)) || (await rotasFinanceiro(ctx, path, method)) || (await rotasContador(ctx, path, method)) || (await rotasMensagens(ctx, path, method)) || (await rotasPromissorias(ctx, path, method)) || (await rotasNotificacoes(ctx, path, method)) || (await rotasEquipe(ctx, path, method)) || (await rotasAssinatura(ctx, path, method)) || (await rotasSuporte(ctx, path, method)) || (await rotasUsuarios(ctx, path, method)) || (await rotasPagina(ctx, path, method)) || (await rotasCadastros(ctx, path, method));
       if (r) {
         return r;
       }
