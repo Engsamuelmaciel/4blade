@@ -199,8 +199,9 @@ async function rodar(tela) {
 
     // ---------- MATERIAL DE USO + DESPESA QUE LANÇA NO ESTOQUE ----------
     passo("gerente cadastra material de uso no estoque e lança a compra pela conta (vai direto para o estoque)");
-    await ir(page, "Estoque");
-    await page.click("button:has-text('+ Material de uso')");
+    await ir(page, "Produtos e estoque");
+    await abrirCadastro(page);
+    await page.click("[data-teste=novo-material]");
     await page.fill("dialog[open] #c-mNome", "Creme para progressiva");
     await page.fill("dialog[open] #c-mMin", "2");
     await print("material-de-uso-novo", false);
@@ -223,7 +224,7 @@ async function rodar(tela) {
     await page.click("button:has-text('Salvar despesa')");
     await abrirItem(page, '[data-conta="Caixa de creme (fictícia)"]');
     await page.waitForSelector('[data-conta="Caixa de creme (fictícia)"] [data-teste=conta-no-estoque]:has-text("+10 Creme para progressiva")');
-    await ir(page, "Estoque");
+    await ir(page, "Produtos e estoque");
     assert.match(await texto('[data-estoque="Creme para progressiva"] [data-teste=saldo]'), /10 un\./);
     assert.match(await texto('[data-estoque="Creme para progressiva"]'), /Custo médio R\$\s?15,00/);
     await abrirItem(page, '[data-estoque="Creme para progressiva"]');

@@ -129,7 +129,7 @@ try {
   await page.keyboard.press("Escape");
   await ir(page, "Clientes"); await foto("clientes");
   await ir(page, "Mensagens"); await foto("mensagens");
-  await ir(page, "Estoque"); await foto("produtos-estoque");
+  await ir(page, "Produtos e estoque"); await foto("produtos-estoque");
   await page.click("#btn-conta");
   await page.waitForSelector("[data-teste=aparencia]");
   await foto("aparencia", { janela: true });
@@ -175,7 +175,7 @@ try {
   await page.keyboard.press("Escape");
   await ir(page, "Notas em aberto"); await foto("notas");
   await ir(page, "Visão do dia"); await foto("visao-dia");
-  await ir(page, "Notificações"); await foto("notificacoes");
+  await page.click("#btn-notif"); await foto("notificacoes");
 
   await entrar("gerente.semana", SEMANA);
   await ir(page, "Painel");

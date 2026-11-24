@@ -9,7 +9,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir, abrirHorarios, abrirItem, abrirCadastro } from "./navegacao.mjs";
+import { ir, abrirHorarios, abrirItem, abrirCadastro, acao } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -192,14 +192,14 @@ async function rodar(tela) {
     assert.match(hrefZe, /^https:\/\/wa\.me\/\?text=/);
     await page.waitForSelector('[data-agendamento="Seu Zé Fictício"] [data-teste=whats-sem-numero]');
     // "Outra mensagem": mensagens prontas da tela Mensagens, direto no WhatsApp
-    await page.click('[data-agendamento="Seu Zé Fictício"] button:has-text("Outra mensagem")');
+    await acao(page, '[data-agendamento="Seu Zé Fictício"]', 'button:has-text("Outra mensagem")');
     await page.waitForSelector("dialog[open] [data-pronta=saudade]");
     assert.match(decodeURIComponent(await page.getAttribute("dialog[open] [data-pronta=saudade]", "href")), /^https:\/\/wa\.me\/\?text=Olá, Seu! Faz tempo/);
     await print("agenda-outra-mensagem-sem-telefone", false);
     await page.keyboard.press("Escape");
     // cliente com telefone: abre direto na conversa do número do cadastro
     await abrirHorarios(page, "Fábio Fixo Fictício");
-    await page.click('[data-agendamento="Fábio Fixo Fictício"] button:has-text("Outra mensagem") >> nth=0');
+    await acao(page, '[data-agendamento="Fábio Fixo Fictício"]', 'button:has-text("Outra mensagem")');
     assert.match(await page.getAttribute("dialog[open] [data-pronta=promocao]", "href"), /^https:\/\/wa\.me\/55\d{10,11}\?text=/);
     await page.keyboard.press("Escape");
 
@@ -215,7 +215,7 @@ async function rodar(tela) {
     await page.waitForSelector('[data-agendamento="Lançado Errado Fictício"]');
     await abrirHorarios(page, "Lançado Errado Fictício");
     const cartaoErr = '[data-agendamento="Lançado Errado Fictício"]';
-    await page.click(`${cartaoErr} button:has-text("Editar")`);
+    await acao(page, cartaoErr, 'button:has-text("Editar")');
     await page.waitForSelector("dialog[open] input[name=eserv]");
     await page.check("dialog[open] input[name=eserv] >> nth=1");
     await page.fill("dialog[open] [name=eObs]", "Corrigido pelo barbeiro");
@@ -225,16 +225,16 @@ async function rodar(tela) {
     assert.match(await page.textContent(`${cartaoErr} .slot-hora`), /^17:00–\d\d:\d\d$/);
     assert.notEqual(await page.textContent(`${cartaoErr} .slot-hora`), "17:00–17:30", "o fim acompanha a duração dos serviços");
     // falta por engano → desfazer
-    await page.click(`${cartaoErr} button:has-text("Faltou")`);
+    await acao(page, cartaoErr, 'button:has-text("Faltou")');
     await ok();
     await page.waitForSelector(`${cartaoErr} .etiqueta:has-text("Faltou")`);
     await page.click(`${cartaoErr} button:has-text("Desfazer falta")`);
     await ok();
     await page.waitForSelector(`${cartaoErr} .etiqueta:has-text("Agendado")`);
-    // lixeira (canto de baixo, à direita): pede motivo e tira da agenda
-    await page.locator(`${cartaoErr} .botao-lixeira`).scrollIntoViewIfNeeded();
-    await print("horario-com-lixeira", false);
-    await page.click(`${cartaoErr} .botao-lixeira`);
+    // "Excluir horário" (em Mais opções): pede motivo e tira da agenda
+    await acao(page, cartaoErr, '[data-grupo=mais]');
+    await print("horario-mais-opcoes", false);
+    await acao(page, cartaoErr, "[data-excluir]");
     await page.fill("dialog[open] [name=motivo]", "Lançado por engano");
     await ok();
     await page.waitForSelector("text=Horário excluído da agenda.");
@@ -359,7 +359,7 @@ async function rodar(tela) {
     await page.selectOption("dialog[open] #c-forma1", "promissoria");
     await ok();
     await page.waitForSelector("[data-teste=notas-lancadas]");
-    await page.click(".pdv-ferramentas a:has-text('Notas')");
+    await page.click("a[data-teste=notas-lancadas]");
     await page.waitForSelector('[data-nota-cliente="Fábio Fixo Fictício"]');
     await print("notas-em-aberto");
     await abrirItem(page, '[data-nota-cliente="Fábio Fixo Fictício"]');
@@ -405,7 +405,7 @@ async function rodar(tela) {
     await print("caixa-agenda-todos");
     // remanejar: o horário das 17:00 vai para as 18:00 (mesmo dia e barbeiro)
     await abrirHorarios(page, "Ivo Recepção Fictício");
-    await page.click('[data-agendamento="Ivo Recepção Fictício"] button:has-text("Remarcar")');
+    await acao(page, '[data-agendamento="Ivo Recepção Fictício"]', 'button:has-text("Remarcar")');
     await page.waitForSelector('dialog[open] [data-teste=disponibilidade] [data-hora-livre="18:00"]');
     await page.click('dialog[open] [data-hora-livre="18:00"]');
     await print("remarcar-horario", false);
@@ -417,7 +417,7 @@ async function rodar(tela) {
     await page.waitForSelector('[data-cliente="Ivo Recepção Fictício"]');
     // excluir um cadastro duplicado (sem histórico): pede motivo e some da lista
     await abrirItem(page, '[data-cliente="Duplicado Fictício"]');
-    await page.click('[data-cliente="Duplicado Fictício"] button:has-text("Excluir")');
+    await acao(page, '[data-cliente="Duplicado Fictício"]', 'button:has-text("Excluir")');
     await page.fill("dialog[open] #c-motivo", "Cadastro duplicado");
     await print("excluir-cliente", false);
     await ok();
@@ -540,7 +540,7 @@ async function rodar(tela) {
     await page.click("dialog[open] button:has-text('Fechar')");
 
     passo("gerente cadastra produto já com estoque e edita uma conta lançada");
-    await ir(page, "Produtos");
+    await ir(page, "Produtos e estoque");
     await abrirCadastro(page);
     await page.fill("#c-nome", "Cera Fictícia");
     await page.fill("#c-preco", "35,00");
@@ -548,8 +548,8 @@ async function rodar(tela) {
     await page.fill("#c-custoInicial", "18,00");
     await page.click("form.cartao button:has-text('Salvar')");
     await abrirItem(page, '[data-produto="Cera Fictícia"]');
-    await page.waitForSelector('[data-produto="Cera Fictícia"] >> text=Custo médio: R$ 18,00');
-    await ir(page, "Estoque");
+    await page.waitForSelector('[data-produto="Cera Fictícia"] >> text=Custo médio R$ 18,00');
+    await ir(page, "Produtos e estoque");
     await page.waitForSelector('[data-estoque="Cera Fictícia"] [data-teste=saldo]:has-text("10 un.")');
     await ir(page, "Despesas");
     await abrirItem(page, '[data-conta="Conta de luz"]');

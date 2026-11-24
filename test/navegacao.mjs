@@ -58,3 +58,17 @@ export async function abrirCadastro(page) {
   await p.waitFor();
   if (await p.getAttribute("open") === null) await p.locator(":scope > summary").click();
 }
+// Ações agrupadas (24/11/2026): "WhatsApp" e "Mais opções" escondem botões; abre o grupo certo antes de clicar.
+export async function acao(page, escopo, alvo) {
+  await page.locator(escopo).first().waitFor();
+  const loc = page.locator(`${escopo} ${alvo}`).first();
+  if (!(await loc.isVisible())) {
+    for (const g of await page.locator(`${escopo} [data-grupo]`).all()) {
+      if (!(await g.isVisible())) continue;
+      if (await g.getAttribute("aria-expanded") !== "true") await g.click();
+      if (await loc.isVisible()) break;
+    }
+  }
+  await loc.scrollIntoViewIfNeeded();
+  await loc.click();
+}

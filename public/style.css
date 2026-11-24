@@ -1611,3 +1611,18 @@ button.ticket-at:focus-visible { outline: 3px solid var(--dourado); outline-offs
 .bloco-parcelas .campo { margin: 0; }
 .texto-parcelas { margin: 0; font-weight: 700; color: var(--info-texto); }
 .escolha-correcao { display: grid; gap: 8px; margin: 6px 0; }
+
+/* Link discreto (atalho secundário dentro de um cadastro/janela) — 24/11/2026 */
+.link-discreto { margin: 4px 0 8px; font-size: .9rem; }
+.link-discreto a { color: var(--destaque); text-decoration: underline; }
+
+/* Ações agrupadas do horário (WhatsApp / Mais opções) — 24/11/2026 */
+.acoes-agrupadas { display: grid; gap: 8px; }
+.alterna-grupo::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg); transition: transform .15s; }
+.alterna-grupo[aria-expanded="true"]::after { transform: translateY(1px) rotate(-135deg); }
+.alterna-grupo[aria-expanded="true"] { background: var(--neutro); }
+.acoes-grupo { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; border-radius: var(--raio); background: var(--neutro-2); border: 1px solid var(--borda); }
+.acoes-grupo > p { flex: 1 0 100%; margin: 0; }
+.painel-novo > .link-discreto { padding: 0 16px 14px; margin: 0; }
+a.forma-card { color: inherit; text-decoration: none; }

@@ -155,7 +155,7 @@ async function rodar(tela) {
 
     passo("gerente: notificações com despesas e valores; Visão do dia também");
     await entrar("gerente.semana");
-    await ir(page, "Notificações");
+    await page.click("#btn-notif");   // 24/11/2026: notificações só pelo sino (saiu do menu)
     await page.waitForSelector(".lista-notif .notif");
     const tg = await page.locator(".lista-notif .notif strong").allInnerTexts();
     for (const t of ["Nota vencida", "Despesa atrasada"]) assert.ok(tg.includes(t), `${t}: ${tg.join(",")}`);

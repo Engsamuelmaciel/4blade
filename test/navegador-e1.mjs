@@ -93,6 +93,7 @@ async function rodar(tela) {
   };
   const fecharJanela = () => page.click("dialog[open] button[type=submit]");
   const criarPessoa = async (perfil, nome, login, comServ, comProd, printarSenha = false, salario = null) => {
+    await abrirCadastro(page);
     await page.selectOption("#c-perfil", perfil);
     await page.fill("#c-nome", nome);
     await page.fill("#c-login", login);
@@ -197,6 +198,7 @@ async function rodar(tela) {
     // limite do plano Básico: 2 barbeiros; o 3º é recusado pelo servidor (gerentes e caixas sem limite)
     await criarPessoa("barbeiro", "Diego Barbeiro", "diego.navalha", "50", "10");
     await page.waitForSelector('[data-vaga="barbeiro"] >> text=2/2');
+    await abrirCadastro(page);
     await page.selectOption("#c-perfil", "barbeiro");
     await page.fill("#c-nome", "Outro Barbeiro");
     await page.fill("#c-login", "outro.navalha");
@@ -230,7 +232,7 @@ async function rodar(tela) {
     assert.match(await page.textContent('[data-servico="Corte masculino"]'), /R\$\s?40,00/);
     await print("gerente-servicos");
 
-    await ir(page, "Produtos");
+    await ir(page, "Produtos e estoque");
     for (const [nome, preco, cod] of [["Pomada modeladora", "45,00", "7890000000011"], ["Óleo para barba", "38,50", ""]]) {
       await abrirCadastro(page);
       await page.fill("#c-nome", nome);

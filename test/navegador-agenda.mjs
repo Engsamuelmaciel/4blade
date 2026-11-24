@@ -124,10 +124,15 @@ async function rodar(tela) {
     }
     await print("ano");
 
-    passo("Subir horários em lote: 3 linhas, 1 certa e 2 com problema; corrige e envia de novo (só as que faltam)");
-    if (tela.movel) {   // no celular fica no "Mais" (a barra da agenda não tem espaço)
-      await ir(page, "Subir horários em lote");
-    } else await page.click("[data-teste=link-lote]");
+    passo("Vários de uma vez (24/11/2026: saiu do menu; entra pelo Novo cliente ou pelo Novo horário): 4 linhas, 1 certa e 3 com problema; corrige e salva de novo");
+    if (tela.movel) {   // celular: pelo cadastro de cliente
+      await ir(page, "Clientes");
+      await page.locator("details.painel-novo > summary").click();
+      await page.click("[data-teste=clientes-lote]");
+    } else {   // computador: pelo Novo horário
+      await page.click("button:has-text('+ Novo horário')");
+      await page.click("dialog[open] [data-teste=link-lote]");
+    }
     await page.waitForSelector("[data-lote-linha='3']");
     const dia = somarDias(HOJE, 2);
     const linha = n => page.locator(`[data-lote-linha='${n}']`);
@@ -140,21 +145,24 @@ async function rodar(tela) {
     await preencher(1, "hora", "09:00"); await preencher(1, "nome", "Lote Um Fictício");
     await preencher(2, "hora", "10:00"); await preencher(2, "nome", "Lote Dois Fictício"); await preencher(2, "telefone", "11 95555-0102");   // cliente novo com telefone: falta o aceite LGPD
     await preencher(3, "hora", "25:99"); await preencher(3, "nome", "Lote Tres Fictício");   // hora inválida
-    assert.match(await page.textContent("[data-teste=enviar-lote]"), /Enviar 3 horários/);
+    await page.click("button:has-text('+ Linha')");
+    await preencher(4, "hora", ""); await preencher(4, "nome", "Lote Quatro Fictício"); await preencher(4, "telefone", "11 95555-0104");   // sem hora: só cadastrar (falta o aceite LGPD)
+    assert.match(await page.textContent("[data-teste=enviar-lote]"), /Salvar 4 linhas/);
     await page.click("[data-teste=enviar-lote]");
     await page.waitForSelector("[data-teste=lote-resumo].com-erro");
-    assert.match(await page.textContent("[data-teste=lote-resumo]"), /1 marcado\(s\)\. 2 com problema/);
+    assert.match(await page.textContent("[data-teste=lote-resumo]"), /1 salvo\(s\)\. 3 com problema/);
     assert.ok((await linha(1).getAttribute("class")).includes("ok"));
     assert.match(await linha(2).locator(".lote-msg").textContent(), /LGPD/);
     assert.match(await linha(3).locator(".lote-msg").textContent(), /Hora inválida/);
+    assert.match(await linha(4).locator(".lote-msg").textContent(), /LGPD/);
     await print("lote-com-erros");
     // corrige: aceite LGPD e hora certa → envia só as 2 que faltam
     await page.check("#c-loteLgpd");
     await preencher(3, "hora", "11:00");
-    assert.match(await page.textContent("[data-teste=enviar-lote]"), /Enviar 2 horários/);
+    assert.match(await page.textContent("[data-teste=enviar-lote]"), /Salvar 3 linhas/);
     await page.click("[data-teste=enviar-lote]");
     await page.waitForSelector("[data-teste=lote-resumo].tudo-ok");
-    assert.match(await page.textContent("[data-teste=lote-resumo]"), /Pronto: 2 horário/);
+    assert.match(await page.textContent("[data-teste=lote-resumo]"), /Pronto: 3 salvo/);
     await print("lote-enviado");
     // na agenda do dia, os três estão lá
     await page.click("a:has-text('Ver na agenda')");
@@ -167,6 +175,9 @@ async function rodar(tela) {
     await page.waitForSelector(".grade-agenda [data-evento='Lote Tres Fictício']");
     for (const nome of ["Lote Um Fictício", "Lote Dois Fictício"]) assert.equal(await page.locator(`.grade-agenda [data-evento='${nome}']`).count(), 1, nome);
     await print("lote-na-agenda");
+    // a linha sem hora virou só cadastro de cliente
+    await ir(page, "Clientes");
+    await page.waitForSelector('[data-cliente="Lote Quatro Fictício"]');
 
     passo("caixa: cobra no crédito em 3x (mostra o valor da parcela) e depois corrige o valor do lançamento");
     await ir(page, "Caixa");

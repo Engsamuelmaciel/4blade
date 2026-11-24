@@ -114,7 +114,7 @@ async function rodar(tela) {
     // ---------- GERENTE: entradas e ajuste ----------
     passo("gerente dá entrada no estoque e registra uma quebra");
     await entrar("gabriel.navalha", "Senha-Gabriel-2026");
-    await ir(page, "Estoque");
+    await ir(page, "Produtos e estoque");
     await page.waitForSelector('[data-estoque="Pomada modeladora"]');
     for (const [nome, qtd, custo] of [["Pomada modeladora", "10", "20,00"], ["Óleo para barba", "6", "15,00"]]) {
       await abrirItem(page, `[data-estoque="${nome}"]`);
@@ -134,7 +134,6 @@ async function rodar(tela) {
     await ok();
     await page.waitForSelector('[data-estoque="Óleo para barba"] [data-teste=saldo]:has-text("5 un.")');
     assert.match(await texto('[data-estoque="Shampoo anticaspa"]'), /Repor/);
-    assert.match(await texto("[data-teste=avisos-estoque]"), /Shampoo anticaspa \(repor\)/);
     await print("gerente-estoque-com-avisos");
     await sair();
 
@@ -255,7 +254,7 @@ async function rodar(tela) {
     await page.waitForSelector("text=Reaberto 1x");
     await print("gerente-caixa-reaberto");
 
-    await ir(page, "Estoque");
+    await ir(page, "Produtos e estoque");
     await page.click("button:has-text('Inventário')");
     await page.fill("[aria-label='Contado de Pomada modeladora']", "6");
     await page.waitForSelector('dialog[open] [data-inventario="Pomada modeladora"] >> text=diferença -1');

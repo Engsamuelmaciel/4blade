@@ -9,7 +9,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir, abrirHorarios } from "./navegacao.mjs";
+import { ir, abrirHorarios, acao } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -209,7 +209,7 @@ async function rodar(tela) {
     await abrirHorarios(page, "Diego Cliente Fictício");
     const [aba] = await Promise.all([
       contexto.waitForEvent("page"),
-      page.click('[data-agendamento="Diego Cliente Fictício"] [data-whats=lembrete]')
+      acao(page, '[data-agendamento="Diego Cliente Fictício"]', "[data-whats=lembrete]")
     ]);
     await aba.waitForLoadState();
     const urlWhats = decodeURIComponent(aba.url());
