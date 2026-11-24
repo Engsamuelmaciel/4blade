@@ -313,3 +313,10 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - **Fotos:** reduzidas no celular (WEBP ou JPEG; capa até 1600 px, galeria 1200 px, logo e equipe 512 px quadradas, até 500 KB); o servidor confere o tipo pelo conteúdo (JPG, PNG, WEBP), tira os dados de localização (EXIF), limita 700 KB por foto, 12 na galeria, 1 foto por profissional e 15 MB por barbearia (limite travado no servidor). Guardadas no R2 da Cloudflare (binding `FOTOS`) e servidas em `/f/<id>`. Trocar ou excluir foto apaga o arquivo; o registro fica (quem, quando) e vai para a auditoria.
 - **Auditoria:** criação, edição (antes/depois), troca de endereço, publicar/tirar do ar, envio, alteração e exclusão de foto.
 - **Pendente (próximas etapas, se o responsável quiser):** edição pela equipe do suporte no painel da plataforma + assunto "Quero que montem minha página"; landing e planos mostrando o benefício; agendamento on-line e regras por plano.
+
+## 22. Clientes em lote pelo suporte (24/11/2026, pedido do responsável)
+- Para a implantação de uma barbearia: no painel da plataforma, cada barbearia tem o botão **Clientes em lote**.
+- O suporte cola a lista (um cliente por linha: "Nome; telefone; apelido", colunas de planilha ou "Nome 11 91234-5678"). Telefone e apelido são opcionais. Até 200 por vez.
+- Antes de enviar, aparece uma prévia (quantos, com e sem telefone). Cliente com telefone só entra com a confirmação de que a barbearia tem a autorização (LGPD).
+- Telefone que já existe na barbearia (ou repetido na lista) é pulado. Linhas com problema voltam com o motivo e ficam na caixa para corrigir.
+- Os clientes entram só na barbearia escolhida; o envio fica na auditoria da barbearia (quem, quando, quantos).

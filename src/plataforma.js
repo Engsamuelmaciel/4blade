@@ -317,6 +317,47 @@ export async function rotasPlataforma(ctx, path, method) {
     return json({ usuario: { id, nome, login, telefone, perfil }, senhaProvisoria: senha, barbearia: { nome: b.nome } }, 201);
   }
 
+  // Clientes em lote (25/11/2026, pedido do responsável): o suporte passa a lista de clientes da barbearia (ex.: caderno ou
+  // planilha) na implantação. Nome obrigatório; telefone opcional (sem telefone = marcador "sem:<id>", como no app);
+  // telefone já cadastrado nessa barbearia é pulado (não duplica). Até 200 por envio. Tudo numa gravação só + auditoria.
+  if (path === "/plataforma/barbearias/clientes-lote" && method === "POST") {
+    const input = await readJson(request, 64 * 1024);
+    if (!validId(input.barbeariaId)) return fail("Barbearia inválida.");
+    const b = await db.prepare("SELECT id, nome FROM barbearias WHERE id = ?").bind(input.barbeariaId).first();
+    if (!b) return fail("Barbearia não encontrada.", 404);
+    if (!Array.isArray(input.clientes) || !input.clientes.length) return fail("Envie pelo menos um cliente.");
+    if (input.clientes.length > 200) return fail("No máximo 200 clientes por vez. Divida a lista.");
+    const existentes = new Set((await db.prepare(`SELECT telefone FROM clientes WHERE barbearia_id = ? AND telefone NOT LIKE 'sem:%'
+      AND id NOT IN (SELECT cliente_id FROM clientes_excluidos WHERE barbearia_id = ?)`).bind(b.id, b.id).all()).results.map(c => c.telefone));
+    const vistos = new Set();
+    const resultados = [];
+    const cmds = [];
+    const agora = new Date().toISOString();
+    for (const [i, c] of input.clientes.entries()) {
+      const linha = i + 1;
+      const nome = textoLimpo(c?.nome, 2, 80);
+      if (!nome) { resultados.push({ linha, situacao: "erro", mensagem: "Nome inválido (2 a 80 letras)." }); continue; }
+      const temFone = typeof c.telefone === "string" && c.telefone.replace(/\D/g, "");
+      const telefone = temFone ? normalizarTelefone(c.telefone) : null;
+      if (temFone && !telefone) { resultados.push({ linha, nome, situacao: "erro", mensagem: "Telefone inválido (DDD + número)." }); continue; }
+      if (telefone && !input.aceiteLgpd) { resultados.push({ linha, nome, situacao: "erro", mensagem: "Falta confirmar a autorização do telefone (LGPD)." }); continue; }
+      if (telefone && (existentes.has(telefone) || vistos.has(telefone))) { resultados.push({ linha, nome, situacao: "repetido", mensagem: "Telefone já cadastrado nesta barbearia." }); continue; }
+      const apelido = typeof c.apelido === "string" && c.apelido.trim() ? textoLimpo(c.apelido, 1, 40) : null;
+      const id = crypto.randomUUID();
+      if (telefone) vistos.add(telefone);
+      cmds.push(db.prepare(`INSERT INTO clientes (id, barbearia_id, nome, telefone, aceite_lgpd, aceite_lgpd_em, aceite_lgpd_por) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+        .bind(id, b.id, nome, telefone || `sem:${id}`, telefone ? 1 : 0, telefone ? agora : null, telefone ? ctx.user.id : null));
+      if (apelido) cmds.push(db.prepare("INSERT INTO clientes_apelidos (cliente_id, barbearia_id, apelido) VALUES (?, ?, ?)").bind(id, b.id, apelido));
+      resultados.push({ linha, nome, situacao: "ok", mensagem: "Cadastrado." });
+    }
+    const ok = resultados.filter(r => r.situacao === "ok").length;
+    if (ok) {
+      cmds.push(auditoria({ ...ctx, barbeariaId: b.id }, "clientes_lote_suporte", b.id, { cadastrados: ok, enviados: input.clientes.length }));
+      await db.batch(cmds);
+    }
+    return json({ barbearia: { id: b.id, nome: b.nome }, cadastrados: ok, resultados });
+  }
+
   if (path === "/plataforma/barbearias/equipe/senha" && method === "POST") {
     const input = await readJson(request);
     if (!validId(input.barbeariaId) || !validId(input.usuarioId)) return fail("Dados inválidos.");

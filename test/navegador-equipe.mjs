@@ -201,6 +201,30 @@ async function rodar(tela) {
     const corpo = await page.textContent("main, body");
     assert.ok(!/Cliente Fictício/.test(corpo), "nenhum dado de cliente na tela de uso");
     await print("suporte-uso-do-app");
+
+    passo("suporte cadastra clientes em lote na barbearia (implantação): prévia, LGPD, repetidos pulados");
+    await page.goto(`${base}/#/plataforma`);
+    await page.click('[data-barbearia="Barbearia Semana Fictícia"] [data-teste=clientes-lote-suporte]');
+    await page.waitForSelector("#c-listaClientes");
+    await pronto();
+    await page.fill("#c-listaClientes", "Lote Fictício Um; (11) 97777-0001; Unzinho\nLote Fictício Dois 11 97777-0002\n\tLote Fictício Três\t\nLote Fictício Quatro\t11977770001");
+    assert.match(await page.textContent("[data-teste=previa-clientes-lote]"), /4 linha\(s\) · 3 com telefone · 1 sem telefone/);
+    assert.match(await page.textContent("[data-teste=enviar-clientes-lote]"), /Cadastrar 4 clientes/);
+    await print("suporte-clientes-lote-previa");
+    await page.check("#c-loteSuporteLgpd");
+    await page.click("[data-teste=enviar-clientes-lote]");
+    await page.waitForSelector("[data-teste=resumo-clientes-lote]");
+    await pronto();
+    assert.match(await page.textContent("[data-teste=resumo-clientes-lote]"), /3 cadastrado\(s\) · 1 já existia/);
+    assert.equal(await page.inputValue("#c-listaClientes"), "", "nada com erro fica na caixa");
+    await print("suporte-clientes-lote-resultado");
+    // Aparecem para o gerente da barbearia
+    await sair();
+    await entrar("gerente.semana");
+    await page.goto(`${base}/#/clientes`); await pronto();
+    await page.fill("input.busca-viva", "Lote Fictício");
+    await page.waitForSelector('[data-cliente="Lote Fictício Três"]');
+    assert.equal(await page.locator('[data-cliente^="Lote Fictício"]').count(), 3);
     await sair();
 
     const reais = problemas.filter(p => !/status of 40[39]/.test(p));

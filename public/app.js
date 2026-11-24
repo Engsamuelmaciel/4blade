@@ -1230,6 +1230,7 @@ async function telaPlataforma() {
         botao("Editar dados", () => janelaEditarBarbearia(b), "pequeno"),
         botao("Equipe", () => janelaEquipeBarbearia(b), "pequeno"),
         el("a", { class: "botao pequeno", href: `#/uso/${b.id}`, "data-teste": "ver-uso", text: "Uso do app" }),
+        el("a", { class: "botao pequeno", href: `#/clientes-lote/${b.id}`, "data-teste": "clientes-lote-suporte", text: "Clientes em lote" }),
         botao("Enviar acesso ao dono", () => pedirMotivo(
           "Enviar acesso ao dono",
           b.proprietario?.trocaPendente
@@ -5627,7 +5628,7 @@ setInterval(() => { if (document.visibilityState === "visible" && Date.now() - u
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Date.now() - ultimoSinalUso > 55000) enviarUso(); });
 
 const NOME_TELA = {
-  "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", "agenda-lote": "Vários de uma vez", "minha-pagina": "Minha página", "minha-producao": "Minha produção", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
+  "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", "agenda-lote": "Vários de uma vez", "clientes-lote": "Clientes em lote", "minha-pagina": "Minha página", "minha-producao": "Minha produção", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
   clientes: "Clientes", mensagens: "Mensagens", notas: "Notas", notificacoes: "Notificações", financeiro: "Relatório financeiro",
   "pagamento-equipe": "Pagamento da equipe", comissoes: "Comissões e vales", contas: "Despesas", contador: "Contador e dados",
   servicos: "Serviços", produtos: "Produtos", estoque: "Estoque", equipe: "Equipe", funcionamento: "Funcionamento", assinatura: "Meu plano",
@@ -5644,6 +5645,73 @@ function tempoAtras(iso) {
 const dataHoraBR = iso => new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 const duracaoTexto = m => (m < 1 ? "menos de 1 min" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`);
 const estadoUso = { dias: 7 };
+// ---------- CLIENTES EM LOTE PELO SUPORTE (25/11/2026): implantação de uma barbearia (lista do caderno ou planilha) ----------
+// Um cliente por linha: "Nome; telefone; apelido" (telefone e apelido opcionais). Aceita colar colunas de planilha (TAB)
+// ou só "Nome 11 91234-5678". Telefone já cadastrado na barbearia é pulado. Até 200 por vez.
+function lerListaClientes(texto) {
+  return texto.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
+    let partes = l.includes("\t") ? l.split("\t") : l.includes(";") ? l.split(";") : null;
+    if (!partes) {
+      const m = l.match(/^(.*?)[\s,\-–]*((?:\+?55\s*)?\(?\d{2}\)?\s*9?\s*\d{4}[\s.-]?\d{4})\s*$/);
+      partes = m ? [m[1], m[2]] : [l];
+    }
+    const [nome = "", telefone = "", apelido = ""] = partes.map(x => x.trim());
+    return { nome: nome.replace(/[,\-–]+$/, "").trim(), telefone, apelido };
+  });
+}
+async function telaClientesLoteSuporte(id) {
+  const { barbearias } = await api("/plataforma/barbearias");
+  const b = barbearias.find(x => x.id === id);
+  if (!b) return mostrar(cabecalho("Clientes em lote", "", "#/plataforma"), el("p", { class: "vazio", text: "Barbearia não encontrada." }));
+  const caixa = el("textarea", { id: "c-listaClientes", rows: "12", spellcheck: "false", autocomplete: "off",
+    placeholder: "João da Silva; (11) 91234-5678; Joãozinho\nCarlos Souza 11 98765-4321\nPedro (sem telefone)" });
+  const previa = el("div", { class: "lote-previa", "data-teste": "previa-clientes-lote", "aria-live": "polite" });
+  const resultado = el("div", { "data-teste": "resultado-clientes-lote", "aria-live": "polite" });
+  const lgpd = caixaMarcar("A barbearia confirmou que os clientes com telefone autorizaram o uso do telefone para o atendimento (LGPD)", { name: "loteSuporteLgpd" });
+  const enviar = el("button", { type: "button", class: "botao principal", "data-teste": "enviar-clientes-lote", text: "Cadastrar" });
+  const atualizar = () => {
+    const linhas = lerListaClientes(caixa.value);
+    const comFone = linhas.filter(l => l.telefone.replace(/\D/g, "")).length;
+    enviar.textContent = linhas.length ? `Cadastrar ${linhas.length} cliente${linhas.length === 1 ? "" : "s"}` : "Cadastrar";
+    enviar.disabled = !linhas.length || linhas.length > 200;
+    previa.replaceChildren(...(linhas.length ? [
+      el("p", { class: linhas.length > 200 ? "erro-texto" : "suave", text: linhas.length > 200 ? `São ${linhas.length} linhas: no máximo 200 por vez. Divida a lista.` : `${linhas.length} linha(s) · ${comFone} com telefone · ${linhas.length - comFone} sem telefone` }),
+      el("ol", { class: "lista-previa" }, linhas.slice(0, 8).map(l => el("li", { text: [l.nome || "(sem nome)", l.telefone || "sem telefone", l.apelido ? `"${l.apelido}"` : null].filter(Boolean).join(" · ") }))),
+      linhas.length > 8 ? el("p", { class: "suave", text: `… e mais ${linhas.length - 8}.` }) : null
+    ].filter(Boolean) : [el("p", { class: "suave", text: "A prévia aparece aqui enquanto você cola a lista." })]));
+  };
+  caixa.addEventListener("input", atualizar);
+  enviar.addEventListener("click", async () => {
+    const clientes = lerListaClientes(caixa.value);
+    enviar.disabled = true;
+    document.body.dataset.carregando = "1";
+    try {
+      const r = await api("/plataforma/barbearias/clientes-lote", { metodo: "POST", corpo: { barbeariaId: id, clientes, aceiteLgpd: lgpd.querySelector("input").checked } });
+      const rep = r.resultados.filter(x => x.situacao === "repetido").length;
+      const err = r.resultados.filter(x => x.situacao === "erro");
+      resultado.replaceChildren(...[
+        el("p", { class: `lote-resumo ${err.length ? "com-erro" : "tudo-ok"}`, "data-teste": "resumo-clientes-lote",
+          text: `${r.cadastrados} cadastrado(s)${rep ? ` · ${rep} já existia(m) (pulado)` : ""}${err.length ? ` · ${err.length} com problema` : ""}.` }),
+        err.length || rep ? el("ul", { class: "lista-previa" }, r.resultados.filter(x => x.situacao !== "ok").map(x =>
+          el("li", { class: x.situacao === "erro" ? "erro-texto" : "suave", text: `Linha ${x.linha}${x.nome ? ` (${x.nome})` : ""}: ${x.mensagem}` }))) : null
+      ].filter(Boolean));
+      // fica na caixa só o que deu erro, para corrigir e mandar de novo
+      const comErro = new Set(err.map(x => x.linha));
+      caixa.value = caixa.value.split(/\r?\n/).map(l => l.trim()).filter(Boolean).filter((_, i) => comErro.has(i + 1)).join("\n");
+      atualizar();
+      if (r.cadastrados) avisar(`${r.cadastrados} cliente(s) cadastrado(s) na ${b.nome}.`);
+    } catch (e) { avisar(e.message, "erro"); }
+    finally { delete document.body.dataset.carregando; enviar.disabled = !lerListaClientes(caixa.value).length; }
+  });
+  atualizar();
+  mostrar(
+    cabecalho(`Clientes em lote · ${b.nome}`, "Passe a lista de clientes da barbearia (caderno ou planilha) de uma vez.", "#/plataforma"),
+    el("section", { class: "cartao lote" },
+      el("p", { class: "suave", text: "Um cliente por linha: Nome; telefone; apelido. Telefone e apelido são opcionais. Pode colar direto de uma planilha (colunas Nome, Telefone, Apelido) ou escrever \"Nome 11 91234-5678\". Telefone que já está cadastrado nesta barbearia é pulado." }),
+      el("div", { class: "campo" }, el("label", { for: "c-listaClientes", text: "Lista de clientes" }), caixa),
+      previa, lgpd, enviar, resultado));
+}
+
 async function telaUsoApp(id) {
   const u = await api(`/plataforma/barbearias/uso?id=${encodeURIComponent(id)}&dias=${estadoUso.dias}`);
   const chips = el("div", { class: "chips-filtro chips-quebra", role: "group", "aria-label": "Período" },
@@ -6381,6 +6449,7 @@ function fecharMenu() {
 const ROTAS = {
   plataforma: { perfis: ["plataforma"], tela: telaPlataforma },
   uso: { perfis: ["plataforma"], tela: telaUsoApp },
+  "clientes-lote": { perfis: ["plataforma"], tela: telaClientesLoteSuporte },
   inicio: { perfis: ["proprietario", "gerente", "barbeiro"], tela: () => (gestao() ? telaPainel() : telaAgenda()) },
   caixa: { perfis: ["caixa", "proprietario", "gerente"], tela: telaCaixa },
   funcionamento: { perfis: ["proprietario", "gerente"], tela: telaFuncionamento },

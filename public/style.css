@@ -1690,3 +1690,9 @@ a.forma-card { color: inherit; text-decoration: none; }
 .amostra-pg-moderno span:first-child { background: #140f2c; }   .amostra-pg-moderno span:last-child { background: #00d2ff; }
 .ajuda.ok { color: var(--ok); font-weight: 700; }
 .ajuda.erro-texto { color: var(--erro); font-weight: 700; }
+
+/* Clientes em lote pelo suporte */
+.cartao.lote { display: grid; gap: 12px; }
+#c-listaClientes { min-height: 220px; font-family: ui-monospace, monospace; font-size: 0.9rem; }
+.lote-previa p { margin: 0; }
+.lista-previa { margin: 6px 0 0; padding-left: 22px; display: grid; gap: 2px; font-size: 0.9rem; }
