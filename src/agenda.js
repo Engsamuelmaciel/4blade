@@ -262,7 +262,8 @@ export async function marcar(ctx) {
   const fim = ini + servs.reduce((t, x) => t + x.duracao_min, 0);
   if (fim > 24 * 60) erro("O horário passa da meia-noite.");
 
-  // Horário fixo: repete a cada N semanas até a data final (no máximo 6 meses).
+  // Horário fixo: repete a cada N semanas até a data final. Desde 25/11/2026 (pedido do responsável) até 2 anos
+  // (antes: 6 meses); quem marcou encerra a repetição quando quiser (Cancelar → "também os próximos").
   let datas = [data];
   let rep = null;
   if (input.repetir) {
@@ -270,7 +271,7 @@ export async function marcar(ctx) {
     if (!Number.isInteger(rep.intervaloSemanas) || rep.intervaloSemanas < 1 || rep.intervaloSemanas > 4) erro("Repetição inválida: a cada 1, 2, 3 ou 4 semanas.");
     const ate = exigirData(rep.ate, "Data final da repetição");
     if (ate <= data) erro("A data final da repetição precisa ser depois do primeiro horário.");
-    if (ate > somarDias(data, 183)) erro("Repetição de no máximo 6 meses. Depois é só renovar.");
+    if (ate > somarDias(data, 731)) erro("Repetição de no máximo 2 anos. Depois é só renovar.");
     datas = [];
     for (let d = data; d <= ate; d = somarDias(d, 7 * rep.intervaloSemanas)) datas.push(d);
   }

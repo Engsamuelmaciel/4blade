@@ -46,11 +46,15 @@ describe("horários fixos (recorrência)", () => {
     assert.ok(ag.every(a => a.serie && a.serie.intervaloSemanas));
   });
 
-  test("validações: no máximo 6 meses, intervalo de 1 a 4 semanas, barbeiro só na própria agenda", async () => {
+  test("validações: no máximo 2 anos, intervalo de 1 a 4 semanas, barbeiro só na própria agenda", async () => {
     const { post, barb, ger, corte, cliente } = await cenario();
     const base = { data: AMANHA, hora: "10:00", servicoIds: [corte.id], cliente };
     assert.equal((await post("/api/agenda", barb.token, { ...base, repetir: { intervaloSemanas: 5, ate: somarDias(AMANHA, 30) } })).status, 400);
-    assert.match((await post("/api/agenda", barb.token, { ...base, repetir: { intervaloSemanas: 1, ate: somarDias(AMANHA, 200) } })).dados.erro, /6 meses/);
+    assert.match((await post("/api/agenda", barb.token, { ...base, repetir: { intervaloSemanas: 1, ate: somarDias(AMANHA, 740) } })).dados.erro, /2 anos/);
+    // Barbeiro marca o fixo por mais de 6 meses (até o fim do ano que vem, por exemplo) normalmente (25/11/2026)
+    const longo = await post("/api/agenda", barb.token, { ...base, hora: "10:30", repetir: { intervaloSemanas: 1, ate: somarDias(AMANHA, 400) } });
+    assert.equal(longo.status, 201, JSON.stringify(longo.dados));
+    assert.ok(longo.dados.serie.criados >= 50, `criados: ${longo.dados.serie.criados}`);
     assert.equal((await post("/api/agenda", barb.token, { ...base, repetir: { intervaloSemanas: 1, ate: AMANHA } })).status, 400);
     assert.equal((await post("/api/agenda", barb.token, { ...base, barbeiroId: ger.id, repetir: { intervaloSemanas: 1, ate: somarDias(AMANHA, 14) } })).status, 403);
   });
