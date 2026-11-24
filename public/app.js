@@ -6131,7 +6131,7 @@ function janelaTrocarMinhaSenha() {
 }
 
 // Aparência (paleta de cores + claro/escuro/sistema): muda na hora e fica guardada neste aparelho (public/tema.js).
-const NOME_PALETA = { navalha: ["Navalha", "grafite e dourado"], oceano: ["Oceano", "azul"], ganache: ["Ganache", "creme, marrom e verde"], berinjela: ["Berinjela", "algodão, roxo e papaia"], violeta: ["Violeta", "ébano, estuque e violeta"], indigo: ["Índigo", "índigo, pêssego e ciano"], cereja: ["Cereja", "gelo, ardósia e cereja"] };
+const NOME_PALETA = { navalha: ["Navalha", "grafite e dourado"], ganache: ["Ganache", "creme, marrom e verde"], berinjela: ["Berinjela", "algodão, roxo e papaia"], violeta: ["Violeta", "ébano, estuque e violeta"], indigo: ["Índigo", "índigo, pêssego e ciano"], cereja: ["Cereja", "gelo, ardósia e cereja"] };
 const NOME_MODO = { claro: "Claro", escuro: "Escuro", sistema: "Do celular" };
 function blocoAparencia() {
   const t = window.temaApp;

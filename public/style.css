@@ -30,7 +30,6 @@
 }
 
 /* ---------- Aparência: 4 paletas (cor principal + destaque) e tema claro/escuro (public/tema.js) ---------- */
-:root[data-paleta="oceano"]    { --primaria: #16263d; --primaria-hover: #23395a; --dourado: #38a3e8; --foco: #38a3e8; --destaque: #0b6aa8; }
 /* 24/11/2026: paletas 60/30/10 — fundo claro quente (60%), cor escura (30%) e destaque (10%) */
 :root[data-paleta="ganache"]   { --primaria: #4a2c21; --primaria-hover: #5e3a2d; --dourado: #1fd15a; --foco: #1fd15a; --destaque: #0e7a34;
   --fundo: #efe7da; --cartao: #fbf8f2; --borda: #e3d8c6; --neutro: #e8dfd0; --neutro-2: #f3ece1; --alterna-fundo: #e6dccb; --campo: #fffdf9; --campo-borda: #d6c8b2; }
@@ -61,7 +60,6 @@
   --cal-cheio: #2e1414; --cal-cheio-borda: #6b2424;
   --sombra: 0 1px 2px rgba(0, 0, 0, .4), 0 1px 3px rgba(0, 0, 0, .35);
 }
-:root[data-tema="escuro"][data-paleta="oceano"]    { --primaria: #0b1524; --primaria-hover: #15243a; }
 :root[data-tema="escuro"][data-paleta="ganache"]   { --primaria: #1e130f; --primaria-hover: #2e1f19; --fundo: #16110e; --cartao: #211a16; --borda: #3a2e27; --neutro: #2e2520; --neutro-2: #261e1a; --alterna-fundo: #261e1a; --campo: #1a1411; --campo-borda: #4a3c33; }
 :root[data-tema="escuro"][data-paleta="berinjela"] { --primaria: #1a0f1f; --primaria-hover: #2a1a31; --fundo: #141017; --cartao: #1f1923; --borda: #372e3d; --neutro: #2c2432; --neutro-2: #241d29; --alterna-fundo: #241d29; --campo: #17121a; --campo-borda: #463b4d; }
 :root[data-tema="escuro"][data-paleta="violeta"] { --primaria: #0f0d0c; --primaria-hover: #1f1b19; --fundo: #141211; --cartao: #1e1b19; --borda: #34302c; --neutro: #2b2724; --neutro-2: #231f1d; --alterna-fundo: #231f1d; --campo: #171513; --campo-borda: #45403a; --botao-principal-texto: #ffffff; --destaque: #9b7bff; }
@@ -627,7 +625,6 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
 .paleta-opcao strong { font-size: 14px; }
 .paleta-opcao small { color: var(--suave); font-size: 12px; }
 .amostra-navalha span:first-child { background: #24272c; }   .amostra-navalha span:last-child { background: #e0a330; }
-.amostra-oceano span:first-child { background: #16263d; }    .amostra-oceano span:last-child { background: #38a3e8; }
 .amostra-ganache span:first-child { background: #4a2c21; }   .amostra-ganache span:last-child { background: #1fd15a; }
 .amostra-berinjela span:first-child { background: #3d2147; } .amostra-berinjela span:last-child { background: #ff6420; }
 .amostra-violeta span:first-child { background: #1b1716; }   .amostra-violeta span:last-child { background: #6f3cff; }

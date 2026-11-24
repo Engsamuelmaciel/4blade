@@ -514,20 +514,20 @@ async function rodar(tela) {
     await print("minha-conta", false);
     await page.click("dialog[open] button:has-text('Fechar')");
 
-    passo("gerente muda a aparência: tema escuro e paleta Oceano (fica guardado no aparelho)");
+    passo("gerente muda a aparência: tema escuro e paleta Navalha (fica guardado no aparelho)");
     await page.click("#btn-conta");
     await page.click('dialog[open] [data-modo="escuro"]');
-    await page.click('dialog[open] [data-paleta-opcao="oceano"]');
-    assert.deepEqual(await page.evaluate(() => [document.documentElement.dataset.tema, document.documentElement.dataset.paleta]), ["escuro", "oceano"]);
+    await page.click('dialog[open] [data-paleta-opcao="navalha"]');
+    assert.deepEqual(await page.evaluate(() => [document.documentElement.dataset.tema, document.documentElement.dataset.paleta]), ["escuro", "navalha"]);
     await print("aparencia-escolha", false);
     await page.click("dialog[open] button:has-text('Fechar')");
     await page.reload();
     await page.waitForSelector("[data-cartao=bruto]");
     await page.waitForSelector("#carregador", { state: "hidden" });
-    assert.deepEqual(await page.evaluate(() => [document.documentElement.dataset.tema, document.documentElement.dataset.paleta]), ["escuro", "oceano"], "continua após recarregar");
+    assert.deepEqual(await page.evaluate(() => [document.documentElement.dataset.tema, document.documentElement.dataset.paleta]), ["escuro", "navalha"], "continua após recarregar");
     const fundo = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     assert.equal(fundo, "rgb(18, 20, 23)", "fundo escuro aplicado");
-    await print("painel-escuro-oceano");
+    await print("painel-escuro-navalha");
     for (const [modo, paleta] of [["claro", "violeta"], ["claro", "cereja"]]) {
       await page.click("#btn-conta");
       await page.click(`dialog[open] [data-modo="${modo}"]`);

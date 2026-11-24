@@ -186,7 +186,7 @@ window.AJUDA = {
       dica: "Conte em qual tela estava e o que apareceu. Um print ajuda: mande pelo WhatsApp do suporte com o número do chamado." },
     { id: "aparencia", titulo: "Mudar as cores do sistema (tema)", perfis: ["proprietario", "gerente", "barbeiro", "caixa"], rotas: [],
       onde: "Botão \"Minha conta\" (no alto, à direita) → Aparência.",
-      passos: ["Escolha Claro, Escuro ou \"Do celular\" (segue o celular).", "Escolha a paleta: Navalha, Oceano, Esmeralda ou Bordô.", "Muda na hora e fica guardado neste aparelho."],
+      passos: ["Escolha Claro, Escuro ou \"Do celular\" (segue o celular).", "Escolha a paleta: Navalha, Ganache, Berinjela, Violeta, Índigo ou Cereja.", "Muda na hora e fica guardado neste aparelho."],
       exemplo: "Escuro + Navalha (grafite e dourado) para usar à noite.",
       dica: "Em \"Minha conta\" também fica o botão \"Sair do sistema\"." }
   ]
