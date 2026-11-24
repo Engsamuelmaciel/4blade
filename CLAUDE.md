@@ -234,6 +234,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - **Publicado em 25/11/2026 (autorizado, sem migração): versão 81c6e3ca** (forblade.com.br: sw `4blade-v54`, index com `user-scalable=no`, app.js com `recolhivel-prof`).
 
 - 25/11/2026: **Correção: agenda em grade travando a rolagem no celular.** Causa: a linha de "agora" usava linha de grade fracionária (ex.: 17:29 → linha 209,8), o CSS ignorava e jogava a linha para o fim da grade, criando 4 px de altura a mais → `.grade-rolagem` virava rolagem vertical própria e prendia o dedo (barra cinza cheia). Correções: `linha()` com `Math.floor` em `gradeAgenda` e `gradeSemana`; linha de agora só com `m < fim`; `.grade-rolagem { overflow-y: hidden; overscroll-behavior-x: contain }`; tirado o `touchmove` não passivo da trava de zoom (deixava a rolagem pesada no Android). Teste: `test/navegador-agenda.mjs` com relógio às 17:29 (antes: linha fora de 17–18 h e sobra de 4 px; depois: dentro e 0 px). Cache do sw `4blade-v55`. Sem migração.
+  - **Publicado em 25/11/2026 (autorizado, sem migração): versão daef3b3d** (forblade.com.br: sw `4blade-v55`, app.js com `Math.floor` na linha da grade, style.css com `overflow-y: hidden` na `.grade-rolagem`).
 
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
