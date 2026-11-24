@@ -213,6 +213,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - **Publicado em 24/11/2026 (autorizado, sem migração): versão fd74cd23** (forblade.com.br: sw `4blade-v48`, `/api/plataforma/barbearias/clientes-lote` 401 sem login).
 
 - 25/11/2026: **Horários em lote pelo suporte** (implantação: passar a agenda que a barbearia já tem). Sem migração. API em plataforma.js: `GET /plataforma/barbearias/agenda-lote?id=` (profissionais, serviços, `temFuncionamento`) e `POST /plataforma/barbearias/agenda-lote` (`barbeariaId` + corpo do `POST /agenda`; chama `marcar` exportado de agenda.js com o suporte "como recepção" daquela barbearia: mesmas regras, auditoria em nome do suporte). Tela: botão `[data-teste=horarios-lote-suporte]` → rota `horarios-lote/<id>` = `telaAgendaLote(suporteId)` (rascunho por barbearia; sem hora = cadastro via clientes-lote; aviso `[data-teste=sem-funcionamento]`). Obs.: linha em conflito ainda cadastra o cliente novo (mesmo comportamento do Novo horário). Testes: `test/agenda-lote-suporte.test.js` + `test/navegador-equipe.mjs` (print `*-suporte-horarios-lote`). `npm test` (178). Cache do sw `4blade-v49`.
+  - **Publicado em 25/11/2026 (autorizado, sem migração): versão bf134601** (forblade.com.br: sw `4blade-v49`, `/api/plataforma/barbearias/agenda-lote` 401 sem login).
 
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
