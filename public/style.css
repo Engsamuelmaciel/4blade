@@ -31,13 +31,17 @@
 
 /* ---------- Aparência: 4 paletas (cor principal + destaque) e tema claro/escuro (public/tema.js) ---------- */
 :root[data-paleta="oceano"]    { --primaria: #16263d; --primaria-hover: #23395a; --dourado: #38a3e8; --foco: #38a3e8; --destaque: #0b6aa8; }
-:root[data-paleta="esmeralda"] { --primaria: #17302a; --primaria-hover: #24463d; --dourado: #34c38f; --foco: #34c38f; --destaque: #0f7a55; }
-:root[data-paleta="bordo"]     { --primaria: #3a1d26; --primaria-hover: #542b38; --dourado: #e8806b; --foco: #e8806b; --destaque: #b0442f; }
 /* 24/11/2026: paletas 60/30/10 — fundo claro quente (60%), cor escura (30%) e destaque (10%) */
 :root[data-paleta="ganache"]   { --primaria: #4a2c21; --primaria-hover: #5e3a2d; --dourado: #1fd15a; --foco: #1fd15a; --destaque: #0e7a34;
   --fundo: #efe7da; --cartao: #fbf8f2; --borda: #e3d8c6; --neutro: #e8dfd0; --neutro-2: #f3ece1; --alterna-fundo: #e6dccb; --campo: #fffdf9; --campo-borda: #d6c8b2; }
 :root[data-paleta="berinjela"] { --primaria: #3d2147; --primaria-hover: #52305e; --dourado: #ff6420; --foco: #ff6420; --destaque: #c2410c;
   --fundo: #efebe3; --cartao: #fbfaf6; --borda: #e2dcd0; --neutro: #e8e2d6; --neutro-2: #f4f0e8; --alterna-fundo: #e6e0d3; --campo: #fffefb; --campo-borda: #d5cdbf; }
+:root[data-paleta="violeta"]   { --primaria: #1b1716; --primaria-hover: #2d2725; --dourado: #6f3cff; --foco: #6f3cff; --destaque: #5a2be0; --sobre-dourado: #ffffff;
+  --fundo: #ece6dc; --cartao: #faf8f4; --borda: #ddd5c8; --neutro: #e4ddd1; --neutro-2: #f2eee7; --alterna-fundo: #e2dbcf; --campo: #fffefb; --campo-borda: #d0c7b8; }
+:root[data-paleta="indigo"]    { --primaria: #231a4f; --primaria-hover: #33276b; --dourado: #00d2ff; --foco: #00d2ff; --destaque: #00708f;
+  --fundo: #f7e7dc; --cartao: #fffaf6; --borda: #ecd6c7; --neutro: #f1ddd0; --neutro-2: #fbf0e8; --alterna-fundo: #efd9cb; --campo: #fffdfb; --campo-borda: #e0c6b4; }
+:root[data-paleta="cereja"]    { --primaria: #2f3748; --primaria-hover: #3f4a60; --dourado: #f0284a; --foco: #f0284a; --destaque: #c8102e; --sobre-dourado: #ffffff;
+  --fundo: #e6e8ec; --cartao: #f8f9fb; --borda: #d6dae0; --neutro: #dde0e6; --neutro-2: #eef0f3; --alterna-fundo: #dadde3; --campo: #ffffff; --campo-borda: #c6cbd3; }
 :root[data-tema="escuro"] {
   color-scheme: dark;
   --fundo: #121417; --cartao: #1c1f24; --texto: #e8eaed; --suave: #a3a9b1; --borda: #2c3138;
@@ -58,10 +62,11 @@
   --sombra: 0 1px 2px rgba(0, 0, 0, .4), 0 1px 3px rgba(0, 0, 0, .35);
 }
 :root[data-tema="escuro"][data-paleta="oceano"]    { --primaria: #0b1524; --primaria-hover: #15243a; }
-:root[data-tema="escuro"][data-paleta="esmeralda"] { --primaria: #0b1a15; --primaria-hover: #142a22; }
-:root[data-tema="escuro"][data-paleta="bordo"]     { --primaria: #1c0e13; --primaria-hover: #2c1820; }
 :root[data-tema="escuro"][data-paleta="ganache"]   { --primaria: #1e130f; --primaria-hover: #2e1f19; --fundo: #16110e; --cartao: #211a16; --borda: #3a2e27; --neutro: #2e2520; --neutro-2: #261e1a; --alterna-fundo: #261e1a; --campo: #1a1411; --campo-borda: #4a3c33; }
 :root[data-tema="escuro"][data-paleta="berinjela"] { --primaria: #1a0f1f; --primaria-hover: #2a1a31; --fundo: #141017; --cartao: #1f1923; --borda: #372e3d; --neutro: #2c2432; --neutro-2: #241d29; --alterna-fundo: #241d29; --campo: #17121a; --campo-borda: #463b4d; }
+:root[data-tema="escuro"][data-paleta="violeta"] { --primaria: #0f0d0c; --primaria-hover: #1f1b19; --fundo: #141211; --cartao: #1e1b19; --borda: #34302c; --neutro: #2b2724; --neutro-2: #231f1d; --alterna-fundo: #231f1d; --campo: #171513; --campo-borda: #45403a; --botao-principal-texto: #ffffff; --destaque: #9b7bff; }
+:root[data-tema="escuro"][data-paleta="indigo"]  { --primaria: #120d2b; --primaria-hover: #1f1845; --fundo: #151030; --cartao: #1e183f; --borda: #322a5c; --neutro: #2a2350; --neutro-2: #221c45; --alterna-fundo: #221c45; --campo: #18123a; --campo-borda: #43397a; }
+:root[data-tema="escuro"][data-paleta="cereja"]  { --primaria: #171b24; --primaria-hover: #242a38; --fundo: #1a1e27; --cartao: #232835; --borda: #353c4c; --neutro: #2d3342; --neutro-2: #262b38; --alterna-fundo: #262b38; --campo: #1c212b; --campo-borda: #46506a; --botao-principal-texto: #ffffff; --destaque: #ff5c77; }
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -623,10 +628,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--d
 .paleta-opcao small { color: var(--suave); font-size: 12px; }
 .amostra-navalha span:first-child { background: #24272c; }   .amostra-navalha span:last-child { background: #e0a330; }
 .amostra-oceano span:first-child { background: #16263d; }    .amostra-oceano span:last-child { background: #38a3e8; }
-.amostra-esmeralda span:first-child { background: #17302a; } .amostra-esmeralda span:last-child { background: #34c38f; }
-.amostra-bordo span:first-child { background: #3a1d26; }     .amostra-bordo span:last-child { background: #e8806b; }
 .amostra-ganache span:first-child { background: #4a2c21; }   .amostra-ganache span:last-child { background: #1fd15a; }
 .amostra-berinjela span:first-child { background: #3d2147; } .amostra-berinjela span:last-child { background: #ff6420; }
+.amostra-violeta span:first-child { background: #1b1716; }   .amostra-violeta span:last-child { background: #6f3cff; }
+.amostra-indigo span:first-child { background: #231a4f; }    .amostra-indigo span:last-child { background: #00d2ff; }
+.amostra-cereja span:first-child { background: #2f3748; }    .amostra-cereja span:last-child { background: #f0284a; }
 
 /* ---------- enviar mensagem (WhatsApp para clientes do dia) ---------- */
 .titulo-secao { margin: 18px 0 4px; }

@@ -196,6 +196,8 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 
 - 24/11/2026: **Paletas Ganache e Berinjela** (60/30/10, pedido do responsável): `PALETAS` em `public/tema.js` + `:root[data-paleta=ganache|berinjela]` no CSS (também trocam fundo/cartão/bordas para tons quentes; versões escuras próprias), `NOME_PALETA` em app.js, amostras `.amostra-ganache|berinjela`. Prints `docs/prints/paletas/`. Cache do sw `4blade-v44`. Sem migração. **Publicado em 24/11/2026 (autorizado): versão 7ce24fcf** (forblade.com.br: sw `4blade-v44`).
 
+- 24/11/2026: **Paletas Violeta, Índigo e Cereja; saem Esmeralda e Bordô** (pedido do responsável): `PALETAS` = navalha, oceano, ganache, berinjela, violeta, indigo, cereja (quem tinha esmeralda/bordô volta para Navalha sozinho, porque `ler()` só aceita as da lista). Violeta e Cereja usam `--sobre-dourado: #fff` (texto branco sobre o destaque) e, no escuro, `--botao-principal-texto: #fff`. Prints `docs/prints/paletas/novas-tres-paletas.png`. Cache do sw `4blade-v45`. Sem migração.
+
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.

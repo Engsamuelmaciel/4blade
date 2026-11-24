@@ -528,7 +528,7 @@ async function rodar(tela) {
     const fundo = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     assert.equal(fundo, "rgb(18, 20, 23)", "fundo escuro aplicado");
     await print("painel-escuro-oceano");
-    for (const [modo, paleta] of [["claro", "esmeralda"], ["claro", "bordo"]]) {
+    for (const [modo, paleta] of [["claro", "violeta"], ["claro", "cereja"]]) {
       await page.click("#btn-conta");
       await page.click(`dialog[open] [data-modo="${modo}"]`);
       await page.click(`dialog[open] [data-paleta-opcao="${paleta}"]`);
