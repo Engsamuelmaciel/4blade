@@ -9,7 +9,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir, abrirHorarios, acao } from "./navegacao.mjs";
+import { ir, abrirHorarios, acao, lancamentos } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -251,7 +251,7 @@ async function rodar(tela) {
     await ir(page, "Caixa");
     await page.evaluate(() => document.querySelectorAll('.pagos-hoje').forEach(d => { d.open = true; }));
     await page.waitForSelector('[data-cobrar="Diego Cliente Fictício"] >> text=Pago');   // aba Cobrar: já pago
-    await page.click(".pdv-barra .alterna button:has-text('Lançamentos')");
+    await lancamentos(page);
     await page.waitForSelector('[data-lancamento="Diego Cliente Fictício"]');
     const textoCaixa = await page.locator("main").innerText();
     assert.match(await page.textContent("[data-teste=entradas]"), /R\$\s?65,00/);

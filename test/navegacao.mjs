@@ -112,3 +112,13 @@ export async function abrirLivres(page) {
   await d.waitFor();
   if (!(await d.evaluate(e => e.open))) await d.locator("summary").click();
 }
+
+// Frente de caixa (25/11/2026): vitrine (fila | servicos | produtos), forma de pagamento por botões e lançamentos do dia.
+export const vitrine = (page, qual) => page.click(`.fc-aba[data-vitrine=${qual}]`);
+export const forma = (page, f) => page.click(`[data-forma-btn=${f}]`);
+export async function lancamentos(page) {
+  if (!(await page.locator("[data-lancamento]").count())) await page.click("[data-teste=ver-lancamentos]");
+}
+export async function voltarVenda(page) {
+  if (/Voltar/.test(await page.locator("[data-teste=ver-lancamentos]").innerText())) await page.click("[data-teste=ver-lancamentos]");
+}

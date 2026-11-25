@@ -9,7 +9,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir, abrirHorarios, abrirItem, abrirCadastro, acao, abrirLivres } from "./navegacao.mjs";
+import { ir, abrirHorarios, abrirItem, abrirCadastro, acao, abrirLivres, vitrine, forma, lancamentos, voltarVenda } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -295,54 +295,61 @@ async function rodar(tela) {
     assert.equal(await page.locator('[data-cobrar="Ontem Fila Fictício"]').count(), 0, "a fila do caixa mostra só o dia de hoje");
     const entradas0 = await page.textContent("[data-teste=entradas]");
     await print("caixa-pdv-fila");
-    // 19/11/2026: o cartão inteiro da fila é o botão de cobrar (sem passo extra de "Concluir atendimento")
+    // frente de caixa (25/11/2026): tocar no atendimento da fila coloca ele na comanda
     await page.click('button[data-cobrar="Gil Fila Fictício"]');
-    await page.waitForSelector("dialog[open] >> text=Concluir atendimento de Gil Fila Fictício");
-    await page.waitForSelector("dialog[open] [data-teste=total]:has-text('40,00')");
+    await page.waitForSelector("[data-teste=comanda-atendimento]");
+    await page.waitForSelector("[data-teste=total-venda]:has-text('40,00')");
     // 17/11/2026: o cliente leva uma pomada junto — entra no mesmo pagamento (sem abrir outra venda)
-    await page.click("dialog[open] [data-teste=adicionar-produto]");
-    await page.click('dialog[open] [data-produto-opcao="Pomada"]');
-    await page.waitForSelector('dialog[open] [data-produto-final="Pomada"]');
-    await page.waitForSelector("dialog[open] [data-teste=total]:has-text('85,00')");
-    await page.selectOption("dialog[open] #c-forma1", "dinheiro");
+    await vitrine(page, "produtos");
+    await page.click('[data-produto-pdv="Pomada"]');
+    await page.waitForSelector('[data-produto-final="Pomada"]');
+    await page.waitForSelector("[data-teste=total-venda]:has-text('85,00')");
+    await forma(page, "dinheiro");
     // troco: cliente entrega 100,00 para pagar 85,00
-    await page.locator("dialog[open] [data-teste=recebido-dinheiro]").fill("100,00");
-    await page.locator("dialog[open] [data-teste=recebido-dinheiro]").dispatchEvent("input");
-    assert.match(await page.textContent("dialog[open] [data-teste=troco]"), /Troco: R\$\s?15,00/);
-    await page.locator('dialog[open] [data-produto-final="Pomada"]').scrollIntoViewIfNeeded();
-    await print("cobrar-com-produto-e-troco", false);
-    await ok();
+    await page.locator("[data-teste=carrinho] [data-teste=recebido-dinheiro]").fill("100,00");
+    await page.locator("[data-teste=carrinho] [data-teste=recebido-dinheiro]").dispatchEvent("input");
+    assert.match(await page.textContent("[data-teste=carrinho] [data-teste=troco]"), /Troco: R\$\s?15,00/);
+    await print("cobrar-com-produto-e-troco");
+    await page.click("[data-teste=carrinho] button:has-text('Finalizar venda')");
     await page.waitForSelector("text=Atendimento e produtos cobrados");
+    await vitrine(page, "fila");
     await page.evaluate(() => document.querySelectorAll('.pagos-hoje').forEach(d => { d.open = true; }));
     await page.waitForSelector('[data-cobrar="Gil Fila Fictício"] >> text=Pago');
     assert.notEqual(await page.textContent("[data-teste=entradas]"), entradas0);
 
+    // atendimento sem horário: serviço na vitrine + cliente novo pelo botão "Cliente"
     await page.click("button:has-text('+ Atendimento sem horário')");
-    await page.waitForSelector("dialog[open] >> text=Quem atendeu");
-    await page.check("dialog[open] input[name=aserv] >> nth=0");
+    await page.click('[data-servico-pdv="Corte"]');
+    await page.click("[data-teste=fc-cliente]");
+    await page.waitForSelector("dialog[open] >> text=Cliente da comanda");
     await page.locator("dialog[open] #c-aTel").pressSequentially("11955554444");
     await page.fill("dialog[open] #c-aNome", "Hugo Avulso Fictício");
     await page.check("dialog[open] #c-aLgpd");
-    await print("caixa-atendimento-sem-horario", false);
     await ok();
+    await page.waitForSelector("[data-teste=fc-cliente]:has-text('Hugo Avulso Fictício')");
+    await print("caixa-atendimento-sem-horario");
+    await page.click("[data-teste=carrinho] button:has-text('Finalizar venda')");
+    await page.waitForSelector("text=Atendimento lançado");
+    await vitrine(page, "fila");
     await page.evaluate(() => document.querySelectorAll('.pagos-hoje').forEach(d => { d.open = true; }));
     await page.waitForSelector('[data-cobrar="Hugo Avulso Fictício"] >> text=Pago');
     await print("caixa-pdv-pagos");
 
     passo("caixa cobra atendimento sem telefone e sem nome");
     await page.click("button:has-text('+ Atendimento sem horário')");
-    await page.waitForSelector("dialog[open] >> text=Quem atendeu");
-    await page.check("dialog[open] input[name=aserv] >> nth=0");
-    assert.equal(await page.locator("dialog[open] #c-aLgpd").isVisible(), false, "aceite LGPD só aparece com telefone");
-    await ok();
+    await page.click('[data-servico-pdv="Corte"]');
+    assert.match(await page.textContent("[data-teste=fc-cliente]"), /Cliente não identificado/);
+    await page.click("[data-teste=carrinho] button:has-text('Finalizar venda')");
+    await page.waitForSelector("text=Atendimento lançado");
+    await vitrine(page, "fila");
     await page.evaluate(() => document.querySelectorAll('.pagos-hoje').forEach(d => { d.open = true; }));
     await page.waitForSelector('[data-cobrar="Cliente não identificado"] >> text=Pago');
 
-    await page.click(".pdv-barra .alterna button:has-text('Vender')");
+    await vitrine(page, "produtos");
     await page.click('[data-produto-pdv="Pomada"]');
     await page.click('[data-produto-pdv="Pomada"]');
     await page.waitForSelector("[data-teste=total-venda]:has-text('90,00')");
-    assert.equal(await page.locator("[data-teste=desconto-venda]").isVisible(), false, "sem desconto, não aparece a linha");
+    assert.match(await page.textContent("[data-teste=desconto-venda]"), /0,00/, "sem desconto, o quadro mostra R$ 0,00");
     // desconto de 10%: o sistema calcula o valor e o total
     await page.locator("#c-desconto").pressSequentially("10");
     await page.waitForSelector("[data-teste=total-venda]:has-text('81,00')");
@@ -351,29 +358,35 @@ async function rodar(tela) {
     await print("caixa-pdv-carrinho");
     await page.click("[data-teste=carrinho] button[type=submit]");
     await page.waitForSelector("text=Venda registrada");
-    await page.click(".pdv-barra .alterna button:has-text('Lançamentos')");
+    await lancamentos(page);
     await page.waitForSelector('[data-lancamento="Hugo Avulso Fictício"]');
     assert.match(await page.textContent("[data-teste=desconto-lancamento]"), /Desconto de 10%/);
     await print("caixa-lancamentos");
 
     passo("caixa lança atendimento na promissória para cliente da base e depois dá baixa na nota");
-    await page.click(".pdv-barra .alterna button:has-text('Cobrar')");
+    await voltarVenda(page);
+    await vitrine(page, "fila");
     await page.click("button:has-text('+ Atendimento sem horário')");
-    await page.check("dialog[open] input[name=aserv] >> nth=0");
+    await page.click('[data-servico-pdv="Corte"]');
     // cliente avulso (digitado na hora) não pode ficar na promissória: aviso na tela e recusa
+    await page.click("[data-teste=fc-cliente]");
     await page.fill("dialog[open] input[name=aNome]", "Avulso Nota Fictício");
-    await page.selectOption("dialog[open] #c-forma1", "promissoria");
-    await page.waitForSelector("dialog[open] [data-teste=aviso-nota]:visible");
-    assert.match(await page.textContent("dialog[open] [data-teste=aviso-nota]"), /precisa estar cadastrado na base de clientes/);
     await ok();
-    await page.waitForSelector("dialog[open] >> text=/cliente precisa estar cadastrado na base de clientes/");
-    await print("promissoria-avulso-recusada", false);
-    await page.selectOption("dialog[open] #c-forma1", "dinheiro");
-    assert.equal(await page.locator("dialog[open] [data-teste=aviso-nota]").isVisible(), false);
-    await page.fill("#av-cli-busca", "Fábio");
+    await forma(page, "promissoria");
+    await page.waitForSelector("[data-teste=carrinho] [data-teste=aviso-nota]:visible");
+    assert.match(await page.textContent("[data-teste=carrinho] [data-teste=aviso-nota]"), /precisa estar cadastrado na base de clientes/);
+    await page.click("[data-teste=carrinho] button:has-text('Finalizar venda')");
+    await page.waitForSelector("text=/cliente precisa estar cadastrado na base de clientes/");
+    await print("promissoria-avulso-recusada");
+    await forma(page, "dinheiro");
+    assert.equal(await page.locator("[data-teste=carrinho] [data-teste=aviso-nota]").isVisible(), false);
+    await page.click("[data-teste=fc-cliente]");
+    await page.fill("#fc-cli-busca", "Fábio");
     await page.click('dialog[open] [data-cliente-opcao="Fábio Fixo Fictício"]');
-    await page.selectOption("dialog[open] #c-forma1", "promissoria");
     await ok();
+    await forma(page, "promissoria");
+    await page.click("[data-teste=carrinho] button:has-text('Finalizar venda')");
+    await page.waitForSelector("text=Atendimento lançado");
     await page.waitForSelector("[data-teste=notas-lancadas]");
     await page.click("a[data-teste=notas-lancadas]");
     await page.waitForSelector('[data-nota-cliente="Fábio Fixo Fictício"]');

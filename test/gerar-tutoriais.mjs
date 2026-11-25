@@ -159,7 +159,7 @@ try {
 
   await entrar("caixa.demo", DEMO);
   await ir(page, "Caixa"); await foto("cobrar");
-  await page.click(".pdv-barra button:has-text('Vender')");
+  await page.click(".fc-aba[data-vitrine=produtos]");
   await page.waitForSelector("[data-produto-pdv]");
   await page.click('[data-produto-pdv="Pomada modeladora"]');
   await page.fill("#c-desconto", "10");
@@ -167,7 +167,7 @@ try {
   await page.locator("#c-desconto").scrollIntoViewIfNeeded();
   await page.evaluate(() => window.scrollBy(0, 220));
   await foto("vender", { janela: true });
-  await page.click(".pdv-barra button:has-text('Lançamentos')");
+  await page.click("[data-teste=ver-lancamentos]");
   await page.waitForTimeout(300);
   await page.click("button:has-text('Fechar caixa')");
   await page.waitForSelector("dialog[open]");

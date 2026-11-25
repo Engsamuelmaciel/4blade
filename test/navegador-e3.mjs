@@ -9,7 +9,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir, abrirItem, abrirCadastro } from "./navegacao.mjs";
+import { ir, abrirItem, abrirCadastro, vitrine, forma, lancamentos, voltarVenda } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -155,22 +155,22 @@ async function rodar(tela) {
       const m = await chamar("/agenda", { data: HOJE, hora, servicoIds: itens.map(s => s.id), cliente: { telefone: tel, nome, aceiteLgpd: true } }, barbTok);
       await chamar("/agenda/finalizar", { id: m.agendamento.id, itens: itens.map(s => ({ servicoId: s.id, precoCobradoCentavos: s.precoCentavos })), pagamentos: [{ forma, valorCentavos: valor }] }, barbTok);
     }
-    const aba = nome => page.click(`.pdv-barra .alterna button:has-text('${nome}')`);
-    await aba("Lançamentos");
+    await lancamentos(page);
     await page.waitForSelector('[data-lancamento="Elias Cliente Fictício"]');
 
     // PDV: produtos em botões + carrinho
-    await aba("Vender");
+    await voltarVenda(page);
+    await vitrine(page, "produtos");
     await page.waitForSelector('[data-produto-pdv="Pomada modeladora"]');
     assert.equal(await page.locator("[data-produto-pdv='Shampoo anticaspa']").count(), 0, "sem estoque não aparece para vender");
     await page.click('[data-produto-pdv="Pomada modeladora"]');
     await page.click('[data-produto-pdv="Pomada modeladora"]');
     await page.waitForSelector("[data-teste=total-venda]:has-text('90,00')");
-    await page.selectOption("[data-teste=carrinho] #c-forma1", "dinheiro");
+    await forma(page, "dinheiro");
     await print("caixa-venda-de-produto");
     await page.click("[data-teste=carrinho] button:has-text('Finalizar venda')");
     await page.waitForSelector("text=Venda registrada");
-    await aba("Lançamentos");
+    await lancamentos(page);
     await page.waitForSelector('[data-lancamento="2x Pomada modeladora"]');
 
     await page.click("button:has-text('Sangria')");
@@ -234,10 +234,10 @@ async function rodar(tela) {
     // Gerente lança mesmo com o caixa fechado (17/11/2026): vê o aviso e vende.
     await page.waitForSelector("[data-teste=aviso-gerente-caixa]");
     assert.match(await texto("[data-teste=aviso-gerente-caixa]"), /já foi fechado/);
-    await page.click(".pdv-barra .alterna button:has-text('Vender')");
+    await vitrine(page, "produtos");
     await page.waitForSelector('[data-produto-pdv="Pomada modeladora"]');
     await page.click('[data-produto-pdv="Pomada modeladora"]');
-    await page.selectOption("[data-teste=carrinho] #c-forma1", "pix");
+    await forma(page, "pix");
     await page.click("[data-teste=carrinho] button:has-text('Finalizar venda')");
     await page.waitForSelector("text=Venda registrada");
     await print("gerente-vende-com-caixa-fechado");

@@ -3229,7 +3229,6 @@ function blocoFechamento(c) {
 }
 
 // ---------- CAIXA (PDV): cobrar atendimento, vender produto, lançamentos ----------
-const estadoCaixa = { aba: "cobrar", carrinho: new Map() };
 
 async function telaCaixa(dataHistorico = null) {
   clearTimeout(timerCaixa);
@@ -3308,15 +3307,8 @@ async function telaCaixa(dataHistorico = null) {
     return;
   }
 
-  // Caixa de hoje: PDV sempre disponível (aberto, fechado ou ainda não aberto).
-  const aba = estadoCaixa.aba;
-  const trocarAba = nova => { estadoCaixa.aba = nova; recarregar(); };
-  let conteudo;
-  let aCobrarQtd = null;
-  if (aba === "cobrar") { const r = await abaCobrar(recarregar); conteudo = r.el; aCobrarQtd = r.qtd; }
-  else if (aba === "vender") conteudo = await abaVender(recarregar);
-  else conteudo = listaCaixa(c, recarregar);
-
+  // Caixa de hoje: frente de caixa sempre disponível (aberto, fechado ou ainda não aberto).
+  const frente = await frenteCaixa(c, recarregar);
   const sit = c.caixa.situacao;
   const situacao = el("div", { class: `pdv-situacao sit-${sit}`, "data-teste": "situacao-caixa" },
     el("span", { class: "sit-ponto", "aria-hidden": "true" }),
@@ -3328,208 +3320,310 @@ async function telaCaixa(dataHistorico = null) {
     : null;
   mostrar(
     cabecalho("Caixa", dataBR(c.data)),
-    situacao,
     cartaoAbrir,
     aviso,
-    topo,
-    // Ferramentas do caixa numa linha só, logo abaixo do resumo
-    el("section", { class: "pdv-ferramentas", "aria-label": "Ações do caixa" },
-      el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("sangria", recarregar) }, icone("setaBaixo"), el("span", { text: "Sangria" })),
-      el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("suprimento", recarregar) }, icone("setaCima"), el("span", { text: "Suprimento" })),
-      aberto ? el("button", { type: "button", class: "botao ferramenta perigo", onclick: () => janelaFechar(c, recarregar, dataHistorico) }, icone("cadeado"), el("span", { text: "Fechar caixa" })) : null,
-      gestao() ? el("a", { class: "botao ferramenta", href: "#/caixa-historico" }, icone("lista"), el("span", { text: "Outros dias" })) : null),
+    // Situação à esquerda, ferramentas do caixa à direita (uma faixa só, como a barra de uma frente de caixa)
+    el("div", { class: "fc-barra" }, situacao,
+      el("section", { class: "pdv-ferramentas", "aria-label": "Ações do caixa" },
+        el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("sangria", recarregar) }, icone("setaBaixo"), el("span", { text: "Sangria" })),
+        el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("suprimento", recarregar) }, icone("setaCima"), el("span", { text: "Suprimento" })),
+        aberto ? el("button", { type: "button", class: "botao ferramenta perigo", onclick: () => janelaFechar(c, recarregar, dataHistorico) }, icone("cadeado"), el("span", { text: "Fechar caixa" })) : null,
+        gestao() ? el("a", { class: "botao ferramenta", href: "#/caixa-historico" }, icone("lista"), el("span", { text: "Outros dias" })) : null)),
+    el("div", { class: "fc-resumo" }, ...topo),
     c.reaberturas?.length ? el("p", { class: "suave", text: `Reaberto ${c.reaberturas.length}x (último motivo: ${c.reaberturas[0].motivo})` }) : null,
-    // As três tarefas do caixa
-    el("div", { class: "pdv-barra pdv-principal" },
-      el("div", { class: "alterna pdv-abas", role: "tablist", "aria-label": "O que fazer" },
-        [["cobrar", "Cobrar", "atendimento", "recibo"], ["vender", "Vender", "produto", "sacola"], ["lancamentos", "Lançamentos", "do dia", "lista"]].map(([k, txt, sub, ic]) =>
-          el("button", { type: "button", role: "tab", "aria-selected": String(aba === k), class: `botao pdv-aba aba-${k} ${aba === k ? "ativo" : ""}`, onclick: () => trocarAba(k) },
-            icone(ic), el("span", { class: "pdv-aba-txt" }, el("strong", { text: txt }), el("small", { text: sub })),
-            k === "cobrar" && aCobrarQtd ? el("span", { class: "pdv-aba-num", "aria-label": `${aCobrarQtd} aguardando`, text: String(aCobrarQtd) }) : null)))),
-    conteudo);
-  timerCaixa = setTimeout(() => { if (location.hash === "#/caixa" && !janela.open && estadoCaixa.aba !== "vender" && !document.activeElement?.matches?.("input")) telaCaixa().catch(() => {}); }, 30000);
+    frente.el);
+  timerCaixa = setTimeout(() => { if (location.hash === "#/caixa" && !janela.open && frente.vazia() && estadoCaixa.visao === "venda" && !document.activeElement?.matches?.("input, select, textarea")) telaCaixa().catch(() => {}); }, 30000);
 }
 
-// Aba "Cobrar": quem falta pagar primeiro (o cartão inteiro é tocável), busca quando a fila cresce,
-// "Atendimento sem horário" para quem não estava na agenda e os pagos de hoje recolhidos.
-const estadoCobrar = { busca: "" };
-async function abaCobrar(recarregar) {
-  const [{ atendimentos, profissionais }] = await Promise.all([api("/caixa/atendimentos"), carregarServicos()]);
-  // Só o dia de hoje, em ordem de hora (19/11/2026, pedido do responsável).
-  const doDia = atendimentos.filter(a => !a.atrasado).sort((x, y) => x.inicio.localeCompare(y.inicio));
-  const aCobrar = doDia.filter(a => a.situacao === "agendado");
-  const pagos = doDia.filter(a => a.situacao === "finalizado");
-  const tabela = s => s.reduce((t, x) => t + (x.precoCentavos || 0), 0);
-  const cobrar = a => janelaFinalizar(a, { endpoint: "/caixa/cobrar", aoTerminar: recarregar, titulo: `Concluir atendimento de ${a.cliente.nome}` });
-  const quando = a => (a.atrasado ? `${dataBR(a.data).slice(0, 5)} ${a.inicio}` : a.inicio);
-  const ticket = a => {
-    const pago = a.situacao === "finalizado";
-    const t = el(pago ? "div" : "button", { ...(pago ? {} : { type: "button", onclick: () => cobrar(a), "aria-label": `Cobrar ${a.cliente.nome}` }),
-      class: `ticket-at ${pago ? "pago" : "a-cobrar"} ${a.atrasado ? "atrasado" : ""}`, "data-cobrar": a.cliente.nome },
-      el("span", { class: "hora", text: quando(a) }),
-      el("span", { class: "dados" }, el("strong", { text: a.cliente.nome }), el("span", { text: `${a.barbeiro} · ${a.servicos.map(x => x.nome).join(" + ")}${a.atrasado ? " · ficou sem cobrar" : ""}` })),
-      pago ? el("span", { class: "etiqueta verde", text: `Pago ${reais(a.totalCentavos)}` })
-        : [el("span", { class: "valor", text: reais(tabela(a.servicos)) }), el("span", { class: "botao pequeno principal falso-botao", text: "Cobrar" })]);
-    return t;
-  };
-  const fila = el("div", { class: "fila" });
-  const desenhar = () => {
-    const termo = normalizar(estadoCobrar.busca);
-    const vis = aCobrar.filter(a => !termo || normalizar(`${a.cliente.nome} ${a.barbeiro}`).includes(termo));
-    fila.replaceChildren(...(vis.length ? vis.map(ticket) : [el("p", { class: "vazio", text: aCobrar.length ? "Ninguém com esse nome na fila." : "Ninguém aguardando pagamento. Quando o barbeiro terminar, o atendimento aparece aqui." })]));
-  };
-  desenhar();
-  const busca = aCobrar.length > 5 ? el("input", { type: "search", class: "busca-viva", placeholder: "Buscar cliente ou barbeiro", "aria-label": "Buscar na fila", value: estadoCobrar.busca,
-    oninput: e => { estadoCobrar.busca = e.target.value; desenhar(); } }) : null;
-  return {
-    qtd: aCobrar.length,
-    el: el("div", { class: "pdv-cobrar" },
-      el("div", { class: "pdv-cobrar-topo" },
-        el("h3", { text: `Aguardando pagamento (${aCobrar.length})` }),
-        botao("+ Atendimento sem horário", () => janelaAvulso(profissionais, recarregar), "dourado")),
-      busca, fila,
-      pagos.length ? el("details", { class: "pagos-hoje", open: aCobrar.length ? null : true }, el("summary", { class: "titulo-pagos", text: `Pagos hoje (${pagos.length}) · ${reais(pagos.reduce((x, a) => x + (a.totalCentavos || 0), 0))}` }),
-        el("div", { class: "fila" }, pagos.map(ticket))) : null)
-  };
-}
+// ---------- FRENTE DE CAIXA (25/11/2026) ----------
+// Três zonas, como numa frente de caixa de loja: Vitrine (fila, serviços, produtos) · Comanda (busca + itens) · Total e pagamento.
+// Tudo vira uma "comanda": atendimento da fila (cobrar), atendimento sem horário (serviços) ou venda de produto.
+const novaComanda = () => ({ ag: null, barbeiroId: null, cliente: null, servicos: [], produtos: new Map(), descontoTxt: "" });
+const estadoCaixa = { vitrine: "fila", visao: "venda", busca: "", comanda: novaComanda() };
+const reiniciarCaixa = () => Object.assign(estadoCaixa, { vitrine: "fila", visao: "venda", busca: "", comanda: novaComanda() });
 
-// Atendimento sem horário marcado (cliente chegou na hora): registra e já cobra.
-function janelaAvulso(profissionais, recarregar) {
-  const servicos = servicosCache || [];
-  const avulsoCampos = el("div", { class: "cliente-avulso" },
+// Escolher o cliente da comanda: da base (busca) ou um cliente novo/avulso (nome e telefone opcionais).
+function janelaClienteComanda(cm, aoMudar) {
+  const avulso = el("div", { class: "cliente-avulso" },
     el("p", { class: "separador-ou", text: "ou cadastre um cliente novo" }),
-    campo("Telefone do cliente (WhatsApp) — opcional", { name: "aTel", inputmode: "tel", autocomplete: "off" }),
-    campo("Nome do cliente — opcional", { name: "aNome", autocomplete: "off" }, "Sem nome e sem telefone, fica como \"Cliente não identificado\"."),
+    campo("WhatsApp do cliente (opcional)", { name: "aTel", inputmode: "tel", autocomplete: "off" }),
+    campo("Nome do cliente (opcional)", { name: "aNome", autocomplete: "off" }, "Sem nome e sem número, fica como \"Cliente não identificado\"."),
     Object.assign(caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "aLgpd" }), { hidden: true }));
-  const seletor = seletorCliente({ id: "av-cli", aoMudar: c => { avulsoCampos.hidden = Boolean(c); } });
-  const linhas = servicos.map(s => {
-    const chk = el("input", { type: "checkbox", name: "aserv", value: s.id, id: `av-${s.id}` });
-    const valor = el("input", { type: "text", inputmode: "decimal", value: centavosParaTexto(s.precoCentavos), "aria-label": `Valor cobrado de ${s.nome}` });
-    return { s, chk, valor, el: el("div", { class: "linha-servico" }, el("div", { class: "marcar" }, chk, el("label", { for: `av-${s.id}`, text: s.nome })), valor) };
-  });
-  const totalEl = el("p", { class: "total-final", "data-teste": "total" });
-  const total = () => linhas.filter(l => l.chk.checked).reduce((t, l) => t + (paraCentavos(l.valor.value) ?? 0), 0);
-  const pag = blocoPagamento(total);
-  const promessa = abrirJanela("Atendimento sem horário", [
-    campo("Quem atendeu", { tag: "select", name: "prof", opcoes: profissionais.map(p => [p.id, p.nome]) }),
-    el("div", { class: "lista-servicos" }, linhas.map(l => l.el)),
-    totalEl,
-    el("fieldset", { class: "servicos-escolha bloco-cliente" }, el("legend", { text: "Cliente" }), seletor.el, avulsoCampos),
-    ...pag.elementos
-  ], {
-    ok: "Cobrar",
-    aoConfirmar: async f => {
-      const itens = [];
-      for (const l of linhas.filter(x => x.chk.checked)) {
-        const v = paraCentavos(l.valor.value);
-        if (v === null) throw new Error(`Valor de ${l.s.nome} inválido.`);
-        itens.push({ servicoId: l.s.id, precoCobradoCentavos: v });
-      }
-      if (!itens.length) throw new Error("Marque pelo menos um serviço.");
-      if (pag.temNota() && !seletor.escolhido()) throw new Error("Para lançar promissória, o cliente precisa estar cadastrado na base de clientes. Busque e escolha o cliente na lista (cliente avulso não pode ficar na nota).");
-      await api("/caixa/atendimento-avulso", {
-        metodo: "POST",
-        corpo: { barbeiroId: f.prof.value, itens, pagamentos: pag.ler(f),
-          cliente: seletor.escolhido() ? { id: seletor.escolhido().id } : { telefone: f.aTel.value, nome: f.aNome.value || undefined, aceiteLgpd: f.aLgpd.checked } }
-      });
-      avisar(`Atendimento lançado: ${reais(total())}.`);
-      recarregar();
+  const seletor = seletorCliente({ id: "fc-cli", preSelecionado: cm.cliente?.id ? cm.cliente : null, aoMudar: c => { avulso.hidden = Boolean(c); } });
+  const promessa = abrirJanela("Cliente da comanda", [seletor.el, avulso], {
+    ok: "Usar este cliente",
+    aoConfirmar: f => {
+      const c = seletor.escolhido();
+      if (c) cm.cliente = { id: c.id, nome: c.nome, telefone: c.telefone || null };
+      else if (f.aNome.value.trim() || f.aTel.value.replace(/\D/g, "")) cm.cliente = { novo: true, nome: f.aNome.value.trim(), telefone: f.aTel.value, aceiteLgpd: f.aLgpd.checked };
+      else cm.cliente = null;
+      aoMudar();
     }
   });
-  const atualizar = () => {
-    totalEl.textContent = `Total: ${reais(total())}`; pag.atualizar();
-    const f = janela.querySelector("form");
-    f.aLgpd.closest(".marcar").hidden = !f.aTel.value.replace(/\D/g, "");   // aceite só se houver telefone
-  };
-  janela.querySelector("form").addEventListener("input", atualizar);
-  janela.querySelector("form").addEventListener("change", atualizar);
-  atualizar();
+  janela.querySelector("form").addEventListener("input", () => { const f = janela.querySelector("form"); f.aLgpd.closest(".marcar").hidden = !f.aTel.value.replace(/\D/g, ""); });
   return promessa;
 }
 
-// Aba "Vender produto": produtos em botões grandes + carrinho com pagamento.
-async function abaVender(recarregar) {
-  const produtos = (await api("/produtos")).produtos.filter(p => !p.usoInterno && (p.disponivel ?? p.ativo));
-  const carrinho = estadoCaixa.carrinho;
-  for (const id of [...carrinho.keys()]) if (!produtos.some(p => p.id === id)) carrinho.delete(id);
+async function frenteCaixa(c, recarregar) {
+  const [fila, prods] = await Promise.all([api("/caixa/atendimentos"), api("/produtos"), carregarServicos()]);
+  const { atendimentos, profissionais } = fila;
+  const produtos = prods.produtos.filter(p => !p.usoInterno && (p.disponivel ?? p.ativo));
+  const servicos = servicosCache || [];
+  const doDia = atendimentos.filter(a => !a.atrasado).sort((x, y) => x.inicio.localeCompare(y.inicio));
+  const aCobrar = doDia.filter(a => a.situacao === "agendado");
+  const pagos = doDia.filter(a => a.situacao === "finalizado");
+  const cm = estadoCaixa.comanda;
+  for (const id of [...cm.produtos.keys()]) if (!produtos.some(p => p.id === id)) cm.produtos.delete(id);
+  if (cm.ag && !aCobrar.some(a => a.id === cm.ag.id)) { cm.ag = null; cm.servicos = []; cm.cliente = null; }   // já foi pago/sumiu da fila
+  const ehBarbeiro = usuario.perfil === "barbeiro";
   const saldoDe = p => p.saldo ?? 999;
-  const bruto = () => produtos.reduce((t, p) => t + (carrinho.get(p.id) || 0) * p.precoCentavos, 0);
-  // Desconto em %: o sistema calcula o valor e o total final (o servidor confere o mesmo cálculo).
-  const descontoInput = el("input", { type: "text", id: "c-desconto", name: "desconto", inputmode: "decimal", "data-numero": "percentual", placeholder: "0", autocomplete: "off" });
-  const descontoBp = () => { const v = paraBp(descontoInput.value || "0"); return v === null || v >= 10000 ? null : v; };
-  const descontoValor = () => Math.round((bruto() * (descontoBp() || 0)) / 10000);
+
+  // ---------- contas da comanda ----------
+  const valorDe = l => paraCentavos(l.valor) ?? 0;
+  const totalServicos = () => cm.servicos.reduce((t, l) => t + valorDe(l) * l.qtd, 0);
+  const brutoProdutos = () => produtos.reduce((t, p) => t + (cm.produtos.get(p.id) || 0) * p.precoCentavos, 0);
+  const soProdutos = () => !cm.servicos.length;
+  const descontoBp = () => { if (!soProdutos()) return 0; const v = paraBp(cm.descontoTxt || "0"); return v === null || v >= 10000 ? null : v; };
+  const descontoValor = () => (soProdutos() ? Math.round((brutoProdutos() * (descontoBp() || 0)) / 10000) : 0);
+  const bruto = () => totalServicos() + brutoProdutos();
   const total = () => bruto() - descontoValor();
-  const linhasEl = el("div", { class: "linhas-carrinho" });
-  const totalEl = el("strong", { "data-teste": "total-venda" });
-  const subtotalEl = el("span", { "data-teste": "subtotal-venda" });
-  const descontoEl = el("span", { class: "valor-desconto", "data-teste": "desconto-venda" });
-  const linhaSubtotal = el("div", { class: "linha-resumo" }, el("span", { text: "Subtotal" }), subtotalEl);
-  const linhaDesconto = el("div", { class: "linha-resumo desconto" }, el("span", { "data-teste": "rotulo-desconto" }), descontoEl);
+  const qtdItens = () => cm.servicos.reduce((n, l) => n + l.qtd, 0) + [...cm.produtos.values()].reduce((n, q) => n + q, 0);
+
+  // ---------- ações sobre a comanda ----------
+  const linhaDe = s => cm.servicos.find(l => l.s.id === s.id);
+  const addServico = (s, qtd = 1) => {
+    const l = linhaDe(s);
+    if (l) l.qtd = Math.min(20, l.qtd + qtd);
+    else cm.servicos.push({ s, qtd, valor: centavosParaTexto(s.precoCentavos) });
+    if (!cm.ag && !cm.barbeiroId) cm.barbeiroId = profissionais[0]?.id || null;
+    desenharComanda();
+  };
+  const addProduto = p => {
+    const q = cm.produtos.get(p.id) || 0;
+    if (q >= saldoDe(p)) { avisar(`Só há ${saldoDe(p)} em estoque.`, "erro"); return; }
+    cm.produtos.set(p.id, q + 1);
+    desenharComanda();
+  };
+  const carregarAtendimento = a => {
+    cm.ag = a; cm.barbeiroId = a.barbeiroId || null;
+    cm.cliente = a.cliente ? { id: a.cliente.id, nome: a.cliente.nome, telefone: a.cliente.telefone || null } : null;
+    cm.servicos = a.servicos.map(sv => { const s = servicos.find(x => x.id === sv.id) || { id: sv.id, nome: sv.nome, precoCentavos: sv.precoCentavos || 0 }; return { s, qtd: 1, valor: centavosParaTexto(s.precoCentavos) }; });
+    estadoCaixa.visao = "venda";
+    desenharComanda(); desenharVitrine();
+    document.getElementById("fc-comanda")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  };
+  const limpar = () => { Object.assign(cm, novaComanda()); desenharComanda(); desenharVitrine(); };
+
+  // ---------- pagamento (reaproveita as regras: dividir em 2 formas, troco, parcelas, nota) ----------
   const pag = blocoPagamento(total);
-  // Promissória: a venda fica na nota do cliente (escolher o cliente é obrigatório).
-  const seletor = seletorCliente({ id: "venda-cli" });
-  const blocoNota = el("fieldset", { class: "servicos-escolha bloco-cliente", "data-teste": "cliente-nota" },
-    el("legend", { text: "Cliente da nota (promissória)" }), seletor.el);
-  blocoNota.hidden = true;
-  const form = el("form", { class: "carrinho", "data-teste": "carrinho" },
-    el("h3", {}, el("span", { text: "Venda" }), botao("Limpar", () => { carrinho.clear(); descontoInput.value = ""; desenhar(); }, "pequeno")),
-    linhasEl,
-    el("div", { class: "campo campo-desconto" }, el("label", { for: "c-desconto", text: "Desconto (%)" }), descontoInput),
-    linhaSubtotal, linhaDesconto,
-    el("div", { class: "total-carrinho" }, el("span", { text: "Total" }), totalEl),
-    ...pag.elementos,
-    blocoNota,
-    el("button", { type: "submit", class: "botao principal", text: "Finalizar venda" }));
-  const tiles = el("div", { class: "produtos-grade" }, produtos.map(p => el("button", {
-    type: "button", class: "produto-tile", "data-produto-pdv": p.nome, disabled: saldoDe(p) < 1 || null,
-    onclick: () => { const q = carrinho.get(p.id) || 0; if (q < saldoDe(p)) { carrinho.set(p.id, q + 1); desenhar(); } else avisar(`Só há ${saldoDe(p)} em estoque.`, "erro"); }
-  }, el("strong", { text: p.nome }), el("span", { class: "preco", text: reais(p.precoCentavos) }),
-    p.saldo !== undefined ? el("span", { class: "suave", text: `Estoque: ${p.saldo}` }) : null)));
-  function desenhar() {
-    const itens = produtos.filter(p => carrinho.get(p.id));
-    linhasEl.replaceChildren(...(itens.length ? itens.map(p => el("div", { class: "linha-carrinho", "data-linha": p.nome },
-      el("span", { text: p.nome }),
-      el("span", { class: "qtd" },
-        el("button", { type: "button", "aria-label": `Menos ${p.nome}`, text: "−", onclick: () => { const q = carrinho.get(p.id) - 1; if (q > 0) carrinho.set(p.id, q); else carrinho.delete(p.id); desenhar(); } }),
-        el("span", { text: String(carrinho.get(p.id)) }),
-        el("button", { type: "button", "aria-label": `Mais ${p.nome}`, text: "+", onclick: () => { const q = carrinho.get(p.id); if (q < saldoDe(p)) { carrinho.set(p.id, q + 1); desenhar(); } } })),
-      el("span", { class: "preco", text: reais(carrinho.get(p.id) * p.precoCentavos) }))) : [el("p", { class: "suave", text: "Toque nos produtos para adicionar." })]));
+  const formaSel = pag.elementos[0].querySelector("select");
+  pag.elementos[0].hidden = true;   // a escolha da forma vira botões (o select continua por baixo)
+  const botoesForma = el("div", { class: "fc-formas", role: "radiogroup", "aria-label": "Forma de pagamento" },
+    [["dinheiro", "Dinheiro", "dinheiro"], ["pix", "Pix", "enviar"], ["debito", "Débito", "recibo"], ["credito", "Crédito", "contas"], ["promissoria", "Nota", "lista"]].map(([f, nome, ic]) =>
+      el("button", { type: "button", class: "fc-forma", role: "radio", "data-forma-btn": f, onclick: () => { formaSel.value = f; formaSel.dispatchEvent(new Event("change", { bubbles: true })); marcarForma(); } },
+        icone(ic), el("span", { text: nome }))));
+  const marcarForma = () => botoesForma.querySelectorAll(".fc-forma").forEach(b => { const on = b.dataset.formaBtn === formaSel.value; b.classList.toggle("ativo", on); b.setAttribute("aria-checked", String(on)); });
+
+  const totalEl = el("strong", { class: "fc-total-valor", "data-teste": "total-venda" });
+  const subtotalEl = el("span", { "data-teste": "subtotal-venda" });
+  const itensEl = el("strong", { "data-teste": "fc-itens" });
+  const descontoEl = el("strong", { "data-teste": "desconto-venda" });
+  const descontoInput = el("input", { type: "text", id: "c-desconto", name: "desconto", inputmode: "decimal", "data-numero": "percentual", placeholder: "0", autocomplete: "off", value: cm.descontoTxt,
+    oninput: e => { cm.descontoTxt = e.target.value; } });
+  const avisoDesconto = el("p", { class: "ajuda", text: "O desconto em % vale para venda só de produtos. Em serviço, ajuste o valor na linha." });
+  const campoDesconto = el("div", { class: "campo fc-desconto" }, el("label", { for: "c-desconto", text: "Desconto (%)" }), descontoInput, avisoDesconto);
+  const botaoFinalizar = el("button", { type: "submit", class: "botao fc-finalizar", "data-teste": "finalizar" }, icone("recibo"), el("span", { text: "Finalizar venda" }));
+  const form = el("form", { class: "fc-pagar", id: "fc-pagar", "data-teste": "carrinho" },
+    el("div", { class: "fc-total" }, el("small", { text: "Total da comanda" }), totalEl, el("span", { class: "fc-total-sub" }, subtotalEl)),
+    el("div", { class: "fc-tiles" },
+      el("div", { class: "fc-tile" }, el("small", { text: "Itens" }), itensEl),
+      el("div", { class: "fc-tile" }, el("small", { text: "Desconto" }), descontoEl)),
+    campoDesconto,
+    el("p", { class: "fc-rotulo", text: "Forma de pagamento" }), botoesForma,
+    pag.elementos[1], pag.elementos[2], pag.elementos[3], pag.elementos[4], pag.elementos[5], pag.elementos[6],
+    pag.elementos[0],
+    botaoFinalizar);
+
+  // ---------- comanda (centro) ----------
+  const nomeAtendeu = () => profissionais.find(p => p.id === cm.barbeiroId)?.nome || "";
+  const cabecaEl = el("div", { class: "fc-cabeca" });
+  const itensTabela = el("div", { class: "fc-itens", "data-teste": "comanda" });
+  const quemSel = el("select", { id: "fc-quem", "aria-label": ehBarbeiro ? "Quem atendeu" : "Quem atendeu / vendeu",
+    onchange: e => { cm.barbeiroId = e.target.value || null; } });
+  function desenharCabeca() {
+    quemSel.replaceChildren(...[!cm.servicos.length && !ehBarbeiro ? el("option", { value: "", text: "Sem vendedor" }) : null,
+      ...profissionais.map(p => el("option", { value: p.id, text: p.nome, selected: p.id === cm.barbeiroId || null }))].filter(Boolean));
+    if (cm.barbeiroId) quemSel.value = cm.barbeiroId; else if (cm.servicos.length) { cm.barbeiroId = profissionais[0]?.id || null; quemSel.value = cm.barbeiroId || ""; }
+    const clienteTxt = cm.cliente ? (cm.cliente.nome || "Cliente novo") : "Cliente não identificado";
+    cabecaEl.replaceChildren(...[
+      cm.ag ? el("div", { class: "fc-atend", "data-teste": "comanda-atendimento" }, icone("agenda"),
+        el("span", {}, el("strong", { text: `Atendimento das ${cm.ag.inicio}` }), el("small", { text: `${cm.ag.cliente.nome} · ${cm.ag.barbeiro}` })),
+        botao("Soltar", () => limpar(), "pequeno")) : null,
+      !cm.ag ? el("button", { type: "button", class: `fc-chip ${cm.cliente ? "cheio" : ""}`, "data-teste": "fc-cliente", onclick: () => janelaClienteComanda(cm, () => { desenharCabeca(); atualizarTotais(); }) },
+        icone("clientes"), el("span", { text: clienteTxt }), el("small", { text: cm.cliente ? "trocar" : "escolher" })) : null,
+      !cm.ag && (cm.servicos.length || !ehBarbeiro) ? el("label", { class: "fc-quem", for: "fc-quem" }, el("small", { text: cm.servicos.length ? "Quem atendeu" : "Vendedor (comissão)" }), quemSel) : null].filter(Boolean));
+  }
+  function desenharComanda() {
+    desenharCabeca();
+    const linhas = [
+      ...cm.servicos.map(l => {
+        const sub = el("strong", { class: "fc-sub" });
+        const aviso = el("small", { class: "alterado", text: "valor diferente da tabela" });
+        const valor = el("input", { type: "text", inputmode: "decimal", class: "fc-valor", value: l.valor, "aria-label": `Valor cobrado de ${l.s.nome} (cada)`, name: `valor-${l.s.id}`,
+          oninput: e => { l.valor = e.target.value; atualizarTotais(); } });
+        l.sub = sub; l.aviso = aviso; l.valorEl = valor;
+        return el("div", { class: "fc-linha", "data-linha": l.s.nome, "data-servico-final": l.s.nome },
+          el("div", { class: "fc-item" }, el("strong", { text: l.s.nome }), el("small", { text: `serviço · tabela ${reais(l.s.precoCentavos)}` }), aviso),
+          el("div", { class: "qtd" },
+            el("button", { type: "button", class: "qtd-btn", "aria-label": `Menos ${l.s.nome}`, text: "−", onclick: () => { if (l.qtd > 1) { l.qtd--; desenharComanda(); } } }),
+            el("span", { class: "qtd-num", text: String(l.qtd) }),
+            el("button", { type: "button", class: "qtd-btn", "aria-label": `Mais ${l.s.nome}`, text: "+", onclick: () => { if (l.qtd < 20) { l.qtd++; desenharComanda(); } } })),
+          valor, sub,
+          el("button", { type: "button", class: "fc-x", "aria-label": `Tirar ${l.s.nome}`, title: "Tirar da comanda", text: "×",
+            onclick: () => { cm.servicos.splice(cm.servicos.indexOf(l), 1); if (!cm.servicos.length) cm.ag = null; desenharComanda(); desenharVitrine(); } }));
+      }),
+      ...produtos.filter(p => cm.produtos.get(p.id)).map(p => {
+        const q = cm.produtos.get(p.id);
+        return el("div", { class: "fc-linha produto", "data-linha": p.nome, "data-produto-final": p.nome },
+          el("div", { class: "fc-item" }, el("strong", { text: p.nome }), el("small", { text: "produto" })),
+          el("div", { class: "qtd" },
+            el("button", { type: "button", class: "qtd-btn", "aria-label": `Menos ${p.nome}`, text: "−", onclick: () => { const n = q - 1; if (n > 0) cm.produtos.set(p.id, n); else cm.produtos.delete(p.id); desenharComanda(); } }),
+            el("span", { class: "qtd-num", text: String(q) }),
+            el("button", { type: "button", class: "qtd-btn", "aria-label": `Mais ${p.nome}`, text: "+", onclick: () => addProduto(p) })),
+          el("span", { class: "fc-valor fixo", text: reais(p.precoCentavos) }), el("strong", { class: "fc-sub", text: reais(p.precoCentavos * q) }),
+          el("button", { type: "button", class: "fc-x", "aria-label": `Tirar ${p.nome}`, title: "Tirar da comanda", text: "×", onclick: () => { cm.produtos.delete(p.id); desenharComanda(); } }));
+      })];
+    itensTabela.replaceChildren(...(linhas.length ? [
+      el("div", { class: "fc-linha fc-cab-tabela", "aria-hidden": "true" }, el("span", { text: "Item" }), el("span", { text: "Qtd" }), el("span", { text: "Unitário" }), el("span", { text: "Subtotal" }), el("span")),
+      ...linhas] : [el("div", { class: "fc-vazia" }, icone("recibo"), el("strong", { text: "Comanda vazia" }),
+        el("span", { text: "Toque num atendimento da fila ou escolha serviços e produtos na vitrine." }))]));
     atualizarTotais();
   }
   function atualizarTotais() {
+    for (const l of cm.servicos) {
+      const v = paraCentavos(l.valor);
+      if (l.sub) l.sub.textContent = reais((v ?? 0) * l.qtd);
+      if (l.aviso) l.aviso.hidden = v === l.s.precoCentavos;
+    }
     const bp = descontoBp();
-    const temDesconto = Boolean(bp) && bruto() > 0;
-    subtotalEl.textContent = reais(bruto());
-    descontoEl.textContent = `− ${reais(descontoValor())}`;
-    linhaDesconto.querySelector("[data-teste=rotulo-desconto]").textContent = `Desconto (${bpParaTexto(bp || 0)}%)`;
-    linhaSubtotal.hidden = !temDesconto;
-    linhaDesconto.hidden = !temDesconto;
+    const soP = soProdutos();
+    campoDesconto.querySelector("input").disabled = !soP;
+    avisoDesconto.hidden = soP;
     totalEl.textContent = reais(total());
-    pag.atualizar();
+    itensEl.textContent = String(qtdItens());
+    descontoEl.textContent = descontoValor() ? `− ${reais(descontoValor())}` : reais(0);
+    subtotalEl.textContent = descontoValor() ? `Subtotal ${reais(bruto())} · desconto ${bpParaTexto(bp || 0)}%` : "";
+    botaoFinalizar.disabled = !qtdItens();
+    movelNum.textContent = `${qtdItens()} ${qtdItens() === 1 ? "item" : "itens"} · ${reais(total())}`;
+    pag.atualizar(); marcarForma();
   }
-  form.addEventListener("change", () => { blocoNota.hidden = !pag.temNota(); });
-  form.addEventListener("input", atualizarTotais);
-  form.addEventListener("change", atualizarTotais);
+
+  // ---------- vitrine (esquerda) ----------
+  const vitrineEl = el("aside", { class: "fc-vitrine", "data-teste": "vitrine" });
+  const buscaEl = el("input", { type: "search", id: "fc-busca", class: "fc-busca-input", placeholder: "Buscar na vitrine: cliente, serviço ou produto…", autocomplete: "off",
+    "aria-label": "Buscar na vitrine", value: estadoCaixa.busca,
+    oninput: e => { estadoCaixa.busca = e.target.value; desenharVitrine(); },
+    onkeydown: e => { if (e.key === "Enter") { e.preventDefault(); primeiroDaVitrine(); } } });
+  const termo = () => normalizar(estadoCaixa.busca);
+  const filtradosFila = () => aCobrar.filter(a => !termo() || normalizar(`${a.cliente.nome} ${a.barbeiro} ${a.servicos.map(x => x.nome).join(" ")}`).includes(termo()));
+  const filtradosServ = () => servicos.filter(s => !termo() || normalizar(s.nome).includes(termo()));
+  const filtradosProd = () => produtos.filter(p => !termo() || normalizar(`${p.nome} ${p.codigo || ""}`).includes(termo()));
+  function primeiroDaVitrine() {
+    const v = estadoCaixa.vitrine;
+    if (v === "fila") { const a = filtradosFila()[0]; if (a) carregarAtendimento(a); }
+    else if (v === "servicos") { const s = filtradosServ()[0]; if (s) addServico(s); }
+    else { const p = filtradosProd().find(x => saldoDe(x) > 0); if (p) addProduto(p); }
+  }
+  const ticket = a => {
+    const pago = a.situacao === "finalizado";
+    const dentro = cm.ag?.id === a.id;
+    return el(pago ? "div" : "button", { ...(pago ? {} : { type: "button", onclick: () => carregarAtendimento(a), "aria-label": `Cobrar ${a.cliente.nome}` }),
+      class: `ticket-at ${pago ? "pago" : "a-cobrar"} ${dentro ? "selecionado" : ""}`, "data-cobrar": a.cliente.nome },
+      el("span", { class: "hora", text: a.inicio }),
+      el("span", { class: "dados" }, el("strong", { text: a.cliente.nome }), el("span", { text: `${a.barbeiro} · ${a.servicos.map(x => x.nome).join(" + ")}` })),
+      pago ? el("span", { class: "etiqueta verde", text: `Pago ${reais(a.totalCentavos)}` })
+        : el("span", { class: "valor", text: reais(a.servicos.reduce((t, x) => t + (x.precoCentavos || 0), 0)) }));
+  };
+  function desenharVitrine() {
+    const v = estadoCaixa.vitrine;
+    const aba = (k, txt, n) => el("button", { type: "button", role: "tab", "aria-selected": String(v === k), class: `fc-aba ${v === k ? "ativo" : ""}`, "data-vitrine": k,
+      onclick: () => { estadoCaixa.vitrine = k; desenharVitrine(); } }, el("span", { text: txt }), n ? el("span", { class: "fc-aba-num", text: String(n) }) : null);
+    let corpo;
+    if (v === "fila") {
+      const vis = filtradosFila();
+      corpo = el("div", { class: "fc-lista" },
+        ...(vis.length ? vis.map(ticket) : [el("p", { class: "vazio", text: aCobrar.length ? "Ninguém com esse nome na fila." : "Ninguém aguardando pagamento. Quando o barbeiro terminar, o atendimento aparece aqui." })]),
+        botao("+ Atendimento sem horário", () => { estadoCaixa.vitrine = "servicos"; if (cm.ag) { cm.ag = null; cm.servicos = []; cm.cliente = null; desenharComanda(); } desenharVitrine(); buscaEl.focus(); }, "dourado"),
+        pagos.length ? el("details", { class: "pagos-hoje", open: aCobrar.length ? null : true }, el("summary", { class: "titulo-pagos", text: `Pagos hoje (${pagos.length}) · ${reais(pagos.reduce((x, a) => x + (a.totalCentavos || 0), 0))}` }),
+          el("div", { class: "fc-lista" }, pagos.map(ticket))) : null);
+    } else if (v === "servicos") {
+      const vis = filtradosServ();
+      corpo = el("div", { class: "fc-grade" }, ...(vis.length ? vis.map(s => el("button", { type: "button", class: "fc-tile-item", "data-servico-pdv": s.nome, onclick: () => addServico(s) },
+        el("strong", { text: s.nome }), el("span", { class: "preco", text: reais(s.precoCentavos) }), el("small", { text: `${s.duracaoMin} min` }))) : [el("p", { class: "vazio", text: "Nenhum serviço encontrado." })]));
+    } else {
+      const vis = filtradosProd();
+      corpo = el("div", { class: "fc-grade" }, ...(vis.length ? vis.map(p => el("button", { type: "button", class: "fc-tile-item produto-tile", "data-produto-pdv": p.nome, disabled: saldoDe(p) < 1 || null, onclick: () => addProduto(p) },
+        el("strong", { text: p.nome }), el("span", { class: "preco", text: reais(p.precoCentavos) }), p.saldo !== undefined ? el("small", { text: `Estoque: ${p.saldo}` }) : null))
+        : [el("p", { class: "vazio", text: produtos.length ? "Nenhum produto encontrado." : "Nenhum produto com estoque para vender." })]));
+    }
+    vitrineEl.replaceChildren(
+      el("h3", { class: "fc-titulo", text: "Vitrine" }),
+      el("div", { class: "fc-abas", role: "tablist", "aria-label": "O que mostrar" }, aba("fila", "Fila", aCobrar.length), aba("servicos", "Serviços"), aba("produtos", "Produtos")),
+      corpo);
+  }
+
+  // ---------- montagem ----------
+  const movelNum = el("span", { class: "fc-movel-num" });
+  const barraMovel = el("div", { class: "fc-movel" }, movelNum,
+    el("button", { type: "button", class: "botao principal pequeno", text: "Pagar ›", onclick: () => document.getElementById("fc-pagar")?.scrollIntoView({ behavior: "smooth", block: "start" }) }));
+  const acoes = el("div", { class: "fc-acoes", role: "toolbar", "aria-label": "Ações da comanda" },
+    el("button", { type: "button", class: "fc-acao", onclick: limpar }, icone("lixeira"), el("span", { text: "Limpar comanda" })),
+    el("button", { type: "button", class: `fc-acao ${estadoCaixa.visao === "lancamentos" ? "ativo" : ""}`, "data-teste": "ver-lancamentos",
+      onclick: () => { estadoCaixa.visao = estadoCaixa.visao === "lancamentos" ? "venda" : "lancamentos"; recarregar(); } }, icone("lista"), el("span", { text: estadoCaixa.visao === "lancamentos" ? "Voltar à venda" : "Lançamentos do dia" })));
+  const centro = estadoCaixa.visao === "lancamentos"
+    ? el("section", { class: "fc-comanda", id: "fc-comanda" }, el("h3", { class: "fc-titulo", text: "Lançamentos do dia" }), listaCaixa(c, recarregar), acoes)
+    : el("section", { class: "fc-comanda", id: "fc-comanda" },
+      el("div", { class: "fc-busca" }, icone("busca"), buscaEl),
+      cabecaEl, itensTabela, acoes);
+
+  form.addEventListener("change", () => { atualizarTotais(); });
+  form.addEventListener("input", () => { atualizarTotais(); });
   form.addEventListener("submit", ev => {
     ev.preventDefault();
     enviar(form, async () => {
-      const itens = [...carrinho.entries()].map(([produtoId, quantidade]) => ({ produtoId, quantidade }));
-      if (!itens.length) throw new Error("Adicione pelo menos um produto.");
       const bp = descontoBp();
       if (bp === null) throw new Error("Desconto inválido: use um número de 0 a 99 (ex.: 10 ou 7,5).");
-      const valor = total();
+      if (!qtdItens()) throw new Error("A comanda está vazia: escolha um atendimento, serviço ou produto.");
+      const pagamentos = pag.ler(form);
       const naNota = pag.temNota();
-      if (naNota && !seletor.escolhido()) throw new Error("Para lançar promissória, o cliente precisa estar cadastrado na base de clientes. Escolha o cliente da nota na lista.");
-      await api("/vendas", { metodo: "POST", corpo: { itens, pagamentos: pag.ler(form), ...(bp ? { descontoBp: bp } : {}), ...(naNota ? { clienteId: seletor.escolhido().id } : {}) } });
-      carrinho.clear();
-      avisar(bp ? `Venda registrada: ${reais(valor)} (desconto de ${bpParaTexto(bp)}%).` : `Venda registrada: ${reais(valor)}.`);
+      const prods = [...cm.produtos.entries()].map(([produtoId, quantidade]) => ({ produtoId, quantidade }));
+      if (naNota && !cm.cliente?.id) throw new Error("Para lançar promissória, o cliente precisa estar cadastrado na base de clientes. Toque em \"Cliente\" e escolha o cliente da lista.");
+      const valor = total();
+      if (cm.servicos.length) {
+        const itens = cm.servicos.map(l => {
+          const v = paraCentavos(l.valor);
+          if (v === null) throw new Error(`Valor de ${l.s.nome} inválido. Exemplo: 40,00`);
+          return { servicoId: l.s.id, precoCobradoCentavos: v, ...(l.qtd > 1 ? { quantidade: l.qtd } : {}) };
+        });
+        if (cm.ag) await api("/caixa/cobrar", { metodo: "POST", corpo: { id: cm.ag.id, itens, pagamentos, ...(prods.length ? { produtos: prods } : {}) } });
+        else {
+          if (!cm.barbeiroId) throw new Error("Escolha quem atendeu.");
+          const cli = cm.cliente?.id ? { id: cm.cliente.id } : { telefone: cm.cliente?.telefone || "", nome: cm.cliente?.nome || undefined, aceiteLgpd: Boolean(cm.cliente?.aceiteLgpd) };
+          await api("/caixa/atendimento-avulso", { metodo: "POST", corpo: { barbeiroId: cm.barbeiroId, itens, pagamentos, ...(prods.length ? { produtos: prods } : {}), cliente: cli } });
+        }
+        avisar(prods.length ? `Atendimento e produtos cobrados: ${reais(valor)}.` : `Atendimento lançado: ${reais(valor)}.`);
+      } else {
+        await api("/vendas", { metodo: "POST", corpo: { itens: prods, pagamentos, ...(bp ? { descontoBp: bp } : {}), ...(naNota ? { clienteId: cm.cliente.id } : {}),
+          ...(!ehBarbeiro && cm.barbeiroId ? { vendedorId: cm.barbeiroId } : {}) } });
+        avisar(bp ? `Venda registrada: ${reais(valor)} (desconto de ${bpParaTexto(bp)}%).` : `Venda registrada: ${reais(valor)}.`);
+      }
+      Object.assign(cm, novaComanda());
       recarregar();
     });
   });
-  desenhar();
-  return produtos.length
-    ? el("div", { class: "pdv-grade" }, el("section", {}, tiles), form)
-    : el("p", { class: "vazio", text: "Nenhum produto com estoque para vender." });
+
+  desenharVitrine(); desenharComanda();
+  return { el: el("div", { class: "fc", "data-teste": "frente-caixa" }, vitrineEl, centro, form, barraMovel), qtd: aCobrar.length, vazia: () => !qtdItens() };
 }
 
 async function telaHistoricoCaixa() {
@@ -7252,7 +7346,7 @@ async function sairDoSistema() {
   localStorage.removeItem(CHAVE_TOKEN);
   usuario = null;
   document.getElementById("aviso").hidden = true;   // aviso de quem saiu não aparece para o próximo
-  estadoCaixa.aba = "cobrar"; estadoCaixa.carrinho.clear();
+  reiniciarCaixa();
   ultimasNotificacoes = { em: 0, itens: [] };
   Object.assign(estadoAgenda, { data: null, visao: "dia", barbeiroId: "" });
   clearTimeout(timerCaixa);
