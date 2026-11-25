@@ -97,6 +97,9 @@ async function rodar(tela) {
     const nova = await chamar("/plataforma/barbearias", { nome: "Barbearia Vazia Fictícia", proprietario: { nome: "Vitor Fictício", login: "vitor.vazia" } }, plat);
     await ativar("vitor.vazia", nova.senhaProvisoria, SENHA);
     await entrar("vitor.vazia");
+    await page.waitForSelector("[data-teste=boas-vindas]");   // 25/11/2026: abre no Início; o painel fica no Relatório financeiro
+    await page.waitForSelector("[data-teste=boas-vindas] .inicio-logo.inicial");   // sem logo: primeira letra
+    await ir(page, "Painel");
     await page.waitForSelector("[data-cartao=lucro]");
     await page.waitForSelector("text=Ainda não há faturamento");
     if (tela.movel) {
