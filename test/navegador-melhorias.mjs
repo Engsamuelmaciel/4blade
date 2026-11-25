@@ -540,7 +540,7 @@ async function rodar(tela) {
     await print("aparencia-escolha", false);
     await page.click("dialog[open] button:has-text('Fechar')");
     await page.reload();
-    await page.waitForSelector("[data-teste=boas-vindas]");
+    await page.waitForSelector("[data-cartao=bruto]");   // recarrega na mesma tela (Painel)
     await page.waitForSelector("#carregador", { state: "hidden" });
     assert.deepEqual(await page.evaluate(() => [document.documentElement.dataset.tema, document.documentElement.dataset.paleta]), ["escuro", "navalha"], "continua após recarregar");
     const fundo = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
