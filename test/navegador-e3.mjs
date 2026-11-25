@@ -141,8 +141,14 @@ async function rodar(tela) {
     passo("caixa abre, recebe atendimentos, vende, faz sangria/suprimento e corrige forma");
     await entrar("camila.navalha", "Senha-Camila-2026");
     await ir(page, "Caixa");
+    // Mensagens em destaque no menu do topo do caixa (26/11/2026) e a tela abre
+    assert.deepEqual(await page.locator("#nav-topo [data-nav-topo]").allInnerTexts(), ["Hoje", "Caixa", "Agenda", "Clientes", "Mensagens", "Notas"]);
     await page.fill("#c-troco", "100,00");
     await page.click("button:has-text('Abrir caixa')");
+    await page.waitForSelector(".pdv-topo");
+    await page.click('#nav-topo [data-nav-topo="Mensagens"]');
+    await page.waitForSelector(".zap");
+    await ir(page, "Caixa");
     await page.waitForSelector(".pdv-topo");
     // 2 atendimentos finalizados pelo barbeiro (pela API): 40,00 dinheiro e 70,00 pix
     const barbTok = (await chamar("/auth/login", { login: "bruno.navalha", senha: "Senha-Bruno-2026" })).token;

@@ -7234,7 +7234,7 @@ function navPrincipal() {
   const p = usuario.perfil;
   if (p === "plataforma") return [["plataforma", "Barbearias", "loja"], ["pedidos", "Pedidos", "clientes"], ["chamados", "Chamados", "suporte"]];
   if (usuario.assinatura?.bloqueada) return [["assinatura", "Assinatura", "dinheiro"], ["suporte", "Suporte", "suporte"]];
-  if (p === "caixa") return [["visao-dia", "Hoje", "painel"], ["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["clientes", "Clientes", "clientes"], ["notas", "Notas", "contas"]];
+  if (p === "caixa") return [["visao-dia", "Hoje", "painel"], ["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"], ["notas", "Notas", "contas"]];
   if (p === "barbeiro") return [["inicio", "Início", "casa"], ["agenda", "Agenda", "agenda"], ["minha-producao", "Produção", "grafico"], ["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]];
   return [["inicio", "Início", "painel"], ["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"],
     ["contas", "Despesas", "contas"], ["financeiro", "Relatórios", "grafico"]];
