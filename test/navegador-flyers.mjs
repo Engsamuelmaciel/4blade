@@ -1,7 +1,7 @@
-// Teste no navegador: FLYERS (25/11/2026). Dados e fotos FICTÍCIOS (desenhos gerados aqui).
-// Gerente abre Minha página → "Criar flyer", testa os 8 estilos e os 3 formatos, usa uma foto, preenche a promoção,
-// publica no catálogo, vê a janela de compartilhar (WhatsApp com o link da promoção), abre o link público (?promo=)
-// e tira do catálogo. Computador (1366 px) e celular (390 px); prints em docs/prints/flyers/.  Uso: node test/navegador-flyers.mjs
+// Teste no navegador: DIVULGAÇÃO / FLYERS (25/11/2026). Dados e fotos FICTÍCIOS (desenhos gerados aqui).
+// Gerente coloca a logo (Minha página) e vê no Início; abre Atendimento → Divulgação: modelos prontos (marcar horário,
+// promoção, aviso…), 12 estilos, 3 formatos, foto com efeito e zoom, logo e WhatsApp no flyer; publica, compartilha,
+// abre o link público (?promo=) e tira do catálogo. Computador (1366 px) e celular (390 px); prints em docs/prints/flyers/.
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -32,7 +32,21 @@ const TELAS = [
   { nome: "computador", largura: 1366, altura: 768, movel: false, porta: 8881 },
   { nome: "celular", largura: 390, altura: 844, movel: true, porta: 8882 }
 ];
-const ESTILOS = ["moderno", "contemporaneo", "retro", "vintage", "neon", "luxo", "urbano", "editorial"];
+const ESTILOS = ["moderno", "contemporaneo", "retro", "vintage", "neon", "luxo", "urbano", "editorial", "minimal", "giz", "tropical", "polaroid"];
+const MODELOS = ["marque-horario", "vagas-hoje", "fim-de-semana", "promocao", "combo", "primeira-vez", "indique", "novidade", "barbeiro", "feriado", "dia-dos-pais", "contratando"];
+const logoArq = join(PASTA, "logo.jpg");
+writeFileSync(logoArq, await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" fill="#1f2328"/>
+  <circle cx="256" cy="256" r="200" fill="none" stroke="#e0a330" stroke-width="20"/><text x="256" y="300" font-family="Arial" font-weight="bold" font-size="150" fill="#e0a330" text-anchor="middle">BF</text></svg>`)).jpeg().toBuffer());
+// quadro com várias prévias lado a lado (para mostrar ao responsável)
+async function quadro(arquivos, colunas, nome) {
+  const w = 300, h = 533, m = 16;
+  const imgs = await Promise.all(arquivos.map(a => sharp(a).resize(w, h, { fit: "cover" }).toBuffer()));
+  const linhas = Math.ceil(imgs.length / colunas);
+  await sharp({ create: { width: colunas * w + (colunas + 1) * m, height: linhas * h + (linhas + 1) * m, channels: 3, background: "#e9e6e1" } })
+    .composite(imgs.map((b, i) => ({ input: b, left: m + (i % colunas) * (w + m), top: m + Math.floor(i / colunas) * (h + m) })))
+    .png().toFile(join(PRINTS, nome));
+  console.log(`  print: docs/prints/flyers/${nome}`);
+}
 
 async function subirServidor(porta) {
   const proc = spawn(process.execPath, ["--no-warnings", join(RAIZ, "test", "servidor-local.mjs"), String(porta), "--semana"], { stdio: ["ignore", "pipe", "inherit"] });
@@ -65,7 +79,7 @@ async function rodar(tela) {
     n++;
     const arq = `${tela.nome}-${String(n).padStart(2, "0")}-${nome}.png`;
     await pg.waitForTimeout(300);
-    if (alvo) await pg.locator(alvo).screenshot({ path: join(PRINTS, arq) });
+    if (alvo) { await pg.evaluate(() => { document.getElementById("aviso").hidden = true; }); await pg.locator(alvo).screenshot({ path: join(PRINTS, arq) }); }
     else {
       if (inteira) await pg.evaluate(() => window.scrollTo(0, 0));
       await pg.screenshot({ path: join(PRINTS, arq), fullPage: inteira });
@@ -101,19 +115,60 @@ async function rodar(tela) {
     await page.click('[data-teste=mp-topo] button:has-text("Publicar")');
     await page.waitForSelector("[data-teste=mp-situacao]:has-text('No ar')");
     await pronto();
+    const fotos = page.locator("[data-secao-pagina=fotos]");
+    if (await fotos.getAttribute("open") === null) await fotos.locator(":scope > summary").click();
+    const [escLogo] = await Promise.all([page.waitForEvent("filechooser"), page.click('[data-foto-tipo=logo] button:has-text("Enviar")')]);
+    await escLogo.setFiles([logoArq]);
+    await page.waitForSelector("text=Foto enviada.");
+    await pronto();
+    assert.equal(await page.locator("[data-teste=abrir-flyers]").count(), 0, "o gerador saiu da Minha página");
 
-    passo("abre o gerador de flyers pela Minha página");
-    await page.click("[data-teste=abrir-flyers]");
+    passo("Início mostra a logo da barbearia e as boas-vindas");
+    await ir(page, "Início");
+    await page.waitForSelector("[data-teste=boas-vindas] [data-teste=logo-barbearia]");
+    await page.waitForFunction(() => document.querySelector("[data-teste=logo-barbearia]").naturalWidth > 0);
+    await print("inicio-com-logo", { inteira: false });
+
+    passo("abre Atendimento → Divulgação: começa pelo modelo \"Marque seu horário\" (sem preço)");
+    await ir(page, "Divulgação");
     await page.waitForSelector("[data-teste=flyer-previa]");
     await previaCom("moderno", "story");
-    assert.equal(await page.locator("[data-estilo-flyer]").count(), 8, "8 estilos");
+    assert.equal(await page.inputValue("#fl-titulo"), "Marque já seu horário");
+    assert.equal(await page.inputValue("#fl-precoPor"), "");
+    assert.equal(await page.locator("[data-estilo-flyer]").count(), 12, "12 estilos");
     assert.equal(await page.locator("[data-formato-flyer]").count(), 3, "3 formatos");
-    await print("gerador-vazio");
+    assert.equal(await page.locator("[data-modelo-flyer]").count(), 12, "12 modelos");
+    assert.ok(await page.isChecked("#fl-logo"), "logo ligada");
+    assert.ok(await page.isChecked("#fl-whats"), "WhatsApp ligado no modelo de marcar");
+    await page.click("[data-objetivo=marcar]");
+    assert.equal(await page.locator("[data-modelo-flyer]").count(), 3, "filtro: marcar horário");
+    await page.click("[data-objetivo=todos]");
+    await page.waitForTimeout(500);
+    await print("gerador-inicio");
 
-    passo("escolhe a foto, preenche com um serviço e a promoção");
+    passo("escolhe a foto, efeito preto e branco e aproxima");
     const [escolha] = await Promise.all([page.waitForEvent("filechooser"), page.click("button:has-text('Escolher foto do celular')")]);
     await escolha.setFiles([foto]);
     await page.waitForSelector("[data-teste=flyer-foto-nome]");
+    await page.click("[data-filtro-foto=pb]");
+    await page.locator("#fl-zoom").fill("140");
+    await page.waitForTimeout(400);
+
+    passo("os 12 modelos prontos (cada um com seu estilo e texto)");
+    const modelosPrints = [];
+    for (const m of MODELOS) {
+      await page.click(`[data-modelo-flyer=${m}]`);
+      await page.waitForSelector(`[data-modelo-flyer=${m}].ativo`);
+      const est = await page.evaluate(() => document.querySelector("[data-estilo-flyer].ativo").dataset.estiloFlyer);
+      await previaCom(est, "story");
+      if (!tela.movel) modelosPrints.push(await print(`modelo-${m}`, { alvo: "[data-teste=flyer-previa]" }));
+    }
+    if (!tela.movel) await quadro(modelosPrints, 6, "quadro-12-modelos.png");
+    assert.equal(await page.inputValue("#fl-titulo"), "Procuramos barbeiro");
+
+    passo("modelo Promoção, editado: serviço, preço e chamada");
+    await page.click("[data-modelo-flyer=promocao]");
+    await page.waitForSelector("[data-modelo-flyer=promocao].ativo");
     await page.selectOption("#fl-servico", { index: 1 });
     assert.notEqual(await page.inputValue("#fl-titulo"), "");
     assert.notEqual(await page.inputValue("#fl-precoDe"), "");
@@ -124,21 +179,14 @@ async function rodar(tela) {
     assert.equal(await page.inputValue("#fl-chamada"), "Semana especial");
     await page.waitForTimeout(400);
 
-    passo("os 8 estilos (story) renderizam sem erro");
+    passo("os 12 estilos (story) renderizam sem erro");
     const estilosPrints = [];
     for (const e of ESTILOS) {
       await page.click(`[data-estilo-flyer=${e}]`);
       await previaCom(e, "story");
       if (!tela.movel) estilosPrints.push(await print(`estilo-${e}`, { alvo: "[data-teste=flyer-previa]" }));
     }
-    if (!tela.movel) {
-      // quadro com os 8 lado a lado (para mostrar ao responsável)
-      const imgs = await Promise.all(estilosPrints.map(a => sharp(a).resize(300, 533, { fit: "cover" }).toBuffer()));
-      await sharp({ create: { width: 4 * 300 + 5 * 16, height: 2 * 533 + 3 * 16, channels: 3, background: "#e9e6e1" } })
-        .composite(imgs.map((b, i) => ({ input: b, left: 16 + (i % 4) * 316, top: 16 + Math.floor(i / 4) * 549 })))
-        .png().toFile(join(PRINTS, "quadro-8-estilos.png"));
-      console.log("  print: docs/prints/flyers/quadro-8-estilos.png");
-    }
+    if (!tela.movel) await quadro(estilosPrints, 6, "quadro-12-estilos.png");
 
     passo("formatos quadrado e retrato");
     await page.click("[data-estilo-flyer=retro]");
@@ -187,7 +235,7 @@ async function rodar(tela) {
     const carregou = await pub.evaluate(() => { const i = document.querySelector(".pg-promo.destaque img"); return i.complete && i.naturalWidth; });
     assert.equal(carregou, 1080);
     const queroHref = await pub.getAttribute(".pg-promo.destaque .pg-promo-whats", "href");
-    assert.match(decodeURIComponent(queroHref), /Vi a promoção "Corte \+ barba"/);
+    assert.match(decodeURIComponent(queroHref), /Vi "Corte \+ barba" na sua página/);
     await pub.waitForTimeout(400);
     await pub.screenshot({ path: join(PRINTS, `${tela.nome}-${String(++n).padStart(2, "0")}-pagina-promocao.png`), fullPage: false });
     console.log(`  print: docs/prints/flyers/${tela.nome}-${String(n).padStart(2, "0")}-pagina-promocao.png`);

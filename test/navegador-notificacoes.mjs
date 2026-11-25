@@ -80,7 +80,7 @@ async function rodar(tela) {
     assert.ok(Number(await page.textContent("#btn-notif .sino-num")) >= 1, "pelo menos a nota vencida");
     // o caixa já entra na Visão do dia (tela inicial dele)
     await page.waitForSelector("[data-teste=visao-resumo]");
-    assert.match(await page.textContent("h2"), /Visão do dia/);
+    assert.match(await page.textContent("[data-teste=boas-vindas] h2"), /^(Bom dia|Boa tarde|Boa noite), /);
     assert.equal(await page.locator("[data-teste=visao-semana] [data-dia]").count(), 7);
     await page.waitForSelector(`[data-nota-vencida="${CLIENTE}"]`);
     assert.match(await page.textContent(`[data-nota-vencida="${CLIENTE}"]`), /R\$\s?40,00/);
@@ -167,6 +167,12 @@ async function rodar(tela) {
     await page.click(".chips-filtro [data-filtro=pendencia]");
     await page.waitForSelector(`[data-cliente="${CLIENTE}"] [data-selo=nota-vencida]`);
     await print("gerente-clientes-pendencia");
+    // Início (25/11/2026): a Visão do dia é a página inicial do gerente, com boas-vindas; sem "Visão geral" no menu
+    await ir(page, "Início");
+    await page.waitForSelector("[data-teste=boas-vindas] [data-atalho=Divulgação]");
+    await page.waitForSelector("[data-teste=visao-resumo]");
+    assert.equal(await page.locator('#menu [data-nav="Visão do dia"], #menu [data-nav="Painel"], #menu [data-nav="Contador e dados"], #menu [data-nav="Pagamento da equipe"]').count(), 0);
+    await print("gerente-inicio");
     await sair();
 
     passo("caixa recebe a nota direto na Visão do dia; cliente sem telefone: WhatsApp abre para escolher o contato, com a mensagem pronta");

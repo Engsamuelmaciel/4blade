@@ -155,7 +155,7 @@ async function visaoDoDia(ctx) {
   const b = ctx.barbeariaId;
   const hoje = hojeBrasil();
   const fimSemana = somarDias(hoje, 6);
-  const [ags, semana, abertos, notas, faltas, caixa, , produtos, bloqueados] = await Promise.all([
+  const [ags, semana, abertos, notas, faltas, caixa, marca, produtos, bloqueados] = await Promise.all([
     db.prepare(`SELECT a.id, a.inicio, a.fim, a.situacao, c.id AS cliente_id, c.nome AS cliente, c.telefone, u.nome AS barbeiro FROM agendamentos a
                 JOIN clientes c ON c.id = a.cliente_id JOIN usuarios u ON u.id = a.barbeiro_id
                 WHERE a.barbearia_id = ? AND a.data = ? AND a.situacao <> 'cancelado'
@@ -168,7 +168,9 @@ async function visaoDoDia(ctx) {
                 JOIN clientes c ON c.id = a.cliente_id JOIN usuarios u ON u.id = a.barbeiro_id
                 WHERE a.barbearia_id = ? AND a.situacao = 'faltou' AND a.data BETWEEN ? AND ? ORDER BY a.inicio DESC LIMIT 20`).bind(b, somarDias(hoje, -7), hoje).all(),
     db.prepare("SELECT * FROM caixas WHERE barbearia_id = ? AND data = ?").bind(b, hoje).first(),
-    null,
+    // Página inicial (25/11/2026): logo e nome da Minha página, para as boas-vindas.
+    db.prepare(`SELECT (SELECT nome_exibicao FROM paginas WHERE barbearia_id = ?1) AS nome,
+                (SELECT id FROM paginas_fotos WHERE barbearia_id = ?1 AND tipo = 'logo' AND removida_em IS NULL ORDER BY criado_em DESC LIMIT 1) AS logo`).bind(b).first(),
     produtosAVencer(db, b, hoje),
     db.prepare(`SELECT k.cliente_id, k.motivo, k.bloqueado_em, c.nome FROM clientes_bloqueios k JOIN clientes c ON c.id = k.cliente_id
                 WHERE k.barbearia_id = ? AND k.ativo = 1 ORDER BY c.nome`).bind(b).all()
@@ -181,6 +183,7 @@ async function visaoDoDia(ctx) {
   const cont = s => ags.results.filter(a => a.situacao === s).length;
   return json({
     hoje,
+    marca: { nome: marca?.nome || user.barbearia_nome || null, logo: marca?.logo || null },
     resumo: {
       marcados: ags.results.length, finalizados: cont("finalizado"), aguardando: cont("agendado"), faltas: cont("faltou"),
       recebidoCentavos, caixa: caixa ? caixa.situacao : "nao_aberto"

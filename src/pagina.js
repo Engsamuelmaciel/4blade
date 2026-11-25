@@ -40,7 +40,7 @@ export function sugerirSlug(nome) {
 // ---------- ARMAZENAMENTO DAS FOTOS (R2 da Cloudflare: binding FOTOS) ----------
 const chaveFoto = (barbeariaId, id) => `paginas/${barbeariaId}/${id}`;
 // Flyers (25/11/2026): imagem pronta gerada no aparelho; até 12 no ar por barbearia, 1,2 MB cada.
-export const ESTILOS_FLYER = ["moderno", "contemporaneo", "retro", "vintage", "neon", "luxo", "urbano", "editorial"];
+export const ESTILOS_FLYER = ["moderno", "contemporaneo", "retro", "vintage", "neon", "luxo", "urbano", "editorial", "minimal", "giz", "tropical", "polaroid"];
 export const FORMATOS_FLYER = ["story", "quadrado", "retrato"];
 export const MAX_FLYERS = 12;
 export const MAX_FLYER_BYTES = 1200 * 1024;
@@ -323,11 +323,11 @@ function montarHtml({ p, c, aberto, horarios, origem, previa, promo = null }) {
   // Link de um flyer (?promo=<id>): a prévia do WhatsApp/Instagram mostra o próprio flyer.
   const imagem = promo ? urlFoto(origem, promo.id) : c.capa || c.logo ? urlFoto(origem, c.capa || c.logo) : `${origem}/icons/icon-v2-512.png`;
   const ogTitulo = promo ? `${promo.titulo} — ${nome}` : titulo;
-  const ogDescricao = promo ? (promo.texto || `Promoção da ${nome}. Toque para ver e agendar pelo WhatsApp.`) : descricao;
+  const ogDescricao = promo ? (promo.texto || `${nome}: toque para ver e agendar pelo WhatsApp.`) : descricao;
   const ogUrl = promo ? `${url}?promo=${promo.id}` : url;
   const promosHtml = c.flyers.map(f => `<li id="promo-${e(f.id)}" class="pg-promo ${e(f.formato)}${promo && promo.id === f.id ? " destaque" : ""}">
       <button type="button" class="pg-foto" aria-label="Ampliar: ${e(f.titulo)}"><img src="/f/${e(f.id)}" alt="${e(f.titulo)}${f.texto ? ` — ${e(f.texto)}` : ""}" loading="lazy"></button>
-      ${c.whatsapp ? `<a class="pg-botao pg-promo-whats" data-evento="whatsapp" href="${e(linkWhats(c.whatsapp, `Olá, ${nome}! Vi a promoção "${f.titulo}" na sua página e quero agendar.`))}" target="_blank" rel="noopener">Quero essa promoção</a>` : ""}</li>`).join("");
+      ${c.whatsapp ? `<a class="pg-botao pg-promo-whats" data-evento="whatsapp" href="${e(linkWhats(c.whatsapp, `Olá, ${nome}! Vi "${f.titulo}" na sua página e quero agendar.`))}" target="_blank" rel="noopener">Quero agendar</a>` : ""}</li>`).join("");
   const msgPadrao = mensagemWhats(nome, null, p.mensagem_padrao);
   const whats = c.whatsapp ? linkWhats(c.whatsapp, msgPadrao) : null;
   const mapa = p.maps_url && /^https:\/\//.test(p.maps_url) ? p.maps_url
@@ -424,7 +424,7 @@ ${previa ? '<div class="pg-faixa-previa" role="status">Prévia: só você está 
 <main class="pg-corpo">
   ${whats ? `<div class="pg-cta"><a class="pg-botao grande" id="pg-solicitar" data-evento="whatsapp" href="${e(whats)}" target="_blank" rel="noopener">Solicitar meu horário</a>
     <p class="pg-cta-ajuda" id="pg-escolhidos" hidden></p></div>` : ""}
-  ${promosHtml ? `<section class="pg-secao" aria-labelledby="t-promo"><h2 id="t-promo">Promoções</h2><ul class="pg-promos">${promosHtml}</ul></section>` : ""}
+  ${promosHtml ? `<section class="pg-secao" aria-labelledby="t-promo"><h2 id="t-promo">Novidades e promoções</h2><ul class="pg-promos">${promosHtml}</ul></section>` : ""}
   ${c.servicos.length ? `<section class="pg-secao" aria-labelledby="t-serv"><h2 id="t-serv">Serviços</h2>
     ${c.whatsapp ? '<p class="pg-dica">Toque nos serviços que você quer e depois em <b>Solicitar meu horário</b>.</p>' : ""}
     ${servicosHtml}</section>` : ""}

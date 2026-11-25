@@ -342,10 +342,19 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - Agenda do dia em **Lista** com vários profissionais: cada um aparece num bloco com o nome, quantos horários marcados e quantos livres. No celular, a agenda de quem está usando fica aberta e a dos outros recolhida; tocar no nome abre ou fecha. No computador continuam lado a lado, todas abertas.
 - **Mapa na página (25/11/2026):** a seção Localização mostra o mapa do Google com o endereço da barbearia, dentro da própria página; embaixo, o endereço e os botões "Como chegar (Google Maps)" e "Abrir no Waze".
 
-## 26. Flyers e promoções (25/11/2026, pedido do responsável)
-- Em **Minha página → Criar flyer de promoção** (dono e gerente). O barbeiro escolhe o **formato** (Story/Status 1080×1920, Post quadrado 1080×1080, Post retrato 1080×1350), um dos **8 estilos** (Moderno, Contemporâneo, Retrô anos 70, Barbearia clássica/vintage, Neon, Luxo, Urbano/street, Editorial), uma **foto** (do celular ou da própria página; ajuste para cima/baixo), os **textos** (chamada pronta ou livre, texto principal, preço normal riscado e preço da promoção, detalhe, validade), a **cor de destaque** e se mostra o **QR Code + link** do catálogo. Pode preencher a partir de um serviço cadastrado.
-- A arte é desenhada no próprio aparelho, com prévia ao vivo e miniaturas dos 8 estilos com o texto dele. Fontes livres (SIL OFL) dentro do app. No Story, o rodapé fica acima da barra de resposta do Instagram.
-- **Publicar no catálogo:** a imagem fica guardada (até 12 por barbearia, 1,2 MB cada) e aparece na seção **Promoções** da página pública, com o botão "Quero essa promoção" (WhatsApp da barbearia com a mensagem pronta). Com validade, sai sozinho depois da data. Sem a página publicada, fica guardado e aparece quando publicar.
-- **Compartilhar:** no celular, o menu do aparelho manda a imagem para Instagram, WhatsApp etc. com a legenda; sempre: "Enviar o link no WhatsApp" (o link `forblade.com.br/<endereço>?promo=<id>` mostra o próprio flyer na prévia e abre a página já na promoção), baixar a imagem, copiar a legenda com o link, copiar só o link. Dica de como pôr o link no Story (adesivo "Link").
-- Na lista "Seus flyers": compartilhar, tirar do catálogo / voltar, usar de novo (carrega os textos no editor) e excluir (apaga a imagem; fica auditado).
+## 26. Divulgação (flyers) (25/11/2026, pedido do responsável)
+- Menu **Atendimento → Divulgação** (dono e gerente); saiu de dentro da Minha página.
+- **Comece por um modelo** (12, filtráveis por objetivo — não só promoção): Marque seu horário, Vagas hoje, Sábado com horário, Promoção, Combo, Primeira visita, Indique um amigo, Serviço novo, Profissional em destaque, Aviso de feriado, Data especial, Estamos contratando. O modelo preenche estilo e textos; depois tudo pode ser mudado.
+- **Formato:** Story/Status 1080×1920, Post quadrado 1080×1080, Post retrato 1080×1350. **12 estilos:** Moderno, Contemporâneo, Retrô anos 70, Barbearia clássica, Neon, Luxo, Urbano/street, Editorial, Minimalista, Quadro de giz, Pôr do sol, Polaroid.
+- **Foto:** do celular ou da Minha página; efeito (original, preto e branco, sépia, mais viva, quente, mais escura), aproximar e posição (cima/baixo, esquerda/direita).
+- **Textos:** chamada (pronta ou livre), texto principal, preço normal riscado e preço da promoção (opcionais — sem preço vira convite/aviso), detalhe, validade; pode preencher a partir de um serviço.
+- **Cor e detalhes:** cor de destaque; mostrar a logo da barbearia (da Minha página), o WhatsApp e o QR Code + link do catálogo.
+- A arte é desenhada no aparelho, com prévia ao vivo; o texto e a foto se ajustam sozinhos para nunca invadir o rodapé. No Story, o rodapé fica acima da barra de resposta do Instagram.
+- **Publicar no catálogo:** até 12 guardados; aparecem em "Novidades e promoções" na página pública, com o botão "Quero agendar" (WhatsApp). Com validade, sai sozinho depois da data.
+- **Compartilhar:** imagem pelo menu do celular (Instagram, WhatsApp…), link no WhatsApp (`?promo=<id>`: a prévia mostra o flyer e abre a página nele), baixar, copiar legenda/link; dica do adesivo "Link" no Story.
+- Lista "Seus flyers": compartilhar, tirar do catálogo / voltar, usar de novo, excluir (auditado).
 
+## 27. Menu mais limpo (25/11/2026, pedido do responsável)
+- Gerente e dono: sai o grupo "Visão geral". **Início** (no alto do menu) = a Visão do dia como página inicial, com a **logo da barbearia** (da Minha página), boas-vindas ("Bom dia, <nome>!"), a data, quantos horários hoje e atalhos (Agenda, Caixa, Clientes, Divulgação, Relatórios). O caixa também vê as boas-vindas na tela dele.
+- **Contador e dados** e o **Painel** ficam dentro do Relatório financeiro (abas "Relatório | Painel e lucro | Contador e dados").
+- **Pagamento da equipe** fica dentro de Despesas (abas "Despesas | Pagamento da equipe").

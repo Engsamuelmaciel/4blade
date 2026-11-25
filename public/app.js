@@ -25,9 +25,27 @@ function el(tag, attrs = {}, ...filhos) {
   return e;
 }
 
+// Telas que andam juntas (25/11/2026): Contador fica dentro do Relatório financeiro; Pagamento da equipe dentro de Despesas.
+const SECOES_JUNTAS = {
+  financeiro: [["financeiro", "Relatório"], ["painel", "Painel e lucro"], ["contador", "Contador e dados"]],
+  contas: [["contas", "Despesas"], ["pagamento-equipe", "Pagamento da equipe"]]
+};
+SECOES_JUNTAS.contador = SECOES_JUNTAS.painel = SECOES_JUNTAS.financeiro;
+SECOES_JUNTAS["pagamento-equipe"] = SECOES_JUNTAS.contas;
+function abasDaSecao() {
+  const r = location.hash.replace(/^#\/?/, "").split("/")[0];
+  const abas = usuario && SECOES_JUNTAS[r];
+  if (!abas) return null;
+  return el("nav", { class: "abas-secao", "aria-label": "Nesta área", "data-teste": "abas-secao" }, abas.map(([rota, txt]) =>
+    el("a", { href: `#/${rota}`, class: rota === r ? "ativa" : "", "aria-current": rota === r ? "page" : null, "data-aba-secao": rota, text: txt })));
+}
+
 function mostrar(...filhos) {
   document.body.classList.remove("tela-entrada");
-  app.replaceChildren(...filhos.flat().filter(Boolean));
+  filhos = filhos.flat().filter(Boolean);
+  const abas = abasDaSecao();
+  if (abas) { const i = filhos.findIndex(f => f.classList?.contains("cabecalho")); filhos.splice(i + 1, 0, abas); }
+  app.replaceChildren(...filhos);
   aplicarMascaras(app);
   app.focus({ preventScroll: true });
   window.scrollTo(0, 0);
@@ -5773,7 +5791,25 @@ async function telaVisaoDia() {
       botao("Desbloquear", () => janelaBloquearCliente({ id: b.clienteId, nome: b.cliente, bloqueado: { motivo: b.motivo } }, recarregar), "pequeno")))), "")) : null;
 
   const d = new Date(`${v.hoje}T12:00:00`);
-  mostrar(cabecalho("Visão do dia", `${["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][d.getDay()]}, ${dataBR(v.hoje)} — tudo que importa hoje e na semana.`),
+  // Página inicial (25/11/2026): logo da Minha página + boas-vindas; embaixo, tudo da Visão do dia.
+  const hora = new Date().getHours();
+  const saudacao = hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite";
+  const nomeB = v.marca?.nome || usuario.barbearia?.nome || "";
+  const atalhos = [
+    ["#/agenda", "Agenda", "agenda"], ["#/caixa", "Caixa", "caixa"], ["#/clientes", "Clientes", "clientes"],
+    ...(gestao() ? [["#/divulgacao", "Divulgação", "megafone"], ["#/financeiro", "Relatórios", "grafico"]] : [["#/notas", "Notas", "contas"]])
+  ];
+  const boasVindas = el("section", { class: "inicio-hero", "data-teste": "boas-vindas" },
+    el("div", { class: "inicio-marca" },
+      v.marca?.logo ? el("img", { class: "inicio-logo", src: fotoUrl(v.marca.logo), alt: `Logo da ${nomeB}`, "data-teste": "logo-barbearia" })
+        : el("span", { class: "inicio-logo inicial", "aria-hidden": "true", text: (nomeB || "4").charAt(0).toUpperCase() }),
+      el("div", { class: "inicio-texto" },
+        el("small", { text: nomeB }),
+        el("h2", { text: `${saudacao}, ${usuario.nome.split(" ")[0]}!` }),
+        el("p", { text: `${["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][d.getDay()]}, ${dataBR(v.hoje)} · ${r.marcados ? `${r.marcados} horário(s) hoje` : "nenhum horário marcado hoje"}` }))),
+    !v.marca?.logo && gestao() ? el("a", { class: "inicio-dica", href: "#/minha-pagina", text: "Coloque a sua logo em Minha página para ela aparecer aqui." }) : null,
+    el("nav", { class: "inicio-atalhos", "aria-label": "Atalhos" }, atalhos.map(([h, t, ic]) => el("a", { href: h, class: "inicio-atalho", "data-atalho": t }, icone(ic), el("span", { text: t })))));
+  mostrar(boasVindas,
     resumo,
     el("section", { class: "cartao" }, el("div", { class: "secao-titulo" }, el("h3", { text: "Próximos 7 dias" }), el("small", { class: "suave", text: "Toque no dia para abrir a agenda" })), semana),
     el("div", { class: "duas-colunas visao-colunas" },
@@ -5797,7 +5833,7 @@ setInterval(() => { if (document.visibilityState === "visible" && Date.now() - u
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Date.now() - ultimoSinalUso > 55000) enviarUso(); });
 
 const NOME_TELA = {
-  "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", "agenda-lote": "Vários de uma vez", "clientes-lote": "Clientes em lote", "horarios-lote": "Horários em lote", "minha-pagina": "Minha página", flyers: "Flyers", "minha-producao": "Minha produção", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
+  "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", "agenda-lote": "Vários de uma vez", "clientes-lote": "Clientes em lote", "horarios-lote": "Horários em lote", "minha-pagina": "Minha página", flyers: "Divulgação", divulgacao: "Divulgação", inicio: "Início", "minha-producao": "Minha produção", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
   clientes: "Clientes", mensagens: "Mensagens", notas: "Notas", notificacoes: "Notificações", financeiro: "Relatório financeiro",
   "pagamento-equipe": "Pagamento da equipe", comissoes: "Comissões e vales", contas: "Despesas", contador: "Contador e dados",
   servicos: "Serviços", produtos: "Produtos", estoque: "Estoque", equipe: "Equipe", funcionamento: "Funcionamento", assinatura: "Meu plano",
@@ -6064,6 +6100,8 @@ const ICONES = {
   grafico: "M4 20V10M10 20V4M16 20v-7M22 20H2",
   config: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z",
   loja: "M3 9l2-5h14l2 5M3 9h18v11H3zM9 20v-6h6v6",
+  megafone: "M3 10v4a1 1 0 0 0 1 1h3l6 4V5L7 9H4a1 1 0 0 0-1 1zM17 9a4 4 0 0 1 0 6M20 6a8 8 0 0 1 0 12",
+  casa: "M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10",
   usuario: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"
 };
 function icone(nome) {
@@ -6314,11 +6352,6 @@ async function telaMinhaPagina() {
   mostrar(
     cabecalho("Minha página", "Sua vitrine para a bio do Instagram, o WhatsApp e o Google."),
     topo,
-    el("a", { class: "cartao mp-flyers", href: "#/flyers", "data-teste": "abrir-flyers" },
-      el("span", { class: "mp-flyers-icone", "aria-hidden": "true", text: "✦" }),
-      el("span", {}, el("strong", { text: "Criar flyer de promoção" }),
-        el("small", { text: d.flyersNoAr ? `${d.flyersNoAr} no catálogo agora · 8 estilos prontos para Instagram e WhatsApp` : "8 estilos prontos: monte a arte e publique no catálogo e no WhatsApp/Instagram" })),
-      el("span", { class: "mp-flyers-seta", "aria-hidden": "true", text: "›" })),
     numeros,
     el("div", { class: "mp-secoes" },
       secao("fotos", "Fotos", `${f.logo ? "Logo ✓" : "Sem logo"} · ${f.capa ? "capa ✓" : "sem capa"} · ${f.galeria.length} na galeria`, blocoFotos),
@@ -6477,32 +6510,51 @@ function carregarFlyersJs() {
   });
   return flyersJsPronto;
 }
-const CHAMADAS_FLYER = ["Promoção", "Novidade", "Só hoje", "Combo", "Semana especial", "Black Friday", "Dia dos Pais", "Volta às aulas"];
+const CHAMADAS_FLYER = ["Agenda aberta", "Promoção", "Novidade", "Só hoje", "Últimas vagas", "Combo", "Aviso", "Semana especial"];
 const estadoFlyer = {
-  formato: "story", estilo: "moderno", chamada: "Promoção", titulo: "", precoDe: "", precoPor: "", detalhe: "", validade: "",
-  cor: "", qr: true, foco: 50, foto: null, fotoNome: ""
+  iniciado: false, modelo: "", objetivo: "todos",
+  formato: "story", estilo: "moderno", chamada: "", titulo: "", precoDe: "", precoPor: "", detalhe: "", validade: "",
+  cor: "", qr: true, mostrarWhats: true, mostrarLogo: true,
+  foco: 50, focoX: 50, zoom: 100, filtro: "original", fotoBase: null, foto: null, fotoNome: ""
 };
 const legendaFlyer = (f, nome) => [
   `${f.titulo}${f.texto ? ` — ${f.texto}` : ""}`,
   "",
-  `${nome}: veja a promoção e agende pelo WhatsApp 👉 ${f.link}`
+  `${nome}: veja no nosso catálogo e agende pelo WhatsApp 👉 ${f.link}`
 ].join("\n");
+const CAMPOS_MODELO = ["chamada", "titulo", "precoDe", "precoPor", "detalhe"];
+function aplicarModeloFlyer(m) {
+  const st = estadoFlyer;
+  for (const k of CAMPOS_MODELO) st[k] = m[k] || "";
+  Object.assign(st, { modelo: m.id, estilo: m.estilo, cor: "", validade: "", mostrarWhats: Boolean(m.whats) || st.mostrarWhats });
+}
 
 async function telaFlyers() {
   const [FL, d, lista] = await Promise.all([carregarFlyersJs(), api("/pagina"), api("/pagina/flyers")]);
   FL.carregarFontes();
+  let logo = null;
+  if (d.fotos.logo) { try { logo = await createImageBitmap(await (await fetch(fotoUrl(d.fotos.logo))).blob()); } catch { /* sem logo */ } }
+  if (!estadoFlyer.iniciado) { aplicarModeloFlyer(FL.MODELOS[0]); estadoFlyer.iniciado = true; }
+  montarFlyers(FL, d, lista, logo);
+}
+
+function montarFlyers(FL, d, lista, logo) {
   const p = d.pagina;
   const nome = p.nomeExibicao || d.barbearia.nome;
   const link = linkPagina(p.slug);
+  const whatsNum = p.whatsapp || d.barbearia.telefone || "";
   const st = estadoFlyer;
   const recarregar = () => telaFlyers();
+  const remontar = () => montarFlyers(FL, d, lista, logo);
+  const qrMod = gerarQr(link);
 
   // ---- prévia ao vivo ----
   const tela = el("canvas", { class: `fl-canvas ${st.formato}`, "data-teste": "flyer-previa", role: "img", "aria-label": "Prévia do flyer" });
   const dadosDesenho = (extra = {}) => ({
-    formato: st.formato, estilo: st.estilo, chamada: st.chamada, titulo: st.titulo || "Corte + barba", precoDe: st.precoDe, precoPor: st.precoPor,
-    detalhe: st.detalhe, validade: st.validade, cor: st.cor, foto: st.foto, foco: st.foco / 100, nome,
-    linkCurto: link.replace(/^https?:\/\//, ""), qr: st.qr, mod: st.qr ? gerarQr(link) : null, ...extra
+    formato: st.formato, estilo: st.estilo, chamada: st.chamada, titulo: st.titulo || "Seu texto aqui", precoDe: st.precoDe, precoPor: st.precoPor,
+    detalhe: st.detalhe, validade: st.validade, cor: st.cor, foto: st.foto, foco: st.foco / 100, focoX: st.focoX / 100, zoom: st.zoom / 100, nome,
+    linkCurto: link.replace(/^https?:\/\//, ""), qr: st.qr, mod: st.qr ? qrMod : null,
+    whats: st.mostrarWhats && whatsNum ? formatarTelefone(whatsNum) : "", logo: st.mostrarLogo ? logo : null, ...extra
   });
   let desenhando = 0;
   const redesenhar = async () => {
@@ -6515,61 +6567,96 @@ async function telaFlyers() {
     tela.dataset.estilo = st.estilo; tela.dataset.formato = st.formato;
     tela.dataset.pronto = String(n);
   };
-  // miniaturas dos 8 estilos (com o texto e a foto atuais)
   const minis = {};
   let timerMinis;
   const redesenharMinis = () => {
     clearTimeout(timerMinis);
     timerMinis = setTimeout(async () => {
-      for (const e of FL.ESTILOS) {
-        const c = minis[e.id];
-        if (c) await FL.desenhar(c, dadosDesenho({ estilo: e.id, cor: "" }), { escala: 0.16 });
-      }
+      for (const e of FL.ESTILOS) if (minis[e.id]) await FL.desenhar(minis[e.id], dadosDesenho({ estilo: e.id, cor: "" }), { escala: 0.16 });
     }, 350);
   };
   const mudou = (minisTambem = true) => { redesenhar(); if (minisTambem) redesenharMinis(); };
+  const marcarAtivo = (grupo, attr, valor) => grupo.querySelectorAll("button").forEach(b => { const on = b.dataset[attr] === valor; b.classList.toggle("ativo", on); b.setAttribute("aria-checked", String(on)); });
 
-  // ---- 1. formato ----
+  // ---- 1. modelo pronto ----
+  const modelosMinis = [];
+  const listaModelos = el("div", { class: "fl-modelos", role: "radiogroup", "aria-label": "Modelos prontos" });
+  const desenharModelos = () => {
+    modelosMinis.length = 0;
+    const visiveis = FL.MODELOS.filter(m => st.objetivo === "todos" || m.objetivo === st.objetivo);
+    listaModelos.replaceChildren(...visiveis.map(m => {
+      const c = el("canvas", { class: "fl-mini", "aria-hidden": "true" });
+      modelosMinis.push([c, m]);
+      return el("button", { type: "button", class: `fl-modelo ${st.modelo === m.id ? "ativo" : ""}`, role: "radio", "aria-checked": String(st.modelo === m.id), "data-modelo-flyer": m.id,
+        onclick: () => { aplicarModeloFlyer(m); remontar(); avisar(`Modelo "${m.nome}" aplicado. Mude o que quiser.`); } },
+        c, el("strong", { text: m.nome }));
+    }));
+    setTimeout(async () => {
+      for (const [c, m] of modelosMinis) {
+        const dm = { ...dadosDesenho(), estilo: m.estilo, cor: "", validade: "" };
+        for (const k of CAMPOS_MODELO) dm[k] = m[k] || "";
+        await FL.desenhar(c, dm, { escala: 0.16 });
+      }
+    }, 50);
+  };
+  const objetivos = el("div", { class: "fl-chips", role: "group", "aria-label": "Para que é o flyer" }, FL.OBJETIVOS.map(([id, t]) =>
+    el("button", { type: "button", class: `chip-filtro ${st.objetivo === id ? "ativo" : ""}`, "data-objetivo": id,
+      onclick: () => { st.objetivo = id; objetivos.querySelectorAll("button").forEach(b => b.classList.toggle("ativo", b.dataset.objetivo === id)); desenharModelos(); } }, t)));
+  desenharModelos();
+
+  // ---- 2. formato ----
   const formatos = el("div", { class: "fl-formatos", role: "radiogroup", "aria-label": "Formato" }, Object.entries(FL.FORMATOS).map(([id, f]) =>
     el("button", { type: "button", class: `fl-formato ${st.formato === id ? "ativo" : ""}`, role: "radio", "aria-checked": String(st.formato === id), "data-formato-flyer": id,
-      onclick: () => { st.formato = id; formatos.querySelectorAll("button").forEach(b => { const on = b.dataset.formatoFlyer === id; b.classList.toggle("ativo", on); b.setAttribute("aria-checked", String(on)); }); estilos.dataset.formato = id; mudou(); } },
+      onclick: () => { st.formato = id; marcarAtivo(formatos, "formatoFlyer", id); estilos.dataset.formato = id; listaModelos.dataset.formato = id; mudou(); } },
       el("span", { class: `fl-forma ${id}`, "aria-hidden": "true" }), el("strong", { text: f.nome }), el("small", { text: f.sub }))));
 
-  // ---- 2. estilo ----
+  // ---- 3. estilo ----
   const estilos = el("div", { class: "fl-estilos", role: "radiogroup", "aria-label": "Estilo", "data-formato": st.formato }, FL.ESTILOS.map(e => {
     minis[e.id] = el("canvas", { class: "fl-mini", "aria-hidden": "true" });
     return el("button", { type: "button", class: `fl-estilo ${st.estilo === e.id ? "ativo" : ""}`, role: "radio", "aria-checked": String(st.estilo === e.id), "data-estilo-flyer": e.id,
-      onclick: () => { st.estilo = e.id; estilos.querySelectorAll("button").forEach(b => { const on = b.dataset.estiloFlyer === e.id; b.classList.toggle("ativo", on); b.setAttribute("aria-checked", String(on)); }); mudou(false); } },
+      onclick: () => { st.estilo = e.id; marcarAtivo(estilos, "estiloFlyer", e.id); mudou(false); } },
       minis[e.id], el("strong", { text: e.nome }), el("small", { text: e.sub }));
   }));
+  listaModelos.dataset.formato = st.formato;
 
-  // ---- 3. foto ----
+  // ---- 4. foto ----
+  const aplicarFiltro = () => { st.foto = FL.filtrar(st.fotoBase, st.filtro); };
   const abrirFoto = async (fonte, nomeFoto) => {
     try {
       const blob = fonte instanceof Blob ? fonte : await (await fetch(fonte)).blob();
       const reduzido = await reduzirFoto(blob, 1600);
-      st.foto = await createImageBitmap(reduzido); st.fotoNome = nomeFoto;
-      desenharFoto(); mudou();
+      st.fotoBase = await createImageBitmap(reduzido); st.fotoNome = nomeFoto;
+      Object.assign(st, { foco: 50, focoX: 50, zoom: 100 });
+      aplicarFiltro(); desenharFoto(); mudou();
     } catch (e) { avisar(e.message || "Não consegui abrir essa foto.", "erro"); }
   };
   const blocoFoto = el("div", { class: "fl-foto" });
+  const regua = (id, rotulo, chave, min, max) => el("div", { class: "campo fl-regua" }, el("label", { for: id, text: rotulo }),
+    el("input", { type: "range", id, min: String(min), max: String(max), value: String(st[chave]), oninput: ev => { st[chave] = Number(ev.target.value); mudou(false); }, onchange: () => redesenharMinis() }));
   const desenharFoto = () => {
-    const daPagina = [d.fotos.capa, ...d.fotos.galeria.map(g => g.id)].filter(Boolean).slice(0, 8);
+    const daPagina = [d.fotos.capa, ...d.fotos.galeria.map(g => g.id)].filter(Boolean).slice(0, 10);
     blocoFoto.replaceChildren(...[
       el("div", { class: "item-acoes" },
-        botao(st.foto ? "Trocar foto" : "Escolher foto do celular", () => escolherArquivos(false, arqs => abrirFoto(arqs[0], arqs[0].name)), "principal pequeno"),
-        st.foto ? botao("Sem foto", () => { st.foto = null; st.fotoNome = ""; desenharFoto(); mudou(); }, "pequeno") : null),
-      st.foto ? el("p", { class: "suave", "data-teste": "flyer-foto-nome", text: `Foto: ${st.fotoNome || "escolhida"}` }) : el("p", { class: "suave", text: "Sem foto, o estilo usa um fundo próprio. Foto de corte, do ambiente ou do barbeiro deixa o flyer mais forte." }),
+        botao(st.fotoBase ? "Trocar foto" : "Escolher foto do celular", () => escolherArquivos(false, arqs => abrirFoto(arqs[0], arqs[0].name)), "principal pequeno"),
+        st.fotoBase ? botao("Sem foto", () => { st.fotoBase = st.foto = null; st.fotoNome = ""; desenharFoto(); mudou(); }, "pequeno") : null),
+      st.fotoBase ? el("p", { class: "suave", "data-teste": "flyer-foto-nome", text: `Foto: ${st.fotoNome || "escolhida"}` })
+        : el("p", { class: "suave", text: "Sem foto, o estilo usa um fundo próprio. Foto de corte, do ambiente ou da equipe deixa o flyer mais forte." }),
       daPagina.length ? el("div", {}, el("small", { class: "suave", text: "Ou use uma foto da sua página:" }),
         el("div", { class: "fl-fotos-pagina" }, daPagina.map((id, i) => el("button", { type: "button", class: "fl-foto-pagina", "data-foto-pagina": String(i), "aria-label": `Usar a foto ${i + 1} da página`,
           onclick: () => abrirFoto(fotoUrl(id), `foto ${i + 1} da página`) }, el("img", { src: fotoUrl(id), alt: "", loading: "lazy" }))))) : null,
-      st.foto ? el("div", { class: "campo" }, el("label", { for: "fl-foco", text: "Ajustar a foto (mais para cima ou para baixo)" }),
-        el("input", { type: "range", id: "fl-foco", min: "0", max: "100", value: String(st.foco), oninput: ev => { st.foco = Number(ev.target.value); mudou(false); }, onchange: () => redesenharMinis() })) : null
+      st.fotoBase ? el("div", {}, el("small", { class: "suave", text: "Efeito da foto:" }),
+        el("div", { class: "fl-chips", role: "radiogroup", "aria-label": "Efeito da foto" }, FL.FILTROS.map(([id, t]) =>
+          el("button", { type: "button", class: `chip-filtro ${st.filtro === id ? "ativo" : ""}`, role: "radio", "aria-checked": String(st.filtro === id), "data-filtro-foto": id,
+            onclick: () => { st.filtro = id; aplicarFiltro(); desenharFoto(); mudou(); } }, t)))) : null,
+      st.fotoBase ? el("div", { class: "fl-reguas" },
+        regua("fl-zoom", "Aproximar", "zoom", 100, 250),
+        regua("fl-foco", "Subir / descer", "foco", 0, 100),
+        regua("fl-focoX", "Esquerda / direita", "focoX", 0, 100)) : null
     ].filter(Boolean));
   };
   desenharFoto();
 
-  // ---- 4. textos ----
+  // ---- 5. textos ----
   const inp = (rotulo, chave, attrs = {}, ajuda = null) => {
     const c = campo(rotulo, { id: `fl-${chave}`, value: st[chave], autocomplete: "off", ...attrs }, ajuda);
     const i = c.querySelector("input, textarea");
@@ -6580,7 +6667,7 @@ async function telaFlyers() {
   const chamadas = el("div", { class: "fl-chips", role: "group", "aria-label": "Chamada pronta" }, CHAMADAS_FLYER.map(t =>
     el("button", { type: "button", class: `chip-filtro ${st.chamada === t ? "ativo" : ""}`, "data-chamada": t,
       onclick: () => { st.chamada = t; document.getElementById("fl-chamada").value = t; chamadas.querySelectorAll("button").forEach(b => b.classList.toggle("ativo", b.dataset.chamada === t)); mudou(); } }, t)));
-  const servicos = d.servicos.filter(s => s.ativo !== false);
+  const servicos = d.servicos;
   const usarServico = servicos.length ? el("div", { class: "campo" }, el("label", { for: "fl-servico", text: "Preencher com um serviço (opcional)" }),
     el("select", { id: "fl-servico", onchange: ev => {
       const s = servicos.find(x => String(x.id) === ev.target.value); if (!s) return;
@@ -6589,21 +6676,26 @@ async function telaFlyers() {
       document.getElementById("fl-precoPor").focus(); mudou();
     } }, el("option", { value: "", text: "Escolha…" }), servicos.map(s => el("option", { value: String(s.id), text: `${s.nome} · ${reais(s.precoCentavos)}` })))) : null;
   const blocoTextos = el("div", { class: "fl-textos" },
+    inp("Chamada (aparece em destaque)", "chamada", { maxlength: "30", placeholder: "Ex.: Agenda aberta" }), chamadas,
+    inp("Texto principal", "titulo", { maxlength: "60", required: true, placeholder: "Ex.: Marque já seu horário" }, "Curto e direto: é o que aparece maior."),
     usarServico,
-    inp("Chamada (aparece em destaque)", "chamada", { maxlength: "30", placeholder: "Ex.: Promoção" }), chamadas,
-    inp("Texto principal", "titulo", { maxlength: "60", required: true, placeholder: "Ex.: Corte + barba" }, "Curto e direto: é o que aparece maior."),
     el("div", { class: "lado-a-lado" },
-      inp("Preço normal (riscado)", "precoDe", { inputmode: "decimal", maxlength: "12", placeholder: "Ex.: 70,00" }),
-      inp("Preço da promoção", "precoPor", { inputmode: "decimal", maxlength: "12", placeholder: "Ex.: 55,00" })),
-    inp("Detalhe (opcional)", "detalhe", { maxlength: "90", placeholder: "Ex.: Terça e quarta · agende pelo WhatsApp" }),
+      inp("Preço normal (riscado, opcional)", "precoDe", { inputmode: "decimal", maxlength: "12", placeholder: "Ex.: 70,00" }),
+      inp("Preço da promoção (opcional)", "precoPor", { inputmode: "decimal", maxlength: "12", placeholder: "Ex.: 55,00" })),
+    el("p", { class: "ajuda", text: "Sem preço, o flyer vira um convite (\"marque seu horário\", aviso, novidade)." }),
+    inp("Detalhe (opcional)", "detalhe", { maxlength: "90", placeholder: "Ex.: Terça e quarta · chame no WhatsApp" }),
     inp("Válido até (opcional)", "validade", { type: "date", min: hojeLocal() }, "Depois dessa data o flyer sai sozinho do catálogo."));
 
-  // ---- 5. cor e QR ----
+  // ---- 6. cor e detalhes ----
   const cores = el("div", { class: "fl-cores", role: "radiogroup", "aria-label": "Cor de destaque" },
     [["", "Cor do estilo"], ...FL.CORES].map(([c, t]) => el("button", { type: "button", class: `fl-cor ${st.cor === c ? "ativo" : ""} ${c ? "" : "auto"}`, role: "radio", "aria-checked": String(st.cor === c), "aria-label": t, title: t, "data-cor": c || "auto",
       onclick: ev => { st.cor = c; cores.querySelectorAll("button").forEach(b => { const on = b === ev.currentTarget; b.classList.toggle("ativo", on); b.setAttribute("aria-checked", String(on)); }); mudou(false); } },
     c ? svg("svg", { viewBox: "0 0 20 20", "aria-hidden": "true" }, svg("circle", { cx: "10", cy: "10", r: "9", fill: c, stroke: "rgba(0,0,0,.25)" })) : el("span", { text: "Auto" }))));
-  const qrMarcar = caixaMarcar("Mostrar o QR Code e o link do catálogo no flyer", { id: "fl-qr", checked: st.qr || null, onchange: ev => { st.qr = ev.target.checked; mudou(); } });
+  const marcar = (rotulo, id, chave, desligado = false) => caixaMarcar(rotulo, { id, checked: st[chave] || null, disabled: desligado || null, onchange: ev => { st[chave] = ev.target.checked; mudou(); } });
+  const extras = el("div", { class: "fl-extras" },
+    marcar(logo ? "Mostrar a logo da barbearia" : "Mostrar a logo (coloque a logo em Minha página)", "fl-logo", "mostrarLogo", !logo),
+    marcar(whatsNum ? `Mostrar o WhatsApp ${formatarTelefone(whatsNum)}` : "Mostrar o WhatsApp (cadastre em Minha página)", "fl-whats", "mostrarWhats", !whatsNum),
+    marcar("Mostrar o QR Code e o link do catálogo", "fl-qr", "qr"));
 
   // ---- publicar / baixar ----
   const imagemFinal = async () => {
@@ -6619,8 +6711,10 @@ async function telaFlyers() {
   const publicar = async () => {
     try {
       const blob = await comCarga(imagemFinal);
+      const m = FL.MODELOS.find(x => x.id === st.modelo);
       const meta = { titulo: st.titulo.trim(), texto: textoResumo(), estilo: st.estilo, formato: st.formato, validade: st.validade || null,
-        dados: { chamada: st.chamada, titulo: st.titulo, precoDe: st.precoDe, precoPor: st.precoPor, detalhe: st.detalhe, validade: st.validade, cor: st.cor, qr: st.qr, foco: st.foco } };
+        dados: { modelo: st.modelo, objetivo: m?.objetivo || null, chamada: st.chamada, titulo: st.titulo, precoDe: st.precoDe, precoPor: st.precoPor, detalhe: st.detalhe,
+          validade: st.validade, cor: st.cor, qr: st.qr, mostrarWhats: st.mostrarWhats, mostrarLogo: st.mostrarLogo, filtro: st.filtro } };
       const r = await comCarga(() => api(`/pagina/flyers?meta=${encodeURIComponent(JSON.stringify(meta))}`, { metodo: "POST", bruto: blob }));
       avisar(r.mensagem);
       await telaFlyers();
@@ -6647,9 +6741,12 @@ async function telaFlyers() {
           catch (e) { avisar(e.message, "erro"); }
         }, "pequeno"),
         f.dados ? botao("Usar de novo", () => {
-          Object.assign(st, { chamada: "", precoDe: "", precoPor: "", detalhe: "", validade: "", cor: "", qr: true, foco: 50 }, f.dados, { estilo: f.estilo, formato: f.formato });
-          if (st.validade && st.validade < hojeLocal()) st.validade = "";
-          avisar("Dados carregados no editor. Escolha a foto de novo, se quiser."); recarregar();
+          const dd = f.dados;
+          for (const k of CAMPOS_MODELO) st[k] = dd[k] || "";
+          Object.assign(st, { modelo: dd.modelo || "", cor: dd.cor || "", validade: dd.validade && dd.validade >= hojeLocal() ? dd.validade : "", qr: dd.qr !== false,
+            mostrarWhats: Boolean(dd.mostrarWhats), mostrarLogo: dd.mostrarLogo !== false, filtro: dd.filtro || "original", estilo: f.estilo, formato: f.formato });
+          if (st.fotoBase) aplicarFiltro();
+          avisar("Textos carregados no editor. Escolha a foto de novo, se quiser."); remontar();
         }, "pequeno") : null,
         botao("Excluir", () => abrirJanela("Excluir este flyer?", el("p", { text: "Ele sai do catálogo e a imagem é apagada. Fica registrado quem excluiu." }), {
           ok: "Excluir", perigo: true, aoConfirmar: async () => { await api("/pagina/flyers/excluir", { metodo: "POST", corpo: { id: f.id } }); avisar("Flyer excluído."); recarregar(); } }), "pequeno texto-perigo")
@@ -6657,14 +6754,14 @@ async function telaFlyers() {
 
   const avisos = [
     !d.fotos.armazenamento ? el("p", { class: "info", text: "O envio de imagens ainda está sendo ligado pela equipe 4Blade. Você já pode criar e baixar o flyer." }) : null,
-    !p.publicada ? el("p", { class: "info", "data-teste": "flyer-pagina-rascunho", text: "Sua página ainda está em rascunho. O flyer fica guardado e aparece no catálogo quando você publicar a página." }) : null
+    !p.publicada ? el("p", { class: "info", "data-teste": "flyer-pagina-rascunho", text: "Sua página ainda está em rascunho. O flyer fica guardado e aparece no catálogo quando você publicar a página (em Minha página)." }) : null
   ];
   const passo = (n, titulo, ...conteudo) => el("section", { class: "fl-passo", "aria-labelledby": `fl-p${n}` },
     el("h3", { id: `fl-p${n}` }, el("span", { class: "fl-num", text: String(n) }), titulo), ...conteudo);
   const cheio = lista.flyers.length >= lista.limite;
 
   mostrar(
-    cabecalho("Flyers e promoções", "Monte a arte, publique no seu catálogo e mande no WhatsApp e no Instagram.", "#/minha-pagina"),
+    cabecalho("Divulgação", "Flyers para o Instagram e o WhatsApp: escolha um modelo pronto, mude o que quiser e publique no seu catálogo."),
     ...avisos,
     el("div", { class: "fl-grade" },
       el("div", { class: "fl-previa-col" },
@@ -6674,11 +6771,12 @@ async function telaFlyers() {
           botao("Baixar imagem", baixar, "")),
         cheio ? el("p", { class: "suave", text: `Você já tem ${lista.limite} flyers guardados. Exclua um antigo para publicar outro.` }) : null),
       el("div", { class: "fl-editor" },
-        passo(1, "Formato", formatos),
-        passo(2, "Estilo", estilos),
-        passo(3, "Foto", blocoFoto),
-        passo(4, "Textos", blocoTextos),
-        passo(5, "Cor de destaque e QR Code", cores, qrMarcar),
+        passo(1, "Comece por um modelo", el("p", { class: "suave", text: "Para que é o flyer? O modelo preenche tudo; depois você muda o que quiser." }), objetivos, listaModelos),
+        passo(2, "Formato", formatos),
+        passo(3, "Estilo", estilos),
+        passo(4, "Foto", blocoFoto),
+        passo(5, "Textos", blocoTextos),
+        passo(6, "Cor e detalhes", cores, extras),
         el("div", { class: "fl-fim" },
           botao("Ver como ficou ↑", () => tela.scrollIntoView({ behavior: "smooth", block: "center" })),
           el("button", { type: "button", class: "botao principal", disabled: cheio || !d.fotos.armazenamento || null, onclick: publicar, text: "Publicar no catálogo" })))),
@@ -6746,9 +6844,9 @@ function gruposDoPerfil(p) {
   ];
   // Gerente/dono: menu lateral (organização de antes); Financeiro reúne tudo o que é financeiro.
   return [
-    { id: "inicio", titulo: "Visão geral", icone: "painel", itens: [["painel", "Painel", "painel"], ["visao-dia", "Visão do dia", "lista"]] },
-    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"], ["minha-pagina", "Minha página", "loja"]] },
-    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["contas", "Despesas", "contas"], ["pagamento-equipe", "Pagamento da equipe", "equipe"], ["notas", "Notas em aberto", "contas"], ["contador", "Contador e dados", "contador"]] },
+    // 25/11/2026: sem "Visão geral" — o Início (Visão do dia com a logo) fica no alto do menu, fora dos grupos.
+    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"], ["minha-pagina", "Minha página", "loja"], ["divulgacao", "Divulgação", "megafone"]] },
+    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["contas", "Despesas", "contas"], ["notas", "Notas em aberto", "contas"]] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos e estoque", "estoque"]] },
     { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"], ["assinatura", "Meu plano", "dinheiro"]] }
   ];
@@ -6764,12 +6862,16 @@ function navPrincipal() {
   if (usuario.assinatura?.bloqueada) return [["assinatura", "Assinatura", "dinheiro"], ["suporte", "Suporte", "suporte"]];
   if (p === "caixa") return [["visao-dia", "Hoje", "painel"], ["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["clientes", "Clientes", "clientes"], ["notas", "Notas", "contas"]];
   if (p === "barbeiro") return [["agenda", "Agenda", "agenda"], ["minha-producao", "Produção", "grafico"], ["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]];
-  return [["painel", "Início", "painel"], ["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"],
+  return [["inicio", "Início", "painel"], ["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"],
     ["contas", "Despesas", "contas"], ["financeiro", "Relatórios", "grafico"]];
 }
 function rotaAtual() {
   const r = location.hash.replace(/^#\/?/, "").split("/")[0] || (usuario?.telaInicial ?? "");
-  return r === "inicio" ? (gestao() ? "painel" : "agenda") : r === "caixa-historico" || r === "caixa-dia" ? "caixa" : r === "estoque" ? "produtos" : r === "agenda-lote" ? (voltarLote === "#/agenda" ? "agenda" : "clientes") : r;
+  if (gestao() && ["inicio", "visao-dia"].includes(r)) return "inicio";
+  if (r === "contador" || r === "painel") return "financeiro";
+  if (r === "pagamento-equipe") return "contas";
+  if (r === "flyers") return "divulgacao";
+  return r === "inicio" ? "agenda" : r === "caixa-historico" || r === "caixa-dia" ? "caixa" : r === "estoque" ? "produtos" : r === "agenda-lote" ? (voltarLote === "#/agenda" ? "agenda" : "clientes") : r;
 }
 // 19/11/2026 (2ª revisão, pedido do responsável): menu no topo só para caixa, barbeiro e plataforma;
 // gerente e dono continuam com o menu lateral de antes (fixo no computador, ☰ no celular).
@@ -6795,7 +6897,8 @@ function montarMenuLateral() {
       el("img", { class: "menu-logo", src: "/icons/logo.png", alt: "4blade", width: "98", height: "40" }),
       el("strong", { text: usuario.barbearia ? usuario.barbearia.nome : "Plataforma" }),
       el("span", { text: `${usuario.nome.split(" ")[0]} · ${NOME_PERFIL[usuario.perfil]}` })),
-    el("nav", { class: "menu-nav" }, grupos.map(g => {
+    el("nav", { class: "menu-nav" }, gestao() && usuario.barbearia && !usuario.assinatura?.bloqueada ? el("a", { class: `nav-item nav-inicio ${atual === "inicio" ? "ativo" : ""}`, href: "#/inicio", "data-nav": "Início",
+      "aria-current": atual === "inicio" ? "page" : null, onclick: () => { fecharMenu(); if (location.hash === "#/inicio") rotear(); } }, icone("casa"), el("span", { text: "Início" })) : null, grupos.map(g => {
       const aberto = gruposAbertos.has(g.id) || grupos.length === 1;
       const itens = el("div", { class: "grupo-itens", id: `grupo-${g.id}` }, g.itens.map(([rota, titulo, ic]) =>
         el("a", { class: `nav-item ${rota === atual ? "ativo" : ""}`, href: `#/${rota}`, "data-nav": titulo, "aria-current": rota === atual ? "page" : null,
@@ -6888,7 +6991,7 @@ const ROTAS = {
   uso: { perfis: ["plataforma"], tela: telaUsoApp },
   "clientes-lote": { perfis: ["plataforma"], tela: telaClientesLoteSuporte },
   "horarios-lote": { perfis: ["plataforma"], tela: telaHorariosLoteSuporte },
-  inicio: { perfis: ["proprietario", "gerente", "barbeiro"], tela: () => (gestao() ? telaPainel() : telaAgenda()) },
+  inicio: { perfis: ["proprietario", "gerente", "barbeiro"], tela: () => (gestao() ? telaVisaoDia() : telaAgenda()) },
   caixa: { perfis: ["caixa", "proprietario", "gerente"], tela: telaCaixa },
   funcionamento: { perfis: ["proprietario", "gerente"], tela: telaFuncionamento },
   estoque: { perfis: ["proprietario", "gerente"], tela: telaEstoque },
@@ -6906,7 +7009,8 @@ const ROTAS = {
   clientes: { perfis: ["proprietario", "gerente", "caixa"], tela: () => telaClientes() },
   mensagens: { perfis: ["proprietario", "gerente", "caixa"], tela: telaMensagens },
   "minha-pagina": { perfis: ["proprietario", "gerente"], tela: telaMinhaPagina },
-  flyers: { perfis: ["proprietario", "gerente"], tela: telaFlyers },
+  divulgacao: { perfis: ["proprietario", "gerente"], tela: telaFlyers },
+  flyers: { perfis: ["proprietario", "gerente"], tela: () => location.replace("#/divulgacao") },
   agenda: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgenda },
   "agenda-lote": { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgendaLote },
   "minha-producao": { perfis: ["barbeiro"], tela: telaMinhaProducao },

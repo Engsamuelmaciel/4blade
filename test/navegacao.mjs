@@ -1,7 +1,25 @@
 // Navegação (19/11/2026): caixa/barbeiro/plataforma têm menu no topo; gerente/dono, menu lateral. Se o nome é uma aba do topo, toca nela; senão abre "Mais" (#btn-menu) e
 // toca no item do painel (que tem todas as telas, por assunto). Tenta algumas vezes: logo após o login o menu é remontado.
+// Telas que saíram do menu (25/11/2026): chega pela tela "mãe" e pela aba de dentro.
+const DENTRO_DE = {
+  "Contador e dados": ["Relatório financeiro", "[data-aba-secao=contador]"],
+  "Pagamento da equipe": ["Despesas", "[data-aba-secao=pagamento-equipe]"],
+  "Painel": ["Relatório financeiro", "[data-aba-secao=painel]"],
+  "Flyers": ["Divulgação", null]
+};
 export async function ir(page, nome) {
   await page.waitForFunction(() => document.querySelector("#nav-topo:not([hidden]) .nav-aba") || document.querySelector("#menu:not([hidden]) .grupo"));
+  // gerente/dono: "Visão do dia" agora é o Início
+  if (nome === "Visão do dia" && await page.locator('#menu [data-nav="Início"]').count()) nome = "Início";
+  if (DENTRO_DE[nome] && !(await page.locator(`#menu [data-nav="${nome}"], #nav-topo [data-nav="${nome}"]`).count())) {
+    const [mae, aba] = DENTRO_DE[nome];
+    if (mae) await ir(page, mae);
+    if (aba?.startsWith("#/")) { await page.evaluate(h => { location.hash = h; }, aba); await page.waitForTimeout(80); }
+    else if (aba) await page.click(aba);
+    await page.waitForTimeout(80);
+    await page.waitForFunction(() => !document.body.dataset.carregando);
+    return;
+  }
   for (let tentativa = 0; ; tentativa++) {
     try {
       const aba = page.locator(`#nav-topo:not([hidden]) [data-nav-topo="${nome}"], #nav-topo:not([hidden]) [data-nav="${nome}"]`).first();
@@ -16,7 +34,7 @@ export async function ir(page, nome) {
           await page.waitForTimeout(250); // animação do painel
         }
         const titulo = page.locator(`#menu .grupo:has([data-nav="${nome}"]) .grupo-titulo`);
-        if ((await titulo.getAttribute("aria-expanded")) === "false") await titulo.click();
+        if (await titulo.count() && (await titulo.getAttribute("aria-expanded")) === "false") await titulo.click();
         item = page.locator(`#menu [data-nav="${nome}"]`);
       }
       const destino = await item.getAttribute("href");
