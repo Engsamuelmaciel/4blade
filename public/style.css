@@ -2317,3 +2317,19 @@ select { appearance: none; -webkit-appearance: none; padding-right: 38px;
   .fc-pagar { position: sticky; top: calc(var(--topo-altura, 60px) + 12px); }
   .fc-movel { display: none; }
 }
+
+/* frente de caixa: ajustes finos */
+.fc-quem { flex: 1 1 300px; }
+.fc-quem select { min-width: 200px; flex: 1; }
+.fc-desconto { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; margin-top: 12px; }
+.fc-desconto > label { margin: 0; }
+.fc-desconto input { width: 100px; max-width: 100px; text-align: right; min-height: 42px; }
+.fc-desconto > .ajuda { flex-basis: 100%; margin-top: 0; }
+@media (min-width: 1100px) {
+  .fc-resumo .pdv-num { padding: 10px 14px; }
+  .fc-resumo .pdv-num strong { font-size: 22px; }
+  .fc-resumo .pdv-num small { font-size: 11px; }
+  .fc-barra { margin-bottom: 8px; }
+  .fc-resumo { margin-bottom: 10px; }
+  .fc-vitrine, .fc-comanda { height: calc(100vh - 260px); }
+}

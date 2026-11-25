@@ -381,3 +381,8 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
   - **Avisos**: próximo cliente, cliente com nota vencida, vale pego no mês (quanto será descontado), faltas de hoje e do mês, agenda livre, falta de foto;
   - **Meu mês**: dias trabalhados, clientes atendidos, ticket médio e vales.
 - Servidor: `GET /equipe/minha-producao` devolve também `hoje`, `foto` e `marca` (sempre do próprio usuário da sessão).
+
+## 31. Frente de caixa (25/11/2026, pedido do responsável)
+- O Caixa de hoje passa a ser uma "frente de caixa" em três zonas: **Vitrine** (fila de atendimentos de hoje, serviços e produtos), **Comanda** (os itens da venda, com busca) e **Total e pagamento** (total grande, forma de pagamento por botões, troco, parcelas e "Finalizar venda"). No celular as zonas ficam empilhadas, com uma barra fixa "N itens · R$ total · Pagar".
+- Uma comanda pode ser: um atendimento da fila (cobrar), serviços sem horário marcado (cliente escolhido, cadastrado na hora ou "não identificado") ou só produtos (com desconto em %). Produto pode ser juntado ao atendimento.
+- Regras que não mudam: nota (promissória) só para cliente cadastrado; desconto em % só em venda só de produtos (em serviço, edita-se o valor da linha, que fica registrado como "valor diferente da tabela"); o caixa abre sozinho no primeiro lançamento.
