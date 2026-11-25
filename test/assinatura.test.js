@@ -123,7 +123,7 @@ describe("página de planos e Assinar (sem login)", () => {
 
     assert.equal(usuario.trocaObrigatoria, false, "a senha foi escolhida por ele");
     assert.equal(usuario.perfil, "proprietario");
-    assert.deepEqual(usuario.barbearia, { nome: "Barbearia Navalha Teste", plano: "standard" });
+    assert.deepEqual(usuario.barbearia, { nome: "Barbearia Navalha Teste", plano: "standard", logo: null });
     assert.equal(usuario.assinatura.situacao, "teste");
     assert.equal(usuario.assinatura.diasRestantes, 14);
 

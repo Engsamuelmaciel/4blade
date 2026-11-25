@@ -194,6 +194,10 @@ describe("página da barbearia", () => {
     let r = await enviarFoto(amb, ger.token, "logo", jpg);
     assert.equal(r.status, 201, JSON.stringify(r.dados));
     const logo1 = r.dados.foto.id;
+    // Logo no menu (25/11/2026): o usuário da própria barbearia recebe o id da logo atual; outra barbearia não vê a dela
+    assert.equal((await get("/api/auth/me", ger.token)).dados.usuario.barbearia.logo, logo1);
+    const outra = await cenario("pgo");
+    assert.equal((await outra.get("/api/auth/me", outra.ger.token)).dados.usuario.barbearia.logo, null, "isolamento: sem logo própria, não herda a de outra");
     const guardada = [...env.FOTOS.mapa.values()][0].dados;
     assert.equal(tipoImagem(guardada), "image/jpeg");
     assert.ok(!Buffer.from(guardada).includes(Buffer.from("GPS-SAO-PAULO")), "localização (EXIF) removida");

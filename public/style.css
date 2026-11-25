@@ -2040,3 +2040,9 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--suav
 /* A tela recebe o foco ao trocar (leitor de tela); sem moldura em volta dela. */
 #app:focus, #app:focus-visible { outline: none; }
 .grade-barbeiro-cartao .mini-grade { margin: 0; }
+
+/* Logo da barbearia em miniatura na frente do nome, no topo do menu (25/11/2026) */
+.menu-cabecalho strong.menu-barbearia { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.menu-barbearia-logo { width: 24px; height: 24px; flex: none; border-radius: 50%; object-fit: cover; background: #fff; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .25); }
+.menu-barbearia-nome { display: block; min-width: 0; overflow-wrap: anywhere; line-height: 1.2; font-size: inherit; color: inherit; }
+.menu-cabecalho strong .menu-barbearia-nome { color: #fff; font-size: 16px; }

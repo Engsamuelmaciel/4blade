@@ -6239,7 +6239,9 @@ async function enviarFotoPagina(arquivo, tipo, { legenda = "", usuarioId = null 
   const lado = tipo === "capa" ? 1600 : tipo === "galeria" ? 1200 : 512;
   const blob = await reduzirFoto(arquivo, lado, { quadrada: tipo === "logo" || tipo === "equipe" });
   const q = new URLSearchParams({ tipo, ...(legenda ? { legenda } : {}), ...(usuarioId ? { usuarioId } : {}) });
-  return api(`/pagina/foto?${q}`, { metodo: "POST", bruto: blob });
+  const r = await api(`/pagina/foto?${q}`, { metodo: "POST", bruto: blob });
+  if (tipo === "logo" && usuario?.barbearia && r?.foto?.id) { usuario.barbearia.logo = r.foto.id; document.querySelector("[data-teste=menu-barbearia]")?.replaceWith(nomeComLogo()); }
+  return r;
 }
 
 function escolherArquivos(multiplo, aoEscolher) {
@@ -7019,6 +7021,14 @@ function rotaAtual() {
 // 19/11/2026 (2ª revisão, pedido do responsável): menu no topo só para caixa, barbeiro e plataforma;
 // gerente e dono continuam com o menu lateral de antes (fixo no computador, ☰ no celular).
 const usaMenuTopo = () => !["proprietario", "gerente"].includes(usuario?.perfil) || Boolean(usuario?.assinatura?.bloqueada);
+// Nome da barbearia no topo do menu, com a logo dela (a enviada em Minha página) em miniatura na frente.
+function nomeComLogo() {
+  const b = usuario.barbearia;
+  return el("strong", { class: "menu-barbearia", "data-teste": "menu-barbearia" },
+    b?.logo ? el("img", { class: "menu-barbearia-logo", src: fotoUrl(b.logo), alt: "", width: "24", height: "24", "data-teste": "menu-logo-barbearia" }) : null,
+    el("span", { class: "menu-barbearia-nome", text: b ? b.nome : "Plataforma" }));
+}
+
 function montarMenuLateral() {
   const aside = menuEl();
   const atual = rotaAtual();
@@ -7038,7 +7048,7 @@ function montarMenuLateral() {
   aside.replaceChildren(
     el("div", { class: "menu-cabecalho" },
       el("img", { class: "menu-logo", src: "/icons/logo.png", alt: "4blade", width: "98", height: "40" }),
-      el("strong", { text: usuario.barbearia ? usuario.barbearia.nome : "Plataforma" }),
+      nomeComLogo(),
       el("span", { text: `${usuario.nome.split(" ")[0]} · ${NOME_PERFIL[usuario.perfil]}` })),
     el("nav", { class: "menu-nav" }, gestao() && usuario.barbearia && !usuario.assinatura?.bloqueada ? el("a", { class: `nav-item nav-inicio ${atual === "inicio" ? "ativo" : ""}`, href: "#/inicio", "data-nav": "Início",
       "aria-current": atual === "inicio" ? "page" : null, onclick: () => { fecharMenu(); if (location.hash === "#/inicio") rotear(); } }, icone("casa"), el("span", { text: "Início" })) : null, grupos.map(g => {
@@ -7090,7 +7100,7 @@ function montarMenu() {
   // Painel "Mais": tudo, por assunto (os grupos começam abertos)
   aside.replaceChildren(
     el("div", { class: "menu-cabecalho" },
-      el("strong", { text: usuario.barbearia ? usuario.barbearia.nome : "Plataforma" }),
+      nomeComLogo(),
       el("span", { text: `${usuario.nome.split(" ")[0]} · ${NOME_PERFIL[usuario.perfil]}` })),
     el("nav", { class: "menu-nav" }, grupos.map(g => {
       const aberto = !gruposFechados.has(g.id);

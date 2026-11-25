@@ -119,6 +119,14 @@ async function rodar(tela) {
     await enviarArquivos(sec.locator('button:has-text("+ Adicionar fotos")'), galeria);
     await page.waitForSelector("[data-teste=mp-galeria] [data-galeria='3']");
     assert.equal(await page.locator("[data-foto-tipo=logo] img").count(), 1);
+    // logo em miniatura na frente do nome da barbearia, no topo do menu
+    if (await page.locator("#btn-menu").isVisible() && !(await page.locator("#menu.aberto").count())) await page.click("#btn-menu");
+    await page.waitForSelector("#menu [data-teste=menu-logo-barbearia]");
+    assert.equal(await page.locator("#menu [data-teste=menu-barbearia] .menu-barbearia-nome").innerText(), "Barbearia Semana Fictícia");
+    assert.ok((await page.locator("#menu [data-teste=menu-logo-barbearia]").boundingBox()).width <= 26, "miniatura pequena");
+    await page.waitForFunction(() => { const i = document.querySelector("#menu [data-teste=menu-logo-barbearia]"); return i && i.complete && i.naturalWidth > 0; });
+    await print("menu-com-logo", { inteira: false });
+    await page.keyboard.press("Escape");   // fecha o painel do celular
     await print("fotos-enviadas");
 
     passo("textos e tema");

@@ -72,7 +72,9 @@ const CAMPOS_BARBEARIA = `
   b.barbeiros_adicionais AS barbearia_adicionais, b.bloqueada AS barbearia_bloqueada,
   a.origem AS a_origem, a.pago_ate AS a_pago_ate, a.teste_ate AS a_teste_ate,
   a.ultimo_pagamento_em AS a_ultimo_pagamento_em, a.cancelada AS a_cancelada,
-  (SELECT ue.email FROM usuarios_emails ue WHERE ue.usuario_id = u.id) AS email_recuperacao`;
+  (SELECT ue.email FROM usuarios_emails ue WHERE ue.usuario_id = u.id) AS email_recuperacao,
+  (SELECT pf.id FROM paginas_fotos pf WHERE pf.barbearia_id = u.barbearia_id AND pf.tipo = 'logo' AND pf.removida_em IS NULL
+     ORDER BY pf.criado_em DESC LIMIT 1) AS barbearia_logo`;
 const JUNTA_BARBEARIA = "LEFT JOIN barbearias b ON b.id = u.barbearia_id LEFT JOIN assinaturas a ON a.barbearia_id = u.barbearia_id";
 
 // Cobrança desligada: ninguém é bloqueado nem avisado por mensalidade.
@@ -118,7 +120,7 @@ export function publicUser(user, env) {
     telaInicial: TELA_INICIAL[user.perfil],
     cobrancaAtiva: cobrancaAtiva(env),
     barbearia: user.barbearia_id
-      ? { nome: user.barbearia_nome, plano: user.barbearia_plano }
+      ? { nome: user.barbearia_nome, plano: user.barbearia_plano, logo: user.barbearia_logo || null }
       : null,
     // Situação da mensalidade (só quem cuida da barbearia vê; a equipe não).
     assinatura: user.barbearia_id && (user.perfil === "proprietario" || user.perfil === "gerente") && sit.situacao !== "manual"

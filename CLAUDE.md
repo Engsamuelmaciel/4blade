@@ -257,6 +257,8 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 
 - 25/11/2026: **Ícone do WhatsApp da página pública redesenhado** (estava deformado no celular): `ICONE_WHATS` em src/pagina.js = balão com contorno + telefone preenchido (print `docs/prints/pagina/icone-whatsapp-novo.png`). Sem migração. **Publicado em 25/11/2026 (autorizado): versão 30b90d04.**
 
+- 25/11/2026: **Logo da barbearia no menu** (pedido do responsável): miniatura redonda (24 px) na frente do nome da barbearia, no topo do menu (lateral e painel "Mais"), usando a logo enviada em Minha página. Servidor: `CAMPOS_BARBEARIA` (index.js) traz `barbearia_logo` (logo ativa mais recente de `paginas_fotos`) → `usuario.barbearia.logo` em login e `/auth/me`; sem logo, só o nome. Tela: `nomeComLogo()` (`[data-teste=menu-barbearia]`, `menu-logo-barbearia`), atualizada na hora ao enviar logo nova (`enviarFotoPagina`). Testes: `test/pagina.test.js` (inclui isolamento) + `test/navegador-pagina.mjs` (print `*-menu-com-logo`). Cache do sw `4blade-v65`. Sem migração. NÃO publicada ainda.
+
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.
