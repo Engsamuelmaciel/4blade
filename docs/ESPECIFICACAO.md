@@ -361,3 +361,8 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - **Pagamento da equipe** fica dentro de Despesas (abas "Despesas | Pagamento da equipe").
 - **Contato e rodapé da página (25/11/2026):** o "Telefone" só aparece se o gerente preencher "Outro telefone" em Minha página (não usa mais o telefone do cadastro) e não repete o WhatsApp. Ícones de WhatsApp, telefone e Instagram desenhados. No fim da página, um cartão discreto do 4blade (logo, uma frase sobre o sistema e "Gostou desta página? Fale com a equipe 4blade", que abre o WhatsApp do suporte ou o pedido de teste grátis).
 
+## 28. Refinamento visual (25/11/2026, pedido do responsável)
+- Visual mais moderno e consistente em todas as telas: títulos com a fonte da marca, botões e campos com o mesmo desenho, cartões com borda fina e sombra suave, indicadores com número grande, menu lateral e janelas mais limpos.
+- Subtítulos das telas reescritos: dizem para que serve a tela (em vez de "toque aqui para…").
+- Equipe: primeiro as vagas e a lista; o cadastro de pessoa fica no fim (no computador, em duas colunas).
+

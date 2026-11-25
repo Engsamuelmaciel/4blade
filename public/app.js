@@ -2883,7 +2883,7 @@ async function telaFuncionamento() {
           }, "Reabrir"), "pequeno")))))
       : el("p", { class: "suave", text: "Nenhuma data fechada daqui para frente." }));
 
-  mostrar(cabecalho("Funcionamento", "O horário de cada profissional fica dentro do funcionamento (Equipe → Horário)."),
+  mostrar(cabecalho("Funcionamento", "Dias e horários em que a barbearia atende. O horário de cada profissional fica em Equipe."),
     el("div", { class: "duas-colunas" }, el("section", {}, form), el("section", {}, formFechar, fechadas)));
 }
 
@@ -4116,7 +4116,7 @@ async function telaFinanceiro() {
       el("p", { class: "suave centro" }, "Planilha completa e envio ao contador: ", el("a", { href: "#/contador", text: "Contador e dados" }), ".")];
   }
   mostrar(
-    cabecalho("Relatórios", "Entradas, saídas, resultado, equipe e vendas da barbearia"),
+    cabecalho("Relatórios", "Quanto entrou, quanto saiu e o que sobrou — por período, equipe e vendas."),
     controles, abasFin, corpo);
 }
 
@@ -4347,7 +4347,7 @@ async function telaPagamentoEquipe(pessoaId = null) {
       ]
     });
   }) : [el("li", { class: "vazio", text: "Ninguém na equipe ainda." })]);
-  mostrar(cabecalho("Pagamento da equipe", "Quanto pagar a cada um no mês: salário + comissão − vales. Toque na pessoa para ver o resumo; \"Ver desempenho completo\" abre o panorama."),
+  mostrar(cabecalho("Pagamento da equipe", "Quanto pagar a cada um no mês: salário + comissão − vales."),
     abas, navega, topo,
     el("div", { class: "duas-colunas" }, el("section", {}, el("h3", { class: "titulo-lista", text: "Equipe" }), ul), ranking),
     el("p", { class: "suave nota-rodape", text: "O salário pago entra nas despesas (\"Salários (equipe)\") e no relatório financeiro; a comissão fica fechada. Gastos com pessoal = comissões + salários." }));
@@ -4772,7 +4772,7 @@ async function telaContas() {
   };
   desenhar();
   telaLista({
-    titulo: "Despesas", subtitulo: "Contas e compras da barbearia. Toque numa despesa para pagar, editar ou cancelar.",
+    titulo: "Despesas", subtitulo: "Contas a pagar, compras e tudo o que sai da barbearia.",
     topo: resumo,
     barra: barraBusca({ placeholder: "Buscar despesa", filtros: [["abertas", "A pagar"], ["pagas", "Pagas"], ["todas", "Todas"]], estado, aoMudar: desenhar }),
     lista: ul, painel: painelCadastro("Nova despesa", formNovaDespesa(doEstoque))
@@ -4924,10 +4924,10 @@ async function telaEquipe() {
 
   const form = formUsuario(perfisQuePossoCriar);
   mostrar(
-    cabecalho("Equipe", "Vagas do plano (usuários ativos):"),
-    vagasEl,
-    painelCadastro("Nova pessoa", form),
-    lista);
+    cabecalho("Equipe", "Quem trabalha com você, o que cada um acessa e quanto ganha de comissão."),
+    el("p", { class: "rotulo-secao", text: "Vagas do plano" }), vagasEl,
+    lista,
+    painelCadastro("Nova pessoa", form));
 }
 
 function camposComissao(u = null) {
@@ -5156,7 +5156,7 @@ async function telaServicos() {
   };
   desenhar();
   telaLista({
-    titulo: "Serviços", subtitulo: "Toque no serviço para editar. O preço pode mudar na hora de finalizar (fica registrado).",
+    titulo: "Serviços", subtitulo: "Preço e tempo de cada serviço. É a tabela usada na agenda e no caixa.",
     barra: barraBusca({ placeholder: "Buscar serviço", filtros: [["ativos", "Ativos"], ["desativados", "Desativados"]], estado, aoMudar: desenhar }),
     lista: ul, painel: painelCadastro("Novo serviço", formCadastro(def))
   });
@@ -5251,7 +5251,7 @@ async function telaProdutos() {
   painel.append(el("p", { class: "link-discreto" }, el("a", { href: "#/produtos", "data-teste": "novo-material", text: "É material que a barbearia usa e não vende (lâmina, creme…)? Cadastre como material de uso",
     onclick: ev => { ev.preventDefault(); janelaMaterial(); } })));
   telaLista({
-    titulo: "Produtos e estoque", subtitulo: "Toque no item para dar entrada (compra), baixa, ajuste ou editar.",
+    titulo: "Produtos e estoque", subtitulo: "O que você vende e o que usa no dia a dia, com o estoque de cada item.",
     barra: barraBusca({ placeholder: "Buscar produto ou código", filtros: [["todos", "Todos"], ["uso", "Uso da barbearia"], ["atencao", "Atenção"], ["desativados", "Desativados"]], estado, aoMudar: desenhar }),
     lista: el("div", {}, ul, todos.some(p => p.ativo)
       ? el("p", { class: "centro" }, botao("Inventário (contar a prateleira)", () => janelaInventario(todos.filter(p => p.ativo)), "pequeno")) : null),
@@ -5318,7 +5318,7 @@ async function telaClientes(busca = null) {
   };
   desenhar();
   telaLista({
-    titulo: "Clientes", subtitulo: "Toque no cliente para ver as opções.",
+    titulo: "Clientes", subtitulo: "Todos os seus clientes, com contato, histórico e pendências.",
     barra: barraBusca({ placeholder: "Buscar por nome, apelido ou telefone", filtros, estado: estadoClientes, aoMudar: desenhar }),
     contador, lista: ul, painel: (() => {
       const pn = painelCadastro("Novo cliente", formCadastro(def));
@@ -5380,7 +5380,7 @@ async function telaMensagens() {
   });
   mostrarModelo();
   const envio = await blocoEnviarMensagem(modelos, campos);
-  mostrar(cabecalho("Mensagens", "Escolha a mensagem, escolha os clientes e envie pelo WhatsApp."),
+  mostrar(cabecalho("Mensagens", "Escolha a mensagem e os clientes; o WhatsApp abre com o texto pronto."),
     el("div", { class: "tela-mensagens" },
       envio,
       el("details", { class: "painel-novo painel-modelos", "data-teste": "painel-modelos" },
@@ -5696,7 +5696,7 @@ async function telaNotificacoes() {
       el("button", { type: "button", class: `chip-filtro ${estadoNotif.filtro === id ? "ativo" : ""}`, "data-filtro": id, text: t,
         onclick: ev => { estadoNotif.filtro = id; chips.querySelectorAll(".chip-filtro").forEach(b => b.classList.toggle("ativo", b === ev.currentTarget)); desenhar(); } })));
   const novas = itens.filter(i => !v.has(i.id)).length;
-  mostrar(cabecalho("Notificações", "O que precisa da sua atenção. Toque num aviso para ir direto à tela certa. Some sozinho quando for resolvido."),
+  mostrar(cabecalho("Notificações", "O que precisa da sua atenção agora. Cada aviso some sozinho quando é resolvido."),
     el("div", { class: "notif-topo" },
       el("p", { class: "suave", "data-teste": "notif-novas", text: novas ? `${novas} nova(s) desde a última visita.` : "Nenhuma nova." }),
       novas ? botao("Marcar todas como vistas", () => { marcarVistas(itens); telaNotificacoes(); }, "pequeno") : null),
@@ -6050,7 +6050,7 @@ async function telaNotas() {
       estadoNotas.busca = campoB?.value || ""; desenhar();
     }
   });
-  telaLista({ titulo: "Notas (fiado)", subtitulo: "Quem levou para pagar depois. Toque no cliente para ver as notas e dar baixa quando ele pagar (entra no caixa de hoje).",
+  telaLista({ titulo: "Notas (fiado)", subtitulo: "Quem levou para pagar depois. Ao receber, o valor entra no caixa de hoje.",
     topo: resumoEl, barra, lista: ul });
 }
 
@@ -6368,7 +6368,7 @@ async function telaMinhaPagina() {
   ];
 
   mostrar(
-    cabecalho("Minha página", "Sua vitrine para a bio do Instagram, o WhatsApp e o Google."),
+    cabecalho("Minha página", "Sua vitrine na internet: para a bio do Instagram, o WhatsApp e o Google."),
     topo,
     numeros,
     el("div", { class: "mp-secoes" },
@@ -6791,7 +6791,7 @@ function montarFlyers(FL, d, lista, logo) {
   const cheio = lista.flyers.length >= lista.limite;
 
   mostrar(
-    cabecalho("Divulgação", "Flyers para o Instagram e o WhatsApp: escolha um modelo pronto, mude o que quiser e publique no seu catálogo."),
+    cabecalho("Divulgação", "Flyers prontos para o Instagram e o WhatsApp, com link direto para o seu catálogo."),
     ...avisos,
     el("div", { class: "fl-grade" },
       el("div", { class: "fl-previa-col" },
