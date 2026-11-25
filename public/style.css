@@ -2460,36 +2460,3 @@ main:has(.fc) { padding-top: 12px; }
 .hist-secao.todos .hist-linha.extra { display: grid; }
 .hist-secao > .hist-ver-todos { width: calc(100% - 28px); margin: 8px 14px 12px; }
 @media (min-width: 640px) { .hist-resumo { grid-template-columns: repeat(3, 1fr); } }
-
-
-/* ---- frente de caixa: cabe na janela, sem cortar (26/11/2026) ----
-   Computador: a frente de caixa ocupa só o que sobra da altura da janela (--fc-y = distância do topo, medida pela tela);
-   vitrine, comanda e pagamento rolam POR DENTRO e o botão "Finalizar venda" fica sempre visível. */
-@media (min-width: 1100px) {
-  .fc { height: calc(100dvh - var(--fc-y, 330px) - 14px); min-height: 360px; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
-  .fc-vitrine, .fc-comanda { height: auto; min-height: 0; max-height: none; overflow-y: auto; }
-  .fc-comanda .fc-itens { min-height: 120px; }
-  .fc-pagar { position: static; height: auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding-bottom: 0; }
-  .fc-pagar > * { flex: none; }
-  .fc-pagar .fc-finalizar { position: sticky; bottom: 0; margin-top: auto; z-index: 2; box-shadow: 0 -10px 14px -6px var(--cartao), 0 8px 20px -8px rgba(16, 24, 40, .35); }
-  .fc-pagar::after { content: ""; flex: none; height: 14px; }
-}
-/* janelas baixas (notebook, tela com zoom): números e botões um pouco menores */
-@media (min-width: 1100px) and (max-height: 820px) {
-  .fc-topo, .cabecalho { min-height: 48px; padding-top: 6px; padding-bottom: 6px; margin-bottom: 8px; }
-  .fc-resumo { margin-bottom: 8px; }
-  .fc-resumo .pdv-num { padding: 6px 14px; }
-  .fc-resumo .pdv-num strong { font-size: 18px; }
-  .fc-resumo .pdv-formas .forma-card { padding: 6px 12px; }
-  .fc-total { padding: 8px 14px; }
-  .fc-total-valor { font-size: 28px; }
-  .fc-tile { padding: 6px 10px; }
-  .fc-forma { min-height: 48px; }
-  .fc-rotulo { margin: 10px 0 5px; }
-  .fc-finalizar { min-height: 48px; margin-top: 10px; }
-  .fc-vitrine, .fc-comanda, .fc-pagar { padding: 12px; }
-}
-@media (min-width: 1100px) {
-  main:has(.fc) { padding-bottom: 0; margin-bottom: 0; }
-  .fc { height: calc(100dvh - var(--fc-y, 330px) - 10px); }
-}
