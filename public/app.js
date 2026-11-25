@@ -3317,7 +3317,10 @@ async function telaCaixa(dataHistorico = null) {
   const sit = c.caixa.situacao;
   const situacao = el("div", { class: `pdv-situacao sit-${sit}`, "data-teste": "situacao-caixa" },
     el("span", { class: "sit-ponto", "aria-hidden": "true" }),
-    el("span", { class: "sit-txt", text: sit === "aberto" ? `Caixa aberto · por ${c.caixa.abertoPor}` : sit === "fechado" ? `Caixa fechado · aberto por ${c.caixa.abertoPor}` : "Caixa ainda não aberto" }));
+    el("span", { class: "sit-txt" },
+      sit === "aberto" ? [el("span", { class: "sit-nome", text: "Caixa " }), "aberto", el("span", { class: "sit-por", text: ` · por ${c.caixa.abertoPor}` })]
+        : sit === "fechado" ? [el("span", { class: "sit-nome", text: "Caixa " }), "fechado", el("span", { class: "sit-por", text: ` · aberto por ${c.caixa.abertoPor}` })]
+        : [el("span", { class: "sit-nome", text: "Caixa " }), "ainda não aberto"]));
   const aviso = sit === "fechado"
     ? el("details", { class: "cartao aviso-fechado", "data-teste": "aviso-gerente-caixa" },
       el("summary", { text: "O caixa de hoje já foi fechado. Pode continuar lançando: entra no caixa de hoje, depois do fechamento." }),
