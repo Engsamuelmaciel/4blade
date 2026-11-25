@@ -165,11 +165,11 @@ async function rodar(tela) {
     await page.fill("dialog[open] #c-cliNome", "Fábio Fixo Fictício");
     await page.check("dialog[open] #c-cliLgpd");
     await page.selectOption("dialog[open] #c-repetir", "1");
-    assert.equal(await page.inputValue("dialog[open] #c-repAte"), somarDias(AMANHA, 56));
+    assert.equal(await page.inputValue("dialog[open] #c-repAte"), somarDias(AMANHA, 365));
     await print("marcar-horario-fixo", false);
     await ok();
     await page.waitForSelector("dialog[open] >> text=Horário fixo criado");
-    assert.match(await page.textContent("dialog[open]"), /9 horário\(s\) marcado\(s\), toda .* às 10:00/);
+    assert.match(await page.textContent("dialog[open]"), /(5\d) horário\(s\) marcado\(s\), toda .* às 10:00/);
     await print("horario-fixo-criado", false);
     await ok();
     await page.waitForSelector('[data-agendamento="Fábio Fixo Fictício"] >> text=Fixo semanal');
@@ -179,11 +179,14 @@ async function rodar(tela) {
     await acao(page, '[data-agendamento="Fábio Fixo Fictício"]', "[data-teste=editar-repeticao]");
     await page.waitForSelector("dialog[open] #c-rRep");
     assert.equal(await page.inputValue("dialog[open] #c-rRep"), "1");
-    assert.equal(await page.inputValue("dialog[open] #c-rAte"), somarDias(AMANHA, 56), "começa com a data final atual");
+    {   // a série semanal termina na última quinta dentro de 1 ano (7 dias de folga)
+      const ate = await page.inputValue("dialog[open] #c-rAte");
+      assert.ok(ate <= somarDias(AMANHA, 365) && ate >= somarDias(AMANHA, 358), `começa com a data final atual (${ate})`);
+    }
     await page.selectOption("dialog[open] #c-rRep", "2");
     await print("editar-repeticao", false);
     await ok();
-    await page.waitForSelector("text=Repetição alterada: 4 horário(s) daqui para frente.");
+    await page.waitForSelector("text=/Repetição alterada: 2[4-7] horário\\(s\\) daqui para frente\\./");
     await page.waitForSelector('[data-agendamento="Fábio Fixo Fictício"] >> text=Fixo quinzenal');
 
     passo("marca horário SEM telefone (só o nome)");

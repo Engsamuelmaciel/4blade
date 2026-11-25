@@ -1712,12 +1712,12 @@ async function telaAgendaLote(suporteId = null) {
       if (sp) { sp.replaceChildren(...profs.map(p => el("option", { value: p.id, text: p.nome }))); sp.value = l.barbeiroId; }
       const ss = linhaEl.querySelector("[data-campo=servicoId]");
       ss.replaceChildren(...servicos.map(x => el("option", { value: x.id, text: `${x.nome} (${x.duracaoMin} min)` }))); ss.value = l.servicoId;
-      // Horário fixo (igual ao "Novo horário"): repete a cada N semanas até a data escolhida (padrão: 8 semanas).
+      // Horário fixo (igual ao "Novo horário"): repete a cada N semanas até a data escolhida (padrão: 1 ano).
       const sr = linhaEl.querySelector("[data-campo=repetir]");
       sr.replaceChildren(...OPCOES_REPETIR.map(([v, t]) => el("option", { value: v, text: t })));
       sr.value = l.repetir || "";
       sr.addEventListener("change", () => {
-        if (l.repetir && !l.ate) l.ate = somaDias(l.data || hoje, 56);
+        if (l.repetir && !l.ate) l.ate = somaDias(l.data || hoje, 365);
         if (!l.repetir) l.ate = "";
         guardar(); desenhar();
       });
@@ -2387,7 +2387,7 @@ function janelaEditarRepeticao(a) {
   const promessa = abrirJanela(`Repetição · ${a.cliente.nome}`, [
     el("p", { class: "suave", text: `Vale a partir deste horário (${dataBR(a.data)} às ${a.inicio}) em diante. Os horários anteriores não mudam. Os próximos são refeitos com a nova repetição.` }),
     campo("Repetir", { tag: "select", name: "rRep", valor: String(a.serie.intervaloSemanas), opcoes }),
-    campo("Repetir até", { name: "rAte", type: "date", value: a.serie.ate && a.serie.ate > a.data ? a.serie.ate : somaDias(a.data, 56) }, "Até 2 anos."),
+    campo("Repetir até", { name: "rAte", type: "date", value: a.serie.ate && a.serie.ate > a.data ? a.serie.ate : somaDias(a.data, 365) }, "Até 2 anos."),
     caixaMarcar("Marcar também os dias fora do funcionamento ou do horário do profissional", { name: "rFora" })
   ], {
     ok: "Salvar repetição",
@@ -2530,7 +2530,7 @@ function janelaMarcar(ag, pre = {}) {
     const atualizarRep = () => {
       const campoAte = f.repAte.closest(".campo");
       campoAte.hidden = !f.repetir.value;
-      if (f.repetir.value && !f.repAte.value) f.repAte.value = somaDias(f.data.value || hojeLocal(), 56);
+      if (f.repetir.value && !f.repAte.value) f.repAte.value = somaDias(f.data.value || hojeLocal(), 365);
     };
     f.repetir.addEventListener("change", atualizarRep);
     if (pre.hora) f.hora.value = pre.hora;
@@ -5195,7 +5195,7 @@ function janelaUsuario(u) {
 // ---------- CADASTROS (serviços, produtos, clientes) ----------
 // ---------- LISTAS LIMPAS (17/11/2026): item compacto que expande ao tocar + busca, filtros e painel de cadastro ----------
 const itensAbertos = new Set();   // continuam abertos quando a tela é montada de novo
-function itemExpansivel({ chave, attrs = {}, classe = "", avatar = null, titulo, sub = null, direita = null, detalhes }) {
+function itemExpansivel({ chave, attrs = {}, classe = "", avatar = null, titulo, sub = null, direita = null, detalhes, aoAbrir = null }) {
   const aberto = itensAbertos.has(chave);
   const det = el("div", { class: "item-x-det", hidden: aberto ? null : true }, detalhes());
   const resumo = el("button", { type: "button", class: "item-x-resumo", "aria-expanded": String(aberto) },
@@ -5209,8 +5209,9 @@ function itemExpansivel({ chave, attrs = {}, classe = "", avatar = null, titulo,
     det.hidden = !abrir;
     li.classList.toggle("aberto", abrir);
     resumo.setAttribute("aria-expanded", String(abrir));
-    if (abrir) itensAbertos.add(chave); else itensAbertos.delete(chave);
+    if (abrir) { itensAbertos.add(chave); aoAbrir?.(); } else itensAbertos.delete(chave);
   });
+  if (aberto) aoAbrir?.();   // já aberto (ex.: a lista foi refeita): carrega o que precisa
   return li;
 }
 // Barra de busca (filtra na hora) + filtros em botões. filtros: [[id, rótulo, fn(item)]].
@@ -5444,6 +5445,61 @@ const estadoProdutos = { busca: "", filtro: "todos" };
 
 // CLIENTES (17/11/2026): uma lista só, compacta, que expande ao tocar; busca por nome/apelido/telefone e filtros.
 const estadoClientes = { busca: "", filtro: "todos" };
+
+// ---------- HISTÓRICO DO CLIENTE (25/11/2026) ----------
+// Ao abrir o nome do cliente (Clientes): resumo, notas em aberto, próximos horários, atendimentos concluídos, faltas e cancelamentos,
+// compras de produtos. Só leitura; vem de GET /clientes/historico (gerente, proprietário e caixa).
+const FORMA_HIST = { dinheiro: "Dinheiro", pix: "Pix", debito: "Débito", credito: "Crédito", promissoria: "Nota" };
+const textoVisita = h => (h.resumo.ultimaVisita ? `${dataBR(h.resumo.ultimaVisita)}${h.resumo.diasSemVir ? ` · há ${h.resumo.diasSemVir} dia${h.resumo.diasSemVir === 1 ? "" : "s"}` : " · hoje"}` : "ainda não veio");
+function blocoHistoricoCliente(c) {
+  const raiz = el("div", { class: "hist-cliente", "data-teste": "historico-cliente" }, el("p", { class: "suave", text: "O histórico aparece aqui." }));
+  let estado = "vazio";
+  const linha = ({ data, hora = null, titulo, sub = null, valor = null, etiquetas = [], classe = "" }) => el("li", { class: `hist-linha ${classe}` },
+    el("span", { class: "hist-data" }, el("strong", { text: dataBR(data).slice(0, 5) }), el("small", { text: hora || dataBR(data).slice(6) })),
+    el("span", { class: "hist-txt" }, el("b", { text: titulo }), sub ? el("small", { text: sub }) : null),
+    el("span", { class: "hist-dir" }, valor !== null ? el("strong", { text: reais(valor) }) : null, ...etiquetas));
+  const secao = (id, titulo, qtd, itens, { aberto = true, tom = "", extra = null, rodape = null } = {}) => el("details", { class: `hist-secao ${tom}`, "data-teste": id, open: aberto || null },
+    el("summary", {}, el("span", { class: "hist-secao-titulo", text: titulo }), el("span", { class: "hist-qtd", text: extra || String(qtd) })),
+    qtd ? el("ul", { class: "hist-lista" }, itens) : el("p", { class: "suave hist-vazio", text: "Nada por aqui." }), rodape);
+  const desenhar = h => {
+    const r = h.resumo;
+    const atend = h.atendimentos;
+    const verTodos = atend.length > 6;
+    const listaAtend = atend.map((a, i) => linha({ data: a.data, hora: a.hora, titulo: a.servicos, sub: `com ${a.barbeiro}`, valor: a.totalCentavos,
+      etiquetas: a.formas.map(f => el("span", { class: `etiqueta ${f === "promissoria" ? "amarela" : "neutra"}`, text: FORMA_HIST[f] || f })), classe: i >= 6 ? "extra" : "" }));
+    const rodapeAtend = verTodos ? botao(`Ver todos (${h.atendimentosTotal})`, ev => {
+      const sec = ev.currentTarget.closest(".hist-secao");
+      const aberto = sec.classList.toggle("todos");
+      ev.currentTarget.textContent = aberto ? "Ver menos" : `Ver todos (${h.atendimentosTotal})`;
+    }, "pequeno hist-ver-todos") : null;
+    raiz.replaceChildren(...[
+      el("div", { class: "hist-resumo", "data-teste": "hist-resumo" },
+        mini("Atendimentos", String(r.atendimentos), null, "hist-atendimentos-qtd"),
+        mini("Total gasto", reais(r.gastoCentavos)), mini("Ticket médio", reais(r.ticketMedioCentavos)),
+        mini("Última visita", textoVisita(h)), mini("Faltas", String(r.faltas)), mini("Cliente desde", dataBR(h.cliente.desde))),
+      h.notasAbertas.notas.length ? secao("hist-notas", "Notas em aberto", h.notasAbertas.notas.length, h.notasAbertas.notas.map(n => linha({ data: n.data, titulo: n.descricao, valor: n.valorCentavos,
+        etiquetas: n.vencida ? [el("span", { class: "etiqueta vermelha", text: `Vencida há ${n.dias} dias` })] : [], classe: n.vencida ? "alerta" : "" })),
+        { tom: "alerta", extra: `${h.notasAbertas.notas.length} · ${reais(h.notasAbertas.totalCentavos)}` }) : null,
+      secao("hist-proximos", "Próximos horários", h.proximos.length, h.proximos.map(a => linha({ data: a.data, hora: a.hora, titulo: a.servicos, sub: `com ${a.barbeiro}` })), { aberto: h.proximos.length > 0 }),
+      secao("hist-atendimentos", "Atendimentos concluídos", h.atendimentosTotal, listaAtend, { rodape: rodapeAtend, extra: String(h.atendimentosTotal) }),
+      h.faltas.length || h.cancelados.length ? secao("hist-faltas", "Faltas e cancelamentos", h.faltas.length + h.cancelados.length, [
+        ...h.faltas.map(a => linha({ data: a.data, hora: a.hora, titulo: a.servicos, sub: `com ${a.barbeiro}`, etiquetas: [el("span", { class: "etiqueta amarela", text: "Faltou" })] })),
+        ...h.cancelados.map(a => linha({ data: a.data, hora: a.hora, titulo: a.servicos, sub: [`com ${a.barbeiro}`, a.motivo].filter(Boolean).join(" · "), etiquetas: [el("span", { class: "etiqueta", text: "Cancelado" })] }))
+      ], { aberto: false }) : null,
+      h.compras.length ? secao("hist-compras", "Compras de produtos", h.compras.length, h.compras.map(v => linha({ data: v.data, hora: v.hora, titulo: v.itens, valor: v.totalCentavos })),
+        { aberto: false, extra: `${h.compras.length} · ${reais(r.comprasCentavos)}` }) : null].filter(Boolean));   // sem "null" na tela
+    estado = "pronto";
+  };
+  const carregar = async () => {
+    if (estado === "carregando" || estado === "pronto") return;
+    estado = "carregando";
+    raiz.replaceChildren(el("p", { class: "suave", text: "Carregando o histórico…" }));
+    try { desenhar(await api(`/clientes/historico?id=${encodeURIComponent(c.id)}`)); }
+    catch (e) { estado = "vazio"; raiz.replaceChildren(el("p", { class: "erro-texto", text: e.message })); }
+  };
+  return { el: raiz, carregar };
+}
+
 async function telaClientes(busca = null) {
   if (busca !== null) estadoClientes.busca = busca;
   const { clientes } = await api("/clientes");
@@ -5466,7 +5522,9 @@ async function telaClientes(busca = null) {
     ...(gestao() ? [["desativados", "Desativados", c => !c.ativo]] : [])];
   const ul = el("ul", { class: "lista-x" });
   const contador = el("p", { class: "suave contador-lista" });
+  const historicos = new Map();   // id do cliente → bloco do histórico (carrega só quando o cliente é aberto)
   const desenhar = () => {
+    historicos.clear();
     const f = (filtros.find(x => x[0] === estadoClientes.filtro) || filtros[0])[2];
     const t = normalizar(estadoClientes.busca), dig = estadoClientes.busca.replace(/\D/g, "");
     const vis = clientes.filter(c => f(c) && (!t || normalizar(c.nome).includes(t) || normalizar(c.apelido).includes(t) || (dig.length >= 3 && (c.telefone || "").includes(dig))));
@@ -5476,6 +5534,7 @@ async function telaClientes(busca = null) {
       titulo: [c.nome, c.apelido ? el("span", { class: "apelido", text: `“${c.apelido}”` }) : null],
       sub: c.telefone ? fone(c.telefone) : "sem telefone",
       direita: c.ativo ? seloCliente(c) : el("span", { class: "etiqueta vermelha", text: "Desativado" }),
+      aoAbrir: () => historicos.get(c.id)?.carregar(),
       detalhes: () => [
         avisoCliente(c),
         el("p", { class: "suave", text: [c.telefone ? (c.aceiteLgpd ? "Aceitou o uso do telefone (LGPD)" : "Sem aceite LGPD") : null, c.observacao].filter(Boolean).join(" · ") || "Sem observação." }),
@@ -5494,7 +5553,9 @@ async function telaClientes(busca = null) {
             async motivo => {
               await api("/clientes/excluir", { metodo: "POST", corpo: { id: c.id, motivo } });
               avisar("Cliente excluído."); recarregar();
-            }, "Excluir cliente"), "pequeno texto-perigo")] }])
+            }, "Excluir cliente"), "pequeno texto-perigo")] }]),
+        // Histórico do cliente (25/11/2026): carrega ao abrir o nome do cliente
+        (() => { const h = blocoHistoricoCliente(c); historicos.set(c.id, h); return h.el; })()
       ]
     })) : [el("li", { class: "vazio", text: clientes.length ? "Nenhum cliente encontrado." : "Nenhum cliente ainda." })]));
   };

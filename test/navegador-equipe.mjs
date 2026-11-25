@@ -246,7 +246,7 @@ async function rodar(tela) {
     assert.match(await linhaL(1).locator("[data-campo=repetir]").textContent(), /A cada 15 dias \(quinzenal\)/);
     await linhaL(1).locator("[data-campo=repetir]").selectOption("2");   // a cada 15 dias = quinzenal no mesmo dia da semana
     await page.waitForSelector("[data-lote-linha='1'] [data-campo=ate]");
-    assert.equal(await linhaL(1).locator("[data-campo=ate]").inputValue(), somarDias(diaLote, 56), "padrão: 8 semanas");
+    assert.equal(await linhaL(1).locator("[data-campo=ate]").inputValue(), somarDias(diaLote, 365), "padrão: 1 ano");
     await preencher(1, "ate", somarDias(diaLote, 28));
     await page.click("[data-teste=enviar-lote]");
     await page.waitForSelector("[data-lote-linha='1'] .lote-msg:has-text('Fora do funcionamento')");
