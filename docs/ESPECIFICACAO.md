@@ -348,7 +348,8 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - **Formato:** Story/Status 1080×1920, Post quadrado 1080×1080, Post retrato 1080×1350. **12 estilos:** Moderno, Contemporâneo, Retrô anos 70, Barbearia clássica, Neon, Luxo, Urbano/street, Editorial, Minimalista, Quadro de giz, Pôr do sol, Polaroid.
 - **Foto:** do celular ou da Minha página; efeito (original, preto e branco, sépia, mais viva, quente, mais escura), aproximar e posição (cima/baixo, esquerda/direita).
 - **Textos:** chamada (pronta ou livre), texto principal, preço normal riscado e preço da promoção (opcionais — sem preço vira convite/aviso), detalhe, validade; pode preencher a partir de um serviço.
-- **Cor e detalhes:** cor de destaque; mostrar a logo da barbearia (da Minha página), o WhatsApp e o QR Code + link do catálogo.
+- **Sua logo:** escolha simples **Com logo / Sem logo** (a logo é a da Minha página). Sem logo cadastrada, o botão "Enviar minha logo" envia ali mesmo (vale também para a página e o Início).
+- **Cor e detalhes:** cor de destaque; mostrar o WhatsApp e o QR Code + link do catálogo.
 - A arte é desenhada no aparelho, com prévia ao vivo; o texto e a foto se ajustam sozinhos para nunca invadir o rodapé. No Story, o rodapé fica acima da barra de resposta do Instagram.
 - **Publicar no catálogo:** até 12 guardados; aparecem em "Novidades e promoções" na página pública, com o botão "Quero agendar" (WhatsApp). Com validade, sai sozinho depois da data.
 - **Compartilhar:** imagem pelo menu do celular (Instagram, WhatsApp…), link no WhatsApp (`?promo=<id>`: a prévia mostra o flyer e abre a página nele), baixar, copiar legenda/link; dica do adesivo "Link" no Story.

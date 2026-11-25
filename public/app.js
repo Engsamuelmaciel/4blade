@@ -6692,8 +6692,20 @@ function montarFlyers(FL, d, lista, logo) {
       onclick: ev => { st.cor = c; cores.querySelectorAll("button").forEach(b => { const on = b === ev.currentTarget; b.classList.toggle("ativo", on); b.setAttribute("aria-checked", String(on)); }); mudou(false); } },
     c ? svg("svg", { viewBox: "0 0 20 20", "aria-hidden": "true" }, svg("circle", { cx: "10", cy: "10", r: "9", fill: c, stroke: "rgba(0,0,0,.25)" })) : el("span", { text: "Auto" }))));
   const marcar = (rotulo, id, chave, desligado = false) => caixaMarcar(rotulo, { id, checked: st[chave] || null, disabled: desligado || null, onchange: ev => { st[chave] = ev.target.checked; mudou(); } });
+  // ---- logo: com ou sem (e enviar aqui mesmo, se ainda não tiver) ----
+  const blocoLogo = el("div", { class: "fl-logo-escolha", "data-teste": "logo-flyer" },
+    logo ? el("img", { class: "fl-logo-amostra", src: fotoUrl(d.fotos.logo), alt: "Sua logo" }) : null,
+    logo ? el("div", { class: "fl-sim-nao", role: "radiogroup", "aria-label": "Logo no flyer" }, [["sim", "Com logo"], ["nao", "Sem logo"]].map(([v, t]) => {
+      const on = (v === "sim") === Boolean(st.mostrarLogo);
+      return el("button", { type: "button", class: `fl-opcao ${on ? "ativo" : ""}`, role: "radio", "aria-checked": String(on), "data-logo-flyer": v,
+        onclick: ev => { st.mostrarLogo = v === "sim"; ev.currentTarget.parentElement.querySelectorAll("button").forEach(b => { const a = b === ev.currentTarget; b.classList.toggle("ativo", a); b.setAttribute("aria-checked", String(a)); }); mudou(); } }, t);
+    })) : el("div", {},
+      el("p", { class: "suave", text: "Você ainda não tem logo. Envie agora: ela entra no flyer e também na sua página." }),
+      d.fotos.armazenamento ? botao("Enviar minha logo", () => escolherArquivos(false, async arqs => {
+        try { await comCarga(() => enviarFotoPagina(arqs[0], "logo")); st.mostrarLogo = true; avisar("Logo enviada."); await telaFlyers(); }
+        catch (e) { avisar(e.message, "erro"); }
+      }), "principal pequeno") : null));
   const extras = el("div", { class: "fl-extras" },
-    marcar(logo ? "Mostrar a logo da barbearia" : "Mostrar a logo (coloque a logo em Minha página)", "fl-logo", "mostrarLogo", !logo),
     marcar(whatsNum ? `Mostrar o WhatsApp ${formatarTelefone(whatsNum)}` : "Mostrar o WhatsApp (cadastre em Minha página)", "fl-whats", "mostrarWhats", !whatsNum),
     marcar("Mostrar o QR Code e o link do catálogo", "fl-qr", "qr"));
 
@@ -6775,8 +6787,9 @@ function montarFlyers(FL, d, lista, logo) {
         passo(2, "Formato", formatos),
         passo(3, "Estilo", estilos),
         passo(4, "Foto", blocoFoto),
-        passo(5, "Textos", blocoTextos),
-        passo(6, "Cor e detalhes", cores, extras),
+        passo(5, "Sua logo", blocoLogo),
+        passo(6, "Textos", blocoTextos),
+        passo(7, "Cor e detalhes", cores, extras),
         el("div", { class: "fl-fim" },
           botao("Ver como ficou ↑", () => tela.scrollIntoView({ behavior: "smooth", block: "center" })),
           el("button", { type: "button", class: "botao principal", disabled: cheio || !d.fotos.armazenamento || null, onclick: publicar, text: "Publicar no catálogo" })))),

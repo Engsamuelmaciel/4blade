@@ -115,20 +115,6 @@ async function rodar(tela) {
     await page.click('[data-teste=mp-topo] button:has-text("Publicar")');
     await page.waitForSelector("[data-teste=mp-situacao]:has-text('No ar')");
     await pronto();
-    const fotos = page.locator("[data-secao-pagina=fotos]");
-    if (await fotos.getAttribute("open") === null) await fotos.locator(":scope > summary").click();
-    const [escLogo] = await Promise.all([page.waitForEvent("filechooser"), page.click('[data-foto-tipo=logo] button:has-text("Enviar")')]);
-    await escLogo.setFiles([logoArq]);
-    await page.waitForSelector("text=Foto enviada.");
-    await pronto();
-    assert.equal(await page.locator("[data-teste=abrir-flyers]").count(), 0, "o gerador saiu da Minha página");
-
-    passo("Início mostra a logo da barbearia e as boas-vindas");
-    await ir(page, "Início");
-    await page.waitForSelector("[data-teste=boas-vindas] [data-teste=logo-barbearia]");
-    await page.waitForFunction(() => document.querySelector("[data-teste=logo-barbearia]").naturalWidth > 0);
-    await print("inicio-com-logo", { inteira: false });
-
     passo("abre Atendimento → Divulgação: começa pelo modelo \"Marque seu horário\" (sem preço)");
     await ir(page, "Divulgação");
     await page.waitForSelector("[data-teste=flyer-previa]");
@@ -138,7 +124,27 @@ async function rodar(tela) {
     assert.equal(await page.locator("[data-estilo-flyer]").count(), 12, "12 estilos");
     assert.equal(await page.locator("[data-formato-flyer]").count(), 3, "3 formatos");
     assert.equal(await page.locator("[data-modelo-flyer]").count(), 12, "12 modelos");
-    assert.ok(await page.isChecked("#fl-logo"), "logo ligada");
+    passo("sem logo ainda: envia a logo pela própria Divulgação");
+    await page.waitForSelector("[data-teste=logo-flyer] button:has-text('Enviar minha logo')");
+    await print("logo-ainda-nao-enviada", { alvo: "[data-teste=logo-flyer]" });
+    const [escLogo] = await Promise.all([page.waitForEvent("filechooser"), page.click("[data-teste=logo-flyer] button:has-text('Enviar minha logo')")]);
+    await escLogo.setFiles([logoArq]);
+    await page.waitForSelector("[data-teste=logo-flyer] .fl-logo-amostra");
+    await pronto();
+    assert.equal(await page.getAttribute("[data-logo-flyer=sim]", "aria-checked"), "true", "com logo depois de enviar");
+    await print("logo-com-ou-sem", { alvo: "[data-teste=logo-flyer]" });
+
+    passo("Início mostra a logo da barbearia e as boas-vindas");
+    await ir(page, "Início");
+    await page.waitForSelector("[data-teste=boas-vindas] [data-teste=logo-barbearia]");
+    await page.waitForFunction(() => document.querySelector("[data-teste=logo-barbearia]").naturalWidth > 0);
+    await print("inicio-com-logo", { inteira: false });
+    await ir(page, "Divulgação");
+    await page.waitForSelector("[data-teste=flyer-previa]");
+    assert.equal(await page.inputValue("#fl-titulo"), "Marque já seu horário", "o editor guarda o que estava");
+    await page.click("[data-logo-flyer=nao]");
+    assert.equal(await page.getAttribute("[data-logo-flyer=nao]", "aria-checked"), "true");
+    await page.click("[data-logo-flyer=sim]");
     assert.ok(await page.isChecked("#fl-whats"), "WhatsApp ligado no modelo de marcar");
     await page.click("[data-objetivo=marcar]");
     assert.equal(await page.locator("[data-modelo-flyer]").count(), 3, "filtro: marcar horário");
