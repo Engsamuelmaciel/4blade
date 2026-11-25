@@ -5797,7 +5797,7 @@ setInterval(() => { if (document.visibilityState === "visible" && Date.now() - u
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Date.now() - ultimoSinalUso > 55000) enviarUso(); });
 
 const NOME_TELA = {
-  "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", "agenda-lote": "Vários de uma vez", "clientes-lote": "Clientes em lote", "horarios-lote": "Horários em lote", "minha-pagina": "Minha página", "minha-producao": "Minha produção", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
+  "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", "agenda-lote": "Vários de uma vez", "clientes-lote": "Clientes em lote", "horarios-lote": "Horários em lote", "minha-pagina": "Minha página", flyers: "Flyers", "minha-producao": "Minha produção", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
   clientes: "Clientes", mensagens: "Mensagens", notas: "Notas", notificacoes: "Notificações", financeiro: "Relatório financeiro",
   "pagamento-equipe": "Pagamento da equipe", comissoes: "Comissões e vales", contas: "Despesas", contador: "Contador e dados",
   servicos: "Serviços", produtos: "Produtos", estoque: "Estoque", equipe: "Equipe", funcionamento: "Funcionamento", assinatura: "Meu plano",
@@ -6313,7 +6313,13 @@ async function telaMinhaPagina() {
 
   mostrar(
     cabecalho("Minha página", "Sua vitrine para a bio do Instagram, o WhatsApp e o Google."),
-    topo, numeros,
+    topo,
+    el("a", { class: "cartao mp-flyers", href: "#/flyers", "data-teste": "abrir-flyers" },
+      el("span", { class: "mp-flyers-icone", "aria-hidden": "true", text: "✦" }),
+      el("span", {}, el("strong", { text: "Criar flyer de promoção" }),
+        el("small", { text: d.flyersNoAr ? `${d.flyersNoAr} no catálogo agora · 8 estilos prontos para Instagram e WhatsApp` : "8 estilos prontos: monte a arte e publique no catálogo e no WhatsApp/Instagram" })),
+      el("span", { class: "mp-flyers-seta", "aria-hidden": "true", text: "›" })),
+    numeros,
     el("div", { class: "mp-secoes" },
       secao("fotos", "Fotos", `${f.logo ? "Logo ✓" : "Sem logo"} · ${f.capa ? "capa ✓" : "sem capa"} · ${f.galeria.length} na galeria`, blocoFotos),
       secao("textos", "Textos e tema", NOME_TEMA_PAGINA[p.tema][0], fTextos),
@@ -6456,6 +6462,268 @@ async function baixarQrPagina(link, nome, logoId) {
     document.body.append(a); a.click(); a.remove();
     avisar("QR Code baixado. Imprima e cole no balcão ou no espelho.");
   } catch (e) { avisar(e.message, "erro"); }
+}
+
+// ---------- FLYERS (25/11/2026): arte de divulgação gerada no aparelho → catálogo da página + WhatsApp/Instagram ----------
+// O desenho fica em /flyers.js (carregado só aqui). O servidor guarda a imagem pronta e mostra na seção "Promoções" da página.
+let flyersJsPronto = null;
+function carregarFlyersJs() {
+  if (window.FLYERS) return Promise.resolve(window.FLYERS);
+  flyersJsPronto ||= new Promise((ok, falha) => {
+    const s = el("script", { src: "/flyers.js" });
+    s.addEventListener("load", () => ok(window.FLYERS));
+    s.addEventListener("error", () => { flyersJsPronto = null; falha(new Error("Não consegui abrir o gerador de flyers. Confira a internet.")); });
+    document.head.append(s);
+  });
+  return flyersJsPronto;
+}
+const CHAMADAS_FLYER = ["Promoção", "Novidade", "Só hoje", "Combo", "Semana especial", "Black Friday", "Dia dos Pais", "Volta às aulas"];
+const estadoFlyer = {
+  formato: "story", estilo: "moderno", chamada: "Promoção", titulo: "", precoDe: "", precoPor: "", detalhe: "", validade: "",
+  cor: "", qr: true, foco: 50, foto: null, fotoNome: ""
+};
+const legendaFlyer = (f, nome) => [
+  `${f.titulo}${f.texto ? ` — ${f.texto}` : ""}`,
+  "",
+  `${nome}: veja a promoção e agende pelo WhatsApp 👉 ${f.link}`
+].join("\n");
+
+async function telaFlyers() {
+  const [FL, d, lista] = await Promise.all([carregarFlyersJs(), api("/pagina"), api("/pagina/flyers")]);
+  FL.carregarFontes();
+  const p = d.pagina;
+  const nome = p.nomeExibicao || d.barbearia.nome;
+  const link = linkPagina(p.slug);
+  const st = estadoFlyer;
+  const recarregar = () => telaFlyers();
+
+  // ---- prévia ao vivo ----
+  const tela = el("canvas", { class: `fl-canvas ${st.formato}`, "data-teste": "flyer-previa", role: "img", "aria-label": "Prévia do flyer" });
+  const dadosDesenho = (extra = {}) => ({
+    formato: st.formato, estilo: st.estilo, chamada: st.chamada, titulo: st.titulo || "Corte + barba", precoDe: st.precoDe, precoPor: st.precoPor,
+    detalhe: st.detalhe, validade: st.validade, cor: st.cor, foto: st.foto, foco: st.foco / 100, nome,
+    linkCurto: link.replace(/^https?:\/\//, ""), qr: st.qr, mod: st.qr ? gerarQr(link) : null, ...extra
+  });
+  let desenhando = 0;
+  const redesenhar = async () => {
+    const n = ++desenhando;
+    const c = document.createElement("canvas");
+    await FL.desenhar(c, dadosDesenho(), { escala: 0.5 });
+    if (n !== desenhando) return;
+    tela.width = c.width; tela.height = c.height; tela.getContext("2d").drawImage(c, 0, 0);
+    tela.className = `fl-canvas ${st.formato}`;
+    tela.dataset.estilo = st.estilo; tela.dataset.formato = st.formato;
+    tela.dataset.pronto = String(n);
+  };
+  // miniaturas dos 8 estilos (com o texto e a foto atuais)
+  const minis = {};
+  let timerMinis;
+  const redesenharMinis = () => {
+    clearTimeout(timerMinis);
+    timerMinis = setTimeout(async () => {
+      for (const e of FL.ESTILOS) {
+        const c = minis[e.id];
+        if (c) await FL.desenhar(c, dadosDesenho({ estilo: e.id, cor: "" }), { escala: 0.16 });
+      }
+    }, 350);
+  };
+  const mudou = (minisTambem = true) => { redesenhar(); if (minisTambem) redesenharMinis(); };
+
+  // ---- 1. formato ----
+  const formatos = el("div", { class: "fl-formatos", role: "radiogroup", "aria-label": "Formato" }, Object.entries(FL.FORMATOS).map(([id, f]) =>
+    el("button", { type: "button", class: `fl-formato ${st.formato === id ? "ativo" : ""}`, role: "radio", "aria-checked": String(st.formato === id), "data-formato-flyer": id,
+      onclick: () => { st.formato = id; formatos.querySelectorAll("button").forEach(b => { const on = b.dataset.formatoFlyer === id; b.classList.toggle("ativo", on); b.setAttribute("aria-checked", String(on)); }); estilos.dataset.formato = id; mudou(); } },
+      el("span", { class: `fl-forma ${id}`, "aria-hidden": "true" }), el("strong", { text: f.nome }), el("small", { text: f.sub }))));
+
+  // ---- 2. estilo ----
+  const estilos = el("div", { class: "fl-estilos", role: "radiogroup", "aria-label": "Estilo", "data-formato": st.formato }, FL.ESTILOS.map(e => {
+    minis[e.id] = el("canvas", { class: "fl-mini", "aria-hidden": "true" });
+    return el("button", { type: "button", class: `fl-estilo ${st.estilo === e.id ? "ativo" : ""}`, role: "radio", "aria-checked": String(st.estilo === e.id), "data-estilo-flyer": e.id,
+      onclick: () => { st.estilo = e.id; estilos.querySelectorAll("button").forEach(b => { const on = b.dataset.estiloFlyer === e.id; b.classList.toggle("ativo", on); b.setAttribute("aria-checked", String(on)); }); mudou(false); } },
+      minis[e.id], el("strong", { text: e.nome }), el("small", { text: e.sub }));
+  }));
+
+  // ---- 3. foto ----
+  const abrirFoto = async (fonte, nomeFoto) => {
+    try {
+      const blob = fonte instanceof Blob ? fonte : await (await fetch(fonte)).blob();
+      const reduzido = await reduzirFoto(blob, 1600);
+      st.foto = await createImageBitmap(reduzido); st.fotoNome = nomeFoto;
+      desenharFoto(); mudou();
+    } catch (e) { avisar(e.message || "Não consegui abrir essa foto.", "erro"); }
+  };
+  const blocoFoto = el("div", { class: "fl-foto" });
+  const desenharFoto = () => {
+    const daPagina = [d.fotos.capa, ...d.fotos.galeria.map(g => g.id)].filter(Boolean).slice(0, 8);
+    blocoFoto.replaceChildren(...[
+      el("div", { class: "item-acoes" },
+        botao(st.foto ? "Trocar foto" : "Escolher foto do celular", () => escolherArquivos(false, arqs => abrirFoto(arqs[0], arqs[0].name)), "principal pequeno"),
+        st.foto ? botao("Sem foto", () => { st.foto = null; st.fotoNome = ""; desenharFoto(); mudou(); }, "pequeno") : null),
+      st.foto ? el("p", { class: "suave", "data-teste": "flyer-foto-nome", text: `Foto: ${st.fotoNome || "escolhida"}` }) : el("p", { class: "suave", text: "Sem foto, o estilo usa um fundo próprio. Foto de corte, do ambiente ou do barbeiro deixa o flyer mais forte." }),
+      daPagina.length ? el("div", {}, el("small", { class: "suave", text: "Ou use uma foto da sua página:" }),
+        el("div", { class: "fl-fotos-pagina" }, daPagina.map((id, i) => el("button", { type: "button", class: "fl-foto-pagina", "data-foto-pagina": String(i), "aria-label": `Usar a foto ${i + 1} da página`,
+          onclick: () => abrirFoto(fotoUrl(id), `foto ${i + 1} da página`) }, el("img", { src: fotoUrl(id), alt: "", loading: "lazy" }))))) : null,
+      st.foto ? el("div", { class: "campo" }, el("label", { for: "fl-foco", text: "Ajustar a foto (mais para cima ou para baixo)" }),
+        el("input", { type: "range", id: "fl-foco", min: "0", max: "100", value: String(st.foco), oninput: ev => { st.foco = Number(ev.target.value); mudou(false); }, onchange: () => redesenharMinis() })) : null
+    ].filter(Boolean));
+  };
+  desenharFoto();
+
+  // ---- 4. textos ----
+  const inp = (rotulo, chave, attrs = {}, ajuda = null) => {
+    const c = campo(rotulo, { id: `fl-${chave}`, value: st[chave], autocomplete: "off", ...attrs }, ajuda);
+    const i = c.querySelector("input, textarea");
+    i.addEventListener("input", () => { st[chave] = i.value; mudou(); });
+    i.addEventListener("change", () => { st[chave] = i.value; mudou(); });
+    return c;
+  };
+  const chamadas = el("div", { class: "fl-chips", role: "group", "aria-label": "Chamada pronta" }, CHAMADAS_FLYER.map(t =>
+    el("button", { type: "button", class: `chip-filtro ${st.chamada === t ? "ativo" : ""}`, "data-chamada": t,
+      onclick: () => { st.chamada = t; document.getElementById("fl-chamada").value = t; chamadas.querySelectorAll("button").forEach(b => b.classList.toggle("ativo", b.dataset.chamada === t)); mudou(); } }, t)));
+  const servicos = d.servicos.filter(s => s.ativo !== false);
+  const usarServico = servicos.length ? el("div", { class: "campo" }, el("label", { for: "fl-servico", text: "Preencher com um serviço (opcional)" }),
+    el("select", { id: "fl-servico", onchange: ev => {
+      const s = servicos.find(x => String(x.id) === ev.target.value); if (!s) return;
+      st.titulo = s.nome; st.precoDe = reais(s.precoCentavos).replace(/^R\$\s?/, "");
+      document.getElementById("fl-titulo").value = st.titulo; document.getElementById("fl-precoDe").value = st.precoDe;
+      document.getElementById("fl-precoPor").focus(); mudou();
+    } }, el("option", { value: "", text: "Escolha…" }), servicos.map(s => el("option", { value: String(s.id), text: `${s.nome} · ${reais(s.precoCentavos)}` })))) : null;
+  const blocoTextos = el("div", { class: "fl-textos" },
+    usarServico,
+    inp("Chamada (aparece em destaque)", "chamada", { maxlength: "30", placeholder: "Ex.: Promoção" }), chamadas,
+    inp("Texto principal", "titulo", { maxlength: "60", required: true, placeholder: "Ex.: Corte + barba" }, "Curto e direto: é o que aparece maior."),
+    el("div", { class: "lado-a-lado" },
+      inp("Preço normal (riscado)", "precoDe", { inputmode: "decimal", maxlength: "12", placeholder: "Ex.: 70,00" }),
+      inp("Preço da promoção", "precoPor", { inputmode: "decimal", maxlength: "12", placeholder: "Ex.: 55,00" })),
+    inp("Detalhe (opcional)", "detalhe", { maxlength: "90", placeholder: "Ex.: Terça e quarta · agende pelo WhatsApp" }),
+    inp("Válido até (opcional)", "validade", { type: "date", min: hojeLocal() }, "Depois dessa data o flyer sai sozinho do catálogo."));
+
+  // ---- 5. cor e QR ----
+  const cores = el("div", { class: "fl-cores", role: "radiogroup", "aria-label": "Cor de destaque" },
+    [["", "Cor do estilo"], ...FL.CORES].map(([c, t]) => el("button", { type: "button", class: `fl-cor ${st.cor === c ? "ativo" : ""} ${c ? "" : "auto"}`, role: "radio", "aria-checked": String(st.cor === c), "aria-label": t, title: t, "data-cor": c || "auto",
+      onclick: ev => { st.cor = c; cores.querySelectorAll("button").forEach(b => { const on = b === ev.currentTarget; b.classList.toggle("ativo", on); b.setAttribute("aria-checked", String(on)); }); mudou(false); } },
+    c ? svg("svg", { viewBox: "0 0 20 20", "aria-hidden": "true" }, svg("circle", { cx: "10", cy: "10", r: "9", fill: c, stroke: "rgba(0,0,0,.25)" })) : el("span", { text: "Auto" }))));
+  const qrMarcar = caixaMarcar("Mostrar o QR Code e o link do catálogo no flyer", { id: "fl-qr", checked: st.qr || null, onchange: ev => { st.qr = ev.target.checked; mudou(); } });
+
+  // ---- publicar / baixar ----
+  const imagemFinal = async () => {
+    if (!st.titulo.trim()) throw new Error("Escreva o texto principal do flyer.");
+    const c = document.createElement("canvas");
+    await FL.desenhar(c, dadosDesenho({ titulo: st.titulo.trim() }));
+    return FL.exportar(c);
+  };
+  const textoResumo = () => {
+    const pr = [st.precoDe ? `de R$ ${st.precoDe}` : "", st.precoPor ? `por R$ ${st.precoPor}` : ""].filter(Boolean).join(" ");
+    return [st.chamada, pr, st.detalhe].filter(Boolean).join(" · ").slice(0, 200);
+  };
+  const publicar = async () => {
+    try {
+      const blob = await comCarga(imagemFinal);
+      const meta = { titulo: st.titulo.trim(), texto: textoResumo(), estilo: st.estilo, formato: st.formato, validade: st.validade || null,
+        dados: { chamada: st.chamada, titulo: st.titulo, precoDe: st.precoDe, precoPor: st.precoPor, detalhe: st.detalhe, validade: st.validade, cor: st.cor, qr: st.qr, foco: st.foco } };
+      const r = await comCarga(() => api(`/pagina/flyers?meta=${encodeURIComponent(JSON.stringify(meta))}`, { metodo: "POST", bruto: blob }));
+      avisar(r.mensagem);
+      await telaFlyers();
+      janelaCompartilharFlyer(r.flyer, nome, blob, r.paginaPublicada);
+    } catch (e) { if (e.message !== "Sessão encerrada") avisar(e.message, "erro"); }
+  };
+  const baixar = async () => {
+    try { const blob = await comCarga(imagemFinal); baixarBlob(blob, `flyer-${p.slug}-${st.estilo}.jpg`); avisar("Imagem baixada."); }
+    catch (e) { avisar(e.message, "erro"); }
+  };
+
+  // ---- flyers guardados ----
+  const itensLista = lista.flyers.map(f => el("li", { class: `fl-item ${f.noAr ? "" : "fora"}`, "data-flyer": f.titulo },
+    el("img", { class: `fl-item-img ${f.formato}`, src: f.imagem, alt: f.titulo, loading: "lazy" }),
+    el("div", { class: "fl-item-info" },
+      el("strong", { text: f.titulo }),
+      el("span", { class: `etiqueta ${f.noAr ? "verde" : "amarela"}`, "data-teste": "flyer-situacao", text: f.noAr ? "No catálogo" : !f.publicado ? "Fora do catálogo" : "Vencido" }),
+      el("small", { class: "suave", text: [FL.ESTILOS.find(e => e.id === f.estilo)?.nome, FL.FORMATOS[f.formato]?.nome, f.validade ? `até ${dataBR(f.validade)}` : "sem validade"].filter(Boolean).join(" · ") }),
+      acoesAgrupadas([
+        botao("Compartilhar", () => janelaCompartilharFlyer(f, nome, null, lista.paginaPublicada), "pequeno principal")
+      ], [{ chave: "mais", rotulo: "Mais", itens: [
+        botao(f.publicado ? "Tirar do catálogo" : "Voltar ao catálogo", async () => {
+          try { const r = await api("/pagina/flyers/alterar", { metodo: "POST", corpo: { id: f.id, publicado: !f.publicado } }); avisar(r.mensagem); recarregar(); }
+          catch (e) { avisar(e.message, "erro"); }
+        }, "pequeno"),
+        f.dados ? botao("Usar de novo", () => {
+          Object.assign(st, { chamada: "", precoDe: "", precoPor: "", detalhe: "", validade: "", cor: "", qr: true, foco: 50 }, f.dados, { estilo: f.estilo, formato: f.formato });
+          if (st.validade && st.validade < hojeLocal()) st.validade = "";
+          avisar("Dados carregados no editor. Escolha a foto de novo, se quiser."); recarregar();
+        }, "pequeno") : null,
+        botao("Excluir", () => abrirJanela("Excluir este flyer?", el("p", { text: "Ele sai do catálogo e a imagem é apagada. Fica registrado quem excluiu." }), {
+          ok: "Excluir", perigo: true, aoConfirmar: async () => { await api("/pagina/flyers/excluir", { metodo: "POST", corpo: { id: f.id } }); avisar("Flyer excluído."); recarregar(); } }), "pequeno texto-perigo")
+      ].filter(Boolean) }]))));
+
+  const avisos = [
+    !d.fotos.armazenamento ? el("p", { class: "info", text: "O envio de imagens ainda está sendo ligado pela equipe 4Blade. Você já pode criar e baixar o flyer." }) : null,
+    !p.publicada ? el("p", { class: "info", "data-teste": "flyer-pagina-rascunho", text: "Sua página ainda está em rascunho. O flyer fica guardado e aparece no catálogo quando você publicar a página." }) : null
+  ];
+  const passo = (n, titulo, ...conteudo) => el("section", { class: "fl-passo", "aria-labelledby": `fl-p${n}` },
+    el("h3", { id: `fl-p${n}` }, el("span", { class: "fl-num", text: String(n) }), titulo), ...conteudo);
+  const cheio = lista.flyers.length >= lista.limite;
+
+  mostrar(
+    cabecalho("Flyers e promoções", "Monte a arte, publique no seu catálogo e mande no WhatsApp e no Instagram.", "#/minha-pagina"),
+    ...avisos,
+    el("div", { class: "fl-grade" },
+      el("div", { class: "fl-previa-col" },
+        el("div", { class: "fl-previa" }, tela),
+        el("div", { class: "fl-botoes" },
+          el("button", { type: "button", class: "botao principal", "data-teste": "publicar-flyer", disabled: cheio || !d.fotos.armazenamento || null, onclick: publicar, text: "Publicar no catálogo" }),
+          botao("Baixar imagem", baixar, "")),
+        cheio ? el("p", { class: "suave", text: `Você já tem ${lista.limite} flyers guardados. Exclua um antigo para publicar outro.` }) : null),
+      el("div", { class: "fl-editor" },
+        passo(1, "Formato", formatos),
+        passo(2, "Estilo", estilos),
+        passo(3, "Foto", blocoFoto),
+        passo(4, "Textos", blocoTextos),
+        passo(5, "Cor de destaque e QR Code", cores, qrMarcar),
+        el("div", { class: "fl-fim" },
+          botao("Ver como ficou ↑", () => tela.scrollIntoView({ behavior: "smooth", block: "center" })),
+          el("button", { type: "button", class: "botao principal", disabled: cheio || !d.fotos.armazenamento || null, onclick: publicar, text: "Publicar no catálogo" })))),
+    el("section", { class: "fl-guardados", "aria-labelledby": "fl-guardados-t" },
+      el("h3", { id: "fl-guardados-t", text: `Seus flyers (${lista.flyers.length} de ${lista.limite})` }),
+      itensLista.length ? el("ul", { class: "fl-lista", "data-teste": "flyers-lista" }, itensLista) : el("p", { class: "vazio", text: "Nenhum flyer ainda. O primeiro fica pronto em um minuto." })));
+  redesenhar(); redesenharMinis();
+}
+
+function baixarBlob(blob, nomeArq) {
+  const url = URL.createObjectURL(blob);
+  const a = el("a", { href: url, download: nomeArq, hidden: true });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+// Compartilhar: celular = menu do aparelho (Instagram, WhatsApp… com a imagem); sempre: WhatsApp com o link, baixar e copiar.
+function janelaCompartilharFlyer(f, nome, blob, paginaPublicada) {
+  const legenda = legendaFlyer(f, nome);
+  const pegarBlob = async () => blob || (blob = await (await fetch(f.imagem)).blob());
+  const arquivo = async () => new File([await pegarBlob()], `flyer-${f.id}.jpg`, { type: "image/jpeg" });
+  const podeCompartilharArquivo = typeof navigator.canShare === "function";
+  const copiar = async (texto, msg) => { try { await navigator.clipboard.writeText(texto); avisar(msg); } catch { avisar(texto); } };
+  abrirJanela(`Flyer pronto: ${f.titulo}`, [
+    el("img", { class: `fl-pronto ${f.formato}`, src: f.imagem, alt: f.titulo }),
+    !paginaPublicada ? el("p", { class: "info", text: "Sua página está em rascunho: quem tocar no link ainda não vê a página. Publique em Minha página." }) : null,
+    el("div", { class: "fl-compartilhar", "data-teste": "compartilhar-flyer" },
+      podeCompartilharArquivo ? botao("Compartilhar a imagem (Instagram, WhatsApp…)", async () => {
+        try {
+          const arq = await arquivo();
+          if (navigator.canShare({ files: [arq] })) await navigator.share({ files: [arq], text: legenda, title: f.titulo });
+          else await navigator.share({ text: legenda, url: f.link });
+        } catch (e) { if (e.name !== "AbortError") avisar("Não deu para abrir o compartilhar. Baixe a imagem e poste pelo app.", "erro"); }
+      }, "principal") : null,
+      el("a", { class: "botao whats", "data-teste": "flyer-whats", href: `https://wa.me/?text=${encodeURIComponent(legenda)}`, target: "_blank", rel: "noopener", text: "Enviar o link no WhatsApp" }),
+      botao("Baixar imagem", async () => { try { baixarBlob(await pegarBlob(), `flyer-${f.id}.jpg`); avisar("Imagem baixada."); } catch { avisar("Não consegui baixar.", "erro"); } }),
+      botao("Copiar legenda com o link", () => copiar(legenda, "Legenda copiada. Cole na publicação."), "", ),
+      botao("Copiar só o link", () => copiar(f.link, "Link copiado."))),
+    el("details", { class: "fl-dica" }, el("summary", { text: "Como postar no Instagram com o link" }),
+      el("ol", {},
+        el("li", { text: "Toque em \"Compartilhar a imagem\" e escolha o Instagram (ou baixe a imagem e abra o Instagram)." }),
+        el("li", { text: "No Story: toque no adesivo \"Link\" e cole o link copiado. Quem tocar cai direto na promoção no seu catálogo." }),
+        el("li", { text: "No feed: cole a legenda (o Instagram não deixa link clicável no feed; deixe o link da página na bio)." }))),
+    el("p", { class: "suave", text: "No WhatsApp, o link mostra o próprio flyer na prévia e abre a promoção no seu catálogo." })
+  ], { semCancelar: true, ok: "Fechar", aoConfirmar: async () => true });
 }
 
 function gruposDoMenu() {
@@ -6638,6 +6906,7 @@ const ROTAS = {
   clientes: { perfis: ["proprietario", "gerente", "caixa"], tela: () => telaClientes() },
   mensagens: { perfis: ["proprietario", "gerente", "caixa"], tela: telaMensagens },
   "minha-pagina": { perfis: ["proprietario", "gerente"], tela: telaMinhaPagina },
+  flyers: { perfis: ["proprietario", "gerente"], tela: telaFlyers },
   agenda: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgenda },
   "agenda-lote": { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgendaLote },
   "minha-producao": { perfis: ["barbeiro"], tela: telaMinhaProducao },

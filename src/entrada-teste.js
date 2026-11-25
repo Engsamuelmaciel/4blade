@@ -12,6 +12,17 @@ import styleCss from "../public/style.css";
 import paginaCss from "../public/pagina.css";
 import paginaJs from "../public/pagina.js";
 import swJs from "../public/sw.js";
+import flyersJs from "../public/flyers.js";
+import fonte_anton from "../public/fontes/anton.woff2";
+import fonte_bebas_neue from "../public/fontes/bebas-neue.woff2";
+import fonte_abril_fatface from "../public/fontes/abril-fatface.woff2";
+import fonte_pacifico from "../public/fontes/pacifico.woff2";
+import fonte_rye from "../public/fontes/rye.woff2";
+import fonte_monoton from "../public/fontes/monoton.woff2";
+import fonte_montserrat_500 from "../public/fontes/montserrat-500.woff2";
+import fonte_montserrat_800 from "../public/fontes/montserrat-800.woff2";
+import fonte_playfair_700 from "../public/fontes/playfair-700.woff2";
+import fonte_playfair_700_italic from "../public/fontes/playfair-700-italic.woff2";
 import manifest from "../public/manifest.json";
 import marca from "../public/icons/marca.png";
 import logo from "../public/icons/logo.png";
@@ -32,6 +43,17 @@ const ARQUIVOS = {
   "/style.css": [styleCss, "text/css; charset=utf-8"],
   "/pagina.css": [paginaCss, "text/css; charset=utf-8"],
   "/pagina.js": [paginaJs, "text/javascript; charset=utf-8"],
+  "/flyers.js": [flyersJs, "text/javascript; charset=utf-8"],
+  "/fontes/anton.woff2": [fonte_anton, "font/woff2"],
+  "/fontes/bebas-neue.woff2": [fonte_bebas_neue, "font/woff2"],
+  "/fontes/abril-fatface.woff2": [fonte_abril_fatface, "font/woff2"],
+  "/fontes/pacifico.woff2": [fonte_pacifico, "font/woff2"],
+  "/fontes/rye.woff2": [fonte_rye, "font/woff2"],
+  "/fontes/monoton.woff2": [fonte_monoton, "font/woff2"],
+  "/fontes/montserrat-500.woff2": [fonte_montserrat_500, "font/woff2"],
+  "/fontes/montserrat-800.woff2": [fonte_montserrat_800, "font/woff2"],
+  "/fontes/playfair-700.woff2": [fonte_playfair_700, "font/woff2"],
+  "/fontes/playfair-700-italic.woff2": [fonte_playfair_700_italic, "font/woff2"],
   "/sw.js": [swJs, "text/javascript; charset=utf-8"],
   "/manifest.json": [manifest, "application/manifest+json"],
   "/icons/marca.png": [marca, "image/png"],

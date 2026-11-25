@@ -39,6 +39,11 @@ export function sugerirSlug(nome) {
 
 // ---------- ARMAZENAMENTO DAS FOTOS (R2 da Cloudflare: binding FOTOS) ----------
 const chaveFoto = (barbeariaId, id) => `paginas/${barbeariaId}/${id}`;
+// Flyers (25/11/2026): imagem pronta gerada no aparelho; até 12 no ar por barbearia, 1,2 MB cada.
+export const ESTILOS_FLYER = ["moderno", "contemporaneo", "retro", "vintage", "neon", "luxo", "urbano", "editorial"];
+export const FORMATOS_FLYER = ["story", "quadrado", "retrato"];
+export const MAX_FLYERS = 12;
+export const MAX_FLYER_BYTES = 1200 * 1024;
 // Tipo pelo CONTEÚDO (não pelo nome do arquivo).
 export function tipoImagem(b) {
   if (b.length > 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return "image/webp";
@@ -128,7 +133,7 @@ async function slugLivre(db, slug, barbeariaId) {
 // Tudo que a página pública mostra (e a prévia do editor): só dados de vitrine.
 async function conteudoPagina(db, p) {
   const id = p.barbearia_id;
-  const [b, servs, equipe, fotos, func] = await Promise.all([
+  const [b, servs, equipe, fotos, func, flyers] = await Promise.all([
     db.prepare("SELECT nome, telefone FROM barbearias WHERE id = ?").bind(id).first(),
     db.prepare(`SELECT s.id, s.nome, s.preco_centavos, s.duracao_min, ps.visivel, ps.ordem, ps.descricao
                 FROM servicos s LEFT JOIN paginas_servicos ps ON ps.servico_id = s.id AND ps.barbearia_id = s.barbearia_id
@@ -137,7 +142,9 @@ async function conteudoPagina(db, p) {
                 WHERE pe.barbearia_id = ? AND pe.visivel = 1 AND u.ativo = 1 AND u.barbearia_id = ? ORDER BY pe.ordem, u.nome`).bind(id, id).all(),
     db.prepare(`SELECT id, tipo, usuario_id, legenda, ordem FROM paginas_fotos WHERE barbearia_id = ? AND removida_em IS NULL
                 ORDER BY tipo, ordem, criado_em`).bind(id).all(),
-    db.prepare("SELECT * FROM funcionamento WHERE barbearia_id = ? ORDER BY dia_semana").bind(id).all()
+    db.prepare("SELECT * FROM funcionamento WHERE barbearia_id = ? ORDER BY dia_semana").bind(id).all(),
+    db.prepare(`SELECT id, titulo, texto, formato FROM paginas_flyers WHERE barbearia_id = ? AND removido_em IS NULL AND publicado = 1
+                AND (validade IS NULL OR validade >= ?) ORDER BY criado_em DESC LIMIT ?`).bind(id, hojeBrasil(), MAX_FLYERS).all()
   ]);
   const ultima = tipo => fotos.results.filter(f => f.tipo === tipo).at(-1) || null;
   const fotoDe = uid => fotos.results.filter(f => f.tipo === "equipe" && f.usuario_id === uid).at(-1) || null;
@@ -151,6 +158,7 @@ async function conteudoPagina(db, p) {
     capa: ultima("capa")?.id || null,
     galeria: fotos.results.filter(f => f.tipo === "galeria").map(f => ({ id: f.id, legenda: f.legenda || "" })),
     funcionamento: func.results,
+    flyers: flyers.results,
     formas: (() => { try { return JSON.parse(p.formas || "[]").filter(f => FORMAS_PAGINA[f]); } catch { return []; } })()
   };
 }
@@ -234,7 +242,8 @@ export async function rotaPublicaPagina(request, env) {
     p.mostrar_horarios ? horariosLivres(db, p.barbearia_id) : null
   ]);
   if (!ehPrevia && !BOTS.test(request.headers.get("user-agent") || "")) await contarEvento(db, p.barbearia_id, "visita");
-  const html = montarHtml({ p, c, aberto, horarios, origem: url.origin, previa: ehPrevia });
+  const promo = c.flyers.find(f => f.id === url.searchParams.get("promo")) || null;
+  const html = montarHtml({ p, c, aberto, horarios, origem: url.origin, previa: ehPrevia, promo });
   return new Response(request.method === "HEAD" ? null : html, {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": ehPrevia ? "no-store" : "no-cache", ...CABECALHOS,
       ...(ehPrevia ? { "X-Robots-Tag": "noindex" } : {}) }
@@ -259,7 +268,8 @@ function paginaIndisponivel() {
 }
 
 async function servirFoto(db, env, id) {
-  const f = await db.prepare(`SELECT f.barbearia_id, f.mime FROM paginas_fotos f WHERE f.id = ? AND f.removida_em IS NULL`).bind(id).first();
+  const f = await db.prepare(`SELECT f.barbearia_id, f.mime FROM paginas_fotos f WHERE f.id = ? AND f.removida_em IS NULL
+                              UNION ALL SELECT x.barbearia_id, x.mime FROM paginas_flyers x WHERE x.id = ? AND x.removido_em IS NULL LIMIT 1`).bind(id, id).first();
   const r2 = armazenamento(env);
   if (!f || !r2) return new Response("Não encontrada", { status: 404, headers: CABECALHOS });
   const obj = await r2.get(chaveFoto(f.barbearia_id, id));
@@ -302,7 +312,7 @@ function endereco(p) {
 }
 const DIAS_CURTOS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-function montarHtml({ p, c, aberto, horarios, origem, previa }) {
+function montarHtml({ p, c, aberto, horarios, origem, previa, promo = null }) {
   const e = escapar;
   const nome = c.nome;
   const end = endereco(p);
@@ -310,7 +320,14 @@ function montarHtml({ p, c, aberto, horarios, origem, previa }) {
   const titulo = `${nome} — Barbearia${cidade} | Agende seu horário`;
   const descricao = p.frase || `Conheça a ${nome}: serviços, preços, horários e localização. Agende pelo WhatsApp.`;
   const url = `${origem}/${p.slug}`;
-  const imagem = c.capa || c.logo ? urlFoto(origem, c.capa || c.logo) : `${origem}/icons/icon-v2-512.png`;
+  // Link de um flyer (?promo=<id>): a prévia do WhatsApp/Instagram mostra o próprio flyer.
+  const imagem = promo ? urlFoto(origem, promo.id) : c.capa || c.logo ? urlFoto(origem, c.capa || c.logo) : `${origem}/icons/icon-v2-512.png`;
+  const ogTitulo = promo ? `${promo.titulo} — ${nome}` : titulo;
+  const ogDescricao = promo ? (promo.texto || `Promoção da ${nome}. Toque para ver e agendar pelo WhatsApp.`) : descricao;
+  const ogUrl = promo ? `${url}?promo=${promo.id}` : url;
+  const promosHtml = c.flyers.map(f => `<li id="promo-${e(f.id)}" class="pg-promo ${e(f.formato)}${promo && promo.id === f.id ? " destaque" : ""}">
+      <button type="button" class="pg-foto" aria-label="Ampliar: ${e(f.titulo)}"><img src="/f/${e(f.id)}" alt="${e(f.titulo)}${f.texto ? ` — ${e(f.texto)}` : ""}" loading="lazy"></button>
+      ${c.whatsapp ? `<a class="pg-botao pg-promo-whats" data-evento="whatsapp" href="${e(linkWhats(c.whatsapp, `Olá, ${nome}! Vi a promoção "${f.titulo}" na sua página e quero agendar.`))}" target="_blank" rel="noopener">Quero essa promoção</a>` : ""}</li>`).join("");
   const msgPadrao = mensagemWhats(nome, null, p.mensagem_padrao);
   const whats = c.whatsapp ? linkWhats(c.whatsapp, msgPadrao) : null;
   const mapa = p.maps_url && /^https:\/\//.test(p.maps_url) ? p.maps_url
@@ -380,9 +397,9 @@ function montarHtml({ p, c, aberto, horarios, origem, previa }) {
 <meta name="description" content="${e(descricao)}">
 ${previa ? '<meta name="robots" content="noindex">' : `<link rel="canonical" href="${e(url)}">`}
 <meta property="og:type" content="website">
-<meta property="og:title" content="${e(titulo)}">
-<meta property="og:description" content="${e(descricao)}">
-<meta property="og:url" content="${e(url)}">
+<meta property="og:title" content="${e(ogTitulo)}">
+<meta property="og:description" content="${e(ogDescricao)}">
+<meta property="og:url" content="${e(ogUrl)}">
 <meta property="og:image" content="${e(imagem)}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#24272c">
@@ -407,6 +424,7 @@ ${previa ? '<div class="pg-faixa-previa" role="status">Prévia: só você está 
 <main class="pg-corpo">
   ${whats ? `<div class="pg-cta"><a class="pg-botao grande" id="pg-solicitar" data-evento="whatsapp" href="${e(whats)}" target="_blank" rel="noopener">Solicitar meu horário</a>
     <p class="pg-cta-ajuda" id="pg-escolhidos" hidden></p></div>` : ""}
+  ${promosHtml ? `<section class="pg-secao" aria-labelledby="t-promo"><h2 id="t-promo">Promoções</h2><ul class="pg-promos">${promosHtml}</ul></section>` : ""}
   ${c.servicos.length ? `<section class="pg-secao" aria-labelledby="t-serv"><h2 id="t-serv">Serviços</h2>
     ${c.whatsapp ? '<p class="pg-dica">Toque nos serviços que você quer e depois em <b>Solicitar meu horário</b>.</p>' : ""}
     ${servicosHtml}</section>` : ""}
@@ -496,7 +514,7 @@ async function dadosEditor(ctx, p) {
   const { db } = ctx;
   const id = ctx.barbeariaId;
   const hoje = hojeBrasil();
-  const [b, servs, profs, equipe, fotos, ev, antigos] = await Promise.all([
+  const [b, servs, profs, equipe, fotos, ev, antigos, flyersNoAr] = await Promise.all([
     db.prepare("SELECT nome, telefone FROM barbearias WHERE id = ?").bind(id).first(),
     db.prepare(`SELECT s.id, s.nome, s.preco_centavos, s.duracao_min, ps.visivel, ps.ordem, ps.descricao
                 FROM servicos s LEFT JOIN paginas_servicos ps ON ps.servico_id = s.id AND ps.barbearia_id = s.barbearia_id
@@ -505,7 +523,9 @@ async function dadosEditor(ctx, p) {
     db.prepare("SELECT usuario_id, visivel, ordem, especialidade FROM paginas_equipe WHERE barbearia_id = ?").bind(id).all(),
     db.prepare("SELECT id, tipo, usuario_id, legenda, ordem, bytes FROM paginas_fotos WHERE barbearia_id = ? AND removida_em IS NULL ORDER BY tipo, ordem, criado_em").bind(id).all(),
     db.prepare("SELECT tipo, SUM(quantidade) AS q FROM paginas_eventos WHERE barbearia_id = ? AND dia >= ? GROUP BY tipo").bind(id, somarDias(hoje, -6)).all(),
-    db.prepare("SELECT slug, valido_ate FROM paginas_slugs_antigos WHERE barbearia_id = ? AND valido_ate >= ? ORDER BY criado_em DESC").bind(id, hoje).all()
+    db.prepare("SELECT slug, valido_ate FROM paginas_slugs_antigos WHERE barbearia_id = ? AND valido_ate >= ? ORDER BY criado_em DESC").bind(id, hoje).all(),
+    db.prepare(`SELECT COUNT(*) AS n FROM paginas_flyers WHERE barbearia_id = ? AND removido_em IS NULL AND publicado = 1
+                AND (validade IS NULL OR validade >= ?)`).bind(id, hoje).first()
   ]);
   const eqPor = Object.fromEntries(equipe.results.map(e => [e.usuario_id, e]));
   const fotoEquipe = uid => fotos.results.filter(f => f.tipo === "equipe" && f.usuario_id === uid).at(-1)?.id || null;
@@ -533,7 +553,8 @@ async function dadosEditor(ctx, p) {
       armazenamento: Boolean(armazenamento(ctx.env))
     },
     numeros7: { visita: numeros7.visita || 0, whatsapp: numeros7.whatsapp || 0, rota: numeros7.rota || 0, instagram: numeros7.instagram || 0 },
-    temas: TEMAS, formasDisponiveis: FORMAS_PAGINA
+    temas: TEMAS, formasDisponiveis: FORMAS_PAGINA,
+    flyersNoAr: Number(flyersNoAr?.n || 0)
   };
 }
 
@@ -586,6 +607,10 @@ export async function rotasPagina(ctx, path, method) {
     await db.prepare("UPDATE paginas SET previa_token = ?, previa_ate = ? WHERE barbearia_id = ?").bind(token, ate, ctx.barbeariaId).run();
     return json({ caminho: `/${p.slug}?previa=${token}`, validoAte: ate });
   }
+  if (path === "/pagina/flyers" && method === "GET") return listarFlyers(ctx, p);
+  if (path === "/pagina/flyers" && method === "POST") return enviarFlyer(ctx, p);
+  if (path === "/pagina/flyers/alterar" && method === "POST") return alterarFlyer(ctx);
+  if (path === "/pagina/flyers/excluir" && method === "POST") return excluirFlyer(ctx);
   if (path === "/pagina/foto" && method === "POST") return enviarFoto(ctx, p);
   if (path === "/pagina/foto/alterar" && method === "POST") return alterarFoto(ctx);
   if (path === "/pagina/foto/excluir" && method === "POST") return excluirFoto(ctx);
@@ -726,6 +751,106 @@ async function excluirFoto(ctx) {
   const r2 = armazenamento(env);
   if (r2) await r2.delete(chaveFoto(ctx.barbeariaId, f.id));
   return json({ mensagem: "Foto excluída." });
+}
+
+// ---------- FLYERS (25/11/2026) ----------
+// A imagem é desenhada no aparelho (tela "Flyers"); aqui o servidor só confere, guarda no R2 e publica no catálogo.
+const flyerPublico = (f, p, origem) => ({
+  id: f.id, titulo: f.titulo, texto: f.texto || null, estilo: f.estilo, formato: f.formato, validade: f.validade || null,
+  publicado: Boolean(f.publicado), noAr: Boolean(f.publicado) && (!f.validade || f.validade >= hojeBrasil()),
+  criadoEm: f.criado_em, bytes: f.bytes, imagem: `/f/${f.id}`, link: `${origem}/${p.slug}?promo=${f.id}`,
+  dados: (() => { try { return JSON.parse(f.dados || "null"); } catch { return null; } })()
+});
+
+async function listarFlyers(ctx, p) {
+  const r = await ctx.db.prepare("SELECT * FROM paginas_flyers WHERE barbearia_id = ? AND removido_em IS NULL ORDER BY criado_em DESC")
+    .bind(ctx.barbeariaId).all();
+  const origem = new URL(ctx.request.url).origin;
+  return json({ flyers: r.results.map(f => flyerPublico(f, p, origem)), limite: MAX_FLYERS, estilos: ESTILOS_FLYER, formatos: FORMATOS_FLYER,
+    paginaPublicada: Boolean(p.publicada), slug: p.slug });
+}
+
+function lerValidade(v) {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) erro("Data de validade inválida.");
+  if (v < hojeBrasil()) erro("A validade não pode ser uma data que já passou.");
+  return v;
+}
+
+async function enviarFlyer(ctx, p) {
+  const { db, env, request } = ctx;
+  const r2 = armazenamento(env);
+  if (!r2) erro("O envio de imagens ainda não está ligado neste servidor. Fale com o suporte.", 503);
+  let meta;
+  try { meta = JSON.parse(new URL(request.url).searchParams.get("meta") || "{}"); } catch { erro("Dados do flyer inválidos."); }
+  const titulo = textoOpcional(meta.titulo, 80);
+  if (!titulo) erro("Escreva o texto principal do flyer (até 80 caracteres).");
+  const texto = textoOpcional(meta.texto || "", 200);
+  if (texto === false) erro("Texto grande demais (até 200 caracteres).");
+  if (!ESTILOS_FLYER.includes(meta.estilo)) erro("Estilo inválido.");
+  if (!FORMATOS_FLYER.includes(meta.formato)) erro("Formato inválido.");
+  const validade = lerValidade(meta.validade ?? null);
+  const dados = meta.dados && typeof meta.dados === "object" ? JSON.stringify(meta.dados).slice(0, 4000) : null;
+  const tam = Number(request.headers.get("content-length") || 0);
+  if (tam > MAX_FLYER_BYTES) erro("Imagem do flyer grande demais (máximo 1,2 MB).", 413);
+  const bruto = new Uint8Array(await request.arrayBuffer());
+  if (bruto.length > MAX_FLYER_BYTES) erro("Imagem do flyer grande demais (máximo 1,2 MB).", 413);
+  if (bruto.length < 100) erro("Arquivo vazio ou inválido.");
+  const mime = tipoImagem(bruto);
+  if (!mime) erro("Arquivo não é uma imagem aceita (JPG, PNG ou WEBP).", 415);
+  const bytes = semExif(bruto, mime);
+  const ativos = await db.prepare("SELECT COUNT(*) AS n FROM paginas_flyers WHERE barbearia_id = ? AND removido_em IS NULL").bind(ctx.barbeariaId).first();
+  if (Number(ativos.n) >= MAX_FLYERS) erro(`Você já tem ${MAX_FLYERS} flyers guardados. Exclua um antigo para publicar outro.`, 409);
+  const id = crypto.randomUUID();
+  await r2.put(chaveFoto(ctx.barbeariaId, id), bytes, { httpMetadata: { contentType: mime } });
+  await db.batch([
+    db.prepare(`INSERT INTO paginas_flyers (id, barbearia_id, titulo, texto, estilo, formato, dados, mime, bytes, validade, criado_por)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, ctx.barbeariaId, titulo, texto || null, meta.estilo, meta.formato, dados, mime, bytes.length, validade, ctx.user.id),
+    auditoria(ctx, "flyer_publicado", id, { titulo, estilo: meta.estilo, formato: meta.formato, validade, bytes: bytes.length })
+  ]);
+  const f = await db.prepare("SELECT * FROM paginas_flyers WHERE id = ?").bind(id).first();
+  return json({ flyer: flyerPublico(f, p, new URL(request.url).origin), paginaPublicada: Boolean(p.publicada),
+    mensagem: p.publicada ? "Flyer publicado no seu catálogo." : "Flyer guardado. Ele aparece no catálogo quando a sua página estiver publicada." }, 201);
+}
+
+async function flyerDaBarbearia(ctx, id) {
+  if (!validId(id)) erro("Flyer inválido.");
+  const f = await ctx.db.prepare("SELECT * FROM paginas_flyers WHERE id = ? AND barbearia_id = ? AND removido_em IS NULL").bind(id, ctx.barbeariaId).first();
+  if (!f) erro("Flyer não encontrado.", 404);
+  return f;
+}
+
+async function alterarFlyer(ctx) {
+  const { db } = ctx;
+  const input = await readJson(ctx.request);
+  const f = await flyerDaBarbearia(ctx, input.id);
+  const novo = { publicado: f.publicado, validade: f.validade || null };
+  if (input.publicado !== undefined) novo.publicado = input.publicado ? 1 : 0;
+  const v = lerValidade(input.validade);
+  if (v !== undefined) novo.validade = v;
+  const dif = diferenca({ publicado: f.publicado, validade: f.validade || null }, novo);
+  if (!dif.mudou) erro("Nada foi alterado.");
+  await db.batch([
+    db.prepare("UPDATE paginas_flyers SET publicado = ?, validade = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND barbearia_id = ?")
+      .bind(novo.publicado, novo.validade, f.id, ctx.barbeariaId),
+    auditoria(ctx, "flyer_alterado", f.id, { antes: dif.antes, depois: dif.depois })
+  ]);
+  return json({ mensagem: novo.publicado ? "Flyer no catálogo." : "Flyer tirado do catálogo (continua guardado aqui)." });
+}
+
+async function excluirFlyer(ctx) {
+  const { db, env } = ctx;
+  const input = await readJson(ctx.request);
+  const f = await flyerDaBarbearia(ctx, input.id);
+  await db.batch([
+    db.prepare("UPDATE paginas_flyers SET removido_em = CURRENT_TIMESTAMP, removido_por = ? WHERE id = ?").bind(ctx.user.id, f.id),
+    auditoria(ctx, "flyer_excluido", f.id, { titulo: f.titulo, estilo: f.estilo, bytes: f.bytes })
+  ]);
+  const r2 = armazenamento(env);
+  if (r2) await r2.delete(chaveFoto(ctx.barbeariaId, f.id));
+  return json({ mensagem: "Flyer excluído." });
 }
 
 async function numerosPagina(ctx) {

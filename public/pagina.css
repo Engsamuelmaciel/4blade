@@ -151,3 +151,17 @@ html { background: var(--fundo); }
 .pg-mapa { margin: 0 0 14px; border-radius: 14px; overflow: hidden; border: 1px solid var(--borda); background: var(--borda); aspect-ratio: 16 / 10; }
 .pg-mapa iframe { display: block; width: 100%; height: 100%; border: 0; }
 @media (min-width: 720px) { .pg-mapa { aspect-ratio: 21 / 8; } }
+
+/* Promoções (flyers): carrossel deslizante; o do link (?promo=) vem destacado */
+.pg-promos { list-style: none; margin: 0; padding: 8px 8px 12px; display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; }
+.pg-promo { flex: 0 0 auto; width: 62%; max-width: 260px; scroll-snap-align: center; display: grid; gap: 8px; align-content: start; }
+.pg-promo.quadrado, .pg-promo.retrato { width: 78%; max-width: 320px; }
+.pg-promo .pg-foto { aspect-ratio: 9 / 16; border-radius: 14px; box-shadow: 0 6px 18px rgba(0, 0, 0, .18); }
+.pg-promo.quadrado .pg-foto { aspect-ratio: 1; }
+.pg-promo.retrato .pg-foto { aspect-ratio: 4 / 5; }
+.pg-promo.destaque .pg-foto { outline: 3px solid var(--realce); outline-offset: 3px; }
+.pg-promo-whats { text-align: center; font-size: 14px; padding: 10px 12px; }
+@media (min-width: 720px) {
+  .pg-promo { width: 230px; }
+  .pg-promo.quadrado, .pg-promo.retrato { width: 290px; }
+}

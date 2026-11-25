@@ -46,7 +46,11 @@
     atualizar();
   }));
 
-  // Ampliar foto da galeria
+  // Link de uma promoção (?promo=<id>): rola até o flyer.
+  const promo = document.querySelector(".pg-promo.destaque");
+  if (promo) setTimeout(() => promo.scrollIntoView({ block: "center", inline: "center" }), 60);
+
+  // Ampliar foto da galeria (e dos flyers)
   const caixa = document.getElementById("pg-ampliar");
   if (caixa && caixa.showModal) {
     const img = caixa.querySelector("img");

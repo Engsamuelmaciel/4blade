@@ -19,7 +19,7 @@ for (const l of readFileSync(join(PUBLIC, "_headers"), "utf8").split("\n")) {
   if (m && !/Cache-Control/.test(m[1])) cabecalhos[m[1]] = m[2];
 }
 const TIPOS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-  ".json": "application/manifest+json", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml" };
+  ".json": "application/manifest+json", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml", ".woff2": "font/woff2" };
 function estatico(caminho) {
   let f = join(PUBLIC, decodeURIComponent(caminho));
   if (!f.startsWith(PUBLIC) || !existsSync(f) || statSync(f).isDirectory()) f = join(PUBLIC, "index.html");
