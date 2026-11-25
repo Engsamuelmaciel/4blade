@@ -4763,6 +4763,8 @@ const estadoComissaoVales = { filtro: "ativos", busca: "" };
 // ---------- DESPESAS (contas a pagar) ----------
 // 17/11/2026: lista limpa que expande ao tocar, forma de pagamento (cartão, boleto, Pix…) e parcelamento.
 const NOME_CATEGORIA = { aluguel: "Aluguel", luz: "Luz", agua: "Água", fornecedor: "Fornecedor", outros: "Outros" };
+// Mesma lista de categorias ao lançar e ao editar a despesa ("Produtos" = compra que entra no estoque).
+const CATEGORIAS_DESPESA = [...Object.entries(NOME_CATEGORIA), ["produtos", "Produtos (entra no estoque)"]];
 const STATUS_CONTA = { atrasada: ["Atrasada", "vermelha"], hoje: ["Vence hoje", "amarela"], proxima: ["Próximos 7 dias", ""], futura: ["Em aberto", ""], paga: ["Paga", "verde"], cancelada: ["Cancelada", "vermelha"] };
 const FORMAS_DESPESA = [["pix", "Pix"], ["dinheiro", "Dinheiro"], ["debito", "Débito"], ["credito", "Crédito"], ["boleto", "Boleto"], ["transferencia", "Transferência"]];
 const NOME_FORMA_DESPESA = Object.fromEntries(FORMAS_DESPESA);
@@ -4776,7 +4778,7 @@ function janelaEditarConta(c) {
     aberta ? null : el("p", { class: "info", text: "Despesa já paga: dá para corrigir a descrição, a categoria e a forma. Valor e data já entraram nos relatórios." }),
     campo("Descrição (opcional)", { name: "eDesc", maxlength: "100", value: c.descricao }),
     el("div", { class: "lado-a-lado" },
-      campo("Categoria", { tag: "select", name: "eCat", valor: c.categoria, opcoes: Object.entries(NOME_CATEGORIA) }),
+      campo("Categoria", { tag: "select", name: "eCat", valor: c.estoque ? "produtos" : c.categoria, opcoes: CATEGORIAS_DESPESA }),
       campo("Forma de pagamento", { tag: "select", name: "eForma", valor: c.forma || "", opcoes: opcoesForma() })),
     aberta ? el("div", { class: "lado-a-lado" },
       campo("Valor (R$)", { name: "eValor", inputmode: "decimal", required: true, value: centavosParaTexto(c.valorCentavos) }),
@@ -4867,7 +4869,7 @@ function formNovaDespesa(doEstoque) {
     campo("Descrição (opcional)", { name: "desc", maxlength: "100", placeholder: "Em branco: usa o nome da categoria" }),
     el("div", { class: "lado-a-lado" },
       campo("Valor total (R$)", { name: "valor", inputmode: "decimal", required: true, placeholder: "0,00" }),
-      campo("Categoria", { tag: "select", name: "cat", opcoes: [...Object.entries(NOME_CATEGORIA), ["produtos", "Produtos (entra no estoque)"]] })),
+      campo("Categoria", { tag: "select", name: "cat", opcoes: CATEGORIAS_DESPESA })),
     el("div", { class: "lado-a-lado" },
       campo("Forma de pagamento", { tag: "select", name: "forma", opcoes: opcoesForma() }),
       blocoParcelas),

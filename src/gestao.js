@@ -479,6 +479,12 @@ async function rotasContas(ctx, path, method) {
     if (c.situacao === "cancelada") erro("Conta cancelada não pode ser editada.", 409);
     const antes = { descricao: c.descricao, categoria: c.categoria, valor_centavos: c.valor_centavos, vencimento: c.vencimento, recorrente: c.recorrente };
     const novo = { ...antes };
+    if (input.categoria === "produtos") {
+      // "Produtos" só vale para despesa ligada ao estoque (guardada como Fornecedor); as outras precisam ser lançadas de novo com o estoque.
+      if (!await db.prepare("SELECT 1 FROM contas_estoque WHERE conta_id = ?").bind(c.id).first())
+        erro("Essa despesa não está ligada ao estoque. Para ser Produtos, cancele e lance de novo escolhendo o produto e a quantidade.", 409);
+      input.categoria = "fornecedor";
+    }
     if (input.categoria !== undefined) { if (!Object.hasOwn(CATEGORIAS, input.categoria)) erro("Categoria inválida."); novo.categoria = input.categoria; }
     if (input.descricao !== undefined) {
       const vazia = input.descricao === null || String(input.descricao).trim() === "";

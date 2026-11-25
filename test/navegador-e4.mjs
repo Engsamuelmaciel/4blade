@@ -259,6 +259,12 @@ async function rodar(tela) {
     await page.waitForSelector("text=/Produto criado e lançado no estoque/");
     await abrirItem(page, "[data-conta^='Compra: Pomada nova fictícia']");
     assert.match(await texto("[data-conta^='Compra: Pomada nova fictícia']"), /Produtos \(estoque\)/);
+    // na edição a lista de categorias é a mesma do lançamento (tem Produtos) e já vem escolhida
+    await page.click("[data-conta^='Compra: Pomada nova fictícia'] button:has-text('Editar')");
+    await page.waitForSelector("dialog[open] #c-eCat");
+    assert.equal(await page.locator("dialog[open] #c-eCat").inputValue(), "produtos");
+    assert.ok((await page.locator("dialog[open] #c-eCat option").allInnerTexts()).some(t => /Produtos/.test(t)));
+    await page.click("dialog[open] button:has-text('Cancelar')");
     await ir(page, "Produtos e estoque");
     assert.match(await texto('[data-estoque="Pomada nova fictícia"] [data-teste=saldo]'), /12 un\./);
 

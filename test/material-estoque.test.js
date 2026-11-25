@@ -177,4 +177,22 @@ describe("material de uso e despesa com estoque", () => {
     assert.equal((await post("/api/contas", ger.token, { categoria: "produtos", valorCentavos: 1000, vencimento: HOJE, recorrente: true,
       estoque: { quantidade: 1, novo: { nome: "Outro gel" }, precoVendaCentavos: 100 } })).status, 400);
   });
+
+  test("editar despesa: a lista de categorias tem Produtos; só vale para despesa ligada ao estoque", async () => {
+    const amb = await cenario("edprod");
+    const { post, get, ger } = amb;
+    const c = (await post("/api/contas", ger.token, { categoria: "produtos", valorCentavos: 5000, vencimento: HOJE,
+      estoque: { quantidade: 5, novo: { nome: "Spray" }, precoVendaCentavos: 2500 } })).dados.conta;
+    // trocar para outra categoria e voltar para Produtos (ligada ao estoque) funciona
+    assert.equal((await post("/api/contas/alterar", ger.token, { id: c.id, categoria: "outros" })).status, 200);
+    assert.equal((await post("/api/contas/alterar", ger.token, { id: c.id, categoria: "produtos", descricao: "Spray da loja" })).status, 200);
+    const lista = (await get("/api/contas", ger.token)).dados.contas.find(x => x.id === c.id);
+    assert.equal(lista.categoria, "fornecedor");
+    assert.ok(lista.estoque);
+    // despesa comum não vira Produtos
+    const comum = (await post("/api/contas", ger.token, { categoria: "outros", valorCentavos: 1000, vencimento: HOJE })).dados.conta;
+    const r = await post("/api/contas/alterar", ger.token, { id: comum.id, categoria: "produtos" });
+    assert.equal(r.status, 409);
+    assert.match(r.dados.erro, /estoque/i);
+  });
 });
