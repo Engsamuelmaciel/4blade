@@ -187,7 +187,7 @@ async function rodar(tela) {
     // ---------- PROPRIETÁRIO ----------
     passo("proprietário troca a senha e cria gerente, barbeiro e caixa");
     await primeiroAcesso("carlos.navalha", senhaProp, "Senha-Carlos-2026", true);
-    await page.waitForSelector("[data-cartao=bruto]");   // gestão abre direto no painel
+    await page.waitForSelector("[data-teste=boas-vindas]");   // gestão abre no Início (25/11/2026)
     await print("proprietario-inicio");
     await ir(page, "Equipe");
     await page.waitForSelector("text=Nova pessoa");
@@ -210,7 +210,7 @@ async function rodar(tela) {
     // ---------- GERENTE ----------
     passo("gerente cadastra 2 serviços, 2 produtos e 1 cliente");
     await primeiroAcesso("gabriel.navalha", senhaGer, "Senha-Gabriel-2026");
-    await page.waitForSelector("[data-cartao=bruto]");
+    await page.waitForSelector("[data-teste=boas-vindas]");
     await ir(page, "Serviços");
     await abrirCadastro(page);
     // formatação de dinheiro: ponto vira vírgula, milhar com ponto, no máximo 2 casas, letras ignoradas

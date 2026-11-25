@@ -512,6 +512,9 @@ async function rodar(tela) {
     // ---------- PAINEL ----------
     passo("gerente vê o painel sem espaços vazios e sem sobrar para os lados");
     await entrar("gerente.semana");
+    await page.waitForSelector("[data-teste=boas-vindas]");   // 25/11/2026: gerente abre no Início
+    await print("gerente-inicio");
+    await ir(page, "Painel");
     await page.waitForSelector("[data-cartao=bruto]");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), tela.largura, "nada passa da largura da tela");
     await print("gerente-painel");
@@ -520,7 +523,7 @@ async function rodar(tela) {
     assert.ok(!(await page.locator("#nav-topo").isVisible()), "gerente sem menu no topo");
     if (!tela.movel) assert.ok(await page.locator("#menu").isVisible(), "no computador o menu lateral fica fixo");
     const fin = await page.locator('#menu [data-grupo="financeiro"] [data-nav]').evaluateAll(a => a.map(x => x.dataset.nav));
-    assert.deepEqual(fin, ["Relatório financeiro", "Despesas", "Pagamento da equipe", "Notas em aberto", "Contador e dados"]);
+    assert.deepEqual(fin, ["Relatório financeiro", "Despesas", "Notas em aberto"]);   // 25/11/2026: Contador/Painel no Relatório; Pagamento em Despesas
     await page.click("#btn-conta");
     await page.waitForSelector("dialog[open] .conta-cartao >> text=Gustavo Gerente");
     await print("minha-conta", false);
@@ -534,7 +537,7 @@ async function rodar(tela) {
     await print("aparencia-escolha", false);
     await page.click("dialog[open] button:has-text('Fechar')");
     await page.reload();
-    await page.waitForSelector("[data-cartao=bruto]");
+    await page.waitForSelector("[data-teste=boas-vindas]");
     await page.waitForSelector("#carregador", { state: "hidden" });
     assert.deepEqual(await page.evaluate(() => [document.documentElement.dataset.tema, document.documentElement.dataset.paleta]), ["escuro", "navalha"], "continua após recarregar");
     const fundo = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
