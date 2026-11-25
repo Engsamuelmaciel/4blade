@@ -151,7 +151,7 @@ async function slugLivre(db, slug, barbeariaId) {
 // Tudo que a página pública mostra (e a prévia do editor): só dados de vitrine.
 async function conteudoPagina(db, p) {
   const id = p.barbearia_id;
-  const [b, servs, equipe, fotos, func, flyers] = await Promise.all([
+  const [b, servs, equipe, fotos, func, flyers, especiais] = await Promise.all([
     db.prepare("SELECT nome, telefone FROM barbearias WHERE id = ?").bind(id).first(),
     db.prepare(`SELECT s.id, s.nome, s.preco_centavos, s.duracao_min, ps.visivel, ps.ordem, ps.descricao
                 FROM servicos s LEFT JOIN paginas_servicos ps ON ps.servico_id = s.id AND ps.barbearia_id = s.barbearia_id
@@ -162,7 +162,10 @@ async function conteudoPagina(db, p) {
                 ORDER BY tipo, ordem, criado_em`).bind(id).all(),
     db.prepare("SELECT * FROM funcionamento WHERE barbearia_id = ? ORDER BY dia_semana").bind(id).all(),
     db.prepare(`SELECT id, titulo, texto, formato FROM paginas_flyers WHERE barbearia_id = ? AND removido_em IS NULL AND publicado = 1
-                AND (validade IS NULL OR validade >= ?) AND ${FLYER_VIVO} ORDER BY criado_em DESC LIMIT ?`).bind(id, hojeBrasil(), MAX_FLYERS).all()
+                AND (validade IS NULL OR validade >= ?) AND ${FLYER_VIVO} ORDER BY criado_em DESC LIMIT ?`).bind(id, hojeBrasil(), MAX_FLYERS).all(),
+    // Aberturas em caráter especial dos próximos 90 dias (dias que a barbearia normalmente não abre, ou com horário diferente).
+    db.prepare("SELECT data, abre_min, fecha_min, intervalo_ini_min, intervalo_fim_min, motivo FROM aberturas_especiais WHERE barbearia_id = ? AND ativo = 1 AND data >= ? AND data <= ? ORDER BY data")
+      .bind(id, hojeBrasil(), somarDias(hojeBrasil(), 90)).all()
   ]);
   const ultima = tipo => fotos.results.filter(f => f.tipo === tipo).at(-1) || null;
   const fotoDe = uid => fotos.results.filter(f => f.tipo === "equipe" && f.usuario_id === uid).at(-1) || null;
@@ -176,15 +179,17 @@ async function conteudoPagina(db, p) {
     capa: ultima("capa")?.id || null,
     galeria: fotos.results.filter(f => f.tipo === "galeria").map(f => ({ id: f.id, legenda: f.legenda || "" })),
     funcionamento: func.results,
+    especiais: especiais.results,
     flyers: flyers.results,
     formas: (() => { try { return JSON.parse(p.formas || "[]").filter(f => FORMAS_PAGINA[f]); } catch { return []; } })()
   };
 }
 
 // "Aberto agora" pelo horário de Brasília (funcionamento + intervalo + datas fechadas).
-async function abertoAgora(db, barbeariaId, func) {
+async function abertoAgora(db, barbeariaId, func, especiais = []) {
   const hoje = hojeBrasil();
-  const f = func.find(x => x.dia_semana === diaSemana(hoje));
+  const esp = especiais.find(x => x.data === hoje);
+  const f = esp ? { aberto: 1, abre_min: esp.abre_min, fecha_min: esp.fecha_min, intervalo_ini_min: esp.intervalo_ini_min, intervalo_fim_min: esp.intervalo_fim_min } : func.find(x => x.dia_semana === diaSemana(hoje));
   if (!f || !f.aberto) return false;
   const fechada = await db.prepare("SELECT 1 FROM datas_fechadas WHERE barbearia_id = ? AND ativo = 1 AND data_ini <= ? AND data_fim >= ? LIMIT 1")
     .bind(barbeariaId, hoje, hoje).first();
@@ -256,7 +261,7 @@ export async function rotaPublicaPagina(request, env) {
   if (!(await barbeariaNoAr(db, env, p.barbearia_id))) return paginaIndisponivel();
   const c = await conteudoPagina(db, p);
   const [aberto, horarios, suporte] = await Promise.all([
-    abertoAgora(db, p.barbearia_id, c.funcionamento),
+    abertoAgora(db, p.barbearia_id, c.funcionamento, c.especiais),
     p.mostrar_horarios ? horariosLivres(db, p.barbearia_id) : null,
     contatoSuporte(db).catch(() => ({}))
   ]);
@@ -377,6 +382,13 @@ function montarHtml({ p, c, aberto, horarios, origem, previa, promo = null, supo
     return `<li${d === hojeDia ? ' class="hoje"' : ""}><span>${NOME_DIA[d][0].toUpperCase() + NOME_DIA[d].slice(1)}</span><span>${e(txt)}</span></li>`;
   }).join("");
   const temFuncionamento = c.funcionamento.some(f => f.aberto);
+  // Aberturas em caráter especial (26/11/2026): "Dom, 21/12 · 09:00 – 14:00 · Natal".
+  const linhasEspeciais = c.especiais.map(x => {
+    const [ano, mes, dia] = x.data.split("-");
+    const quando = `${NOME_DIA[diaSemana(x.data)].slice(0, 3)}, ${dia}/${mes}`;
+    const horas = `${minParaHora(x.abre_min)} – ${minParaHora(x.fecha_min)}`;
+    return `<li class="pg-especial" data-especial="${e(x.data)}"><span><strong>${e(quando.charAt(0).toUpperCase() + quando.slice(1))}</strong> · ${e(x.motivo)}</span><span>${e(horas)}</span></li>`;
+  }).join("");
 
   // Dados estruturados (Google). "<" vira <: texto do barbeiro nunca fecha o <script>.
   const ld = {
@@ -386,6 +398,8 @@ function montarHtml({ p, c, aberto, horarios, origem, previa, promo = null, supo
     ...(end.completo ? { address: { "@type": "PostalAddress", streetAddress: end.linha1, addressLocality: p.end_cidade || undefined, addressRegion: p.end_uf || undefined, postalCode: p.end_cep || undefined, addressCountry: "BR" } } : {}),
     openingHoursSpecification: c.funcionamento.filter(f => f.aberto).map(f => ({ "@type": "OpeningHoursSpecification",
       dayOfWeek: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][f.dia_semana], opens: minParaHora(f.abre_min), closes: minParaHora(f.fecha_min) })),
+    ...(c.especiais.length ? { specialOpeningHoursSpecification: c.especiais.map(x => ({ "@type": "OpeningHoursSpecification", validFrom: x.data, validThrough: x.data,
+      opens: minParaHora(x.abre_min), closes: minParaHora(x.fecha_min) })) } : {}),
     makesOffer: c.servicos.map(s => ({ "@type": "Offer", price: (s.precoCentavos / 100).toFixed(2), priceCurrency: "BRL", itemOffered: { "@type": "Service", name: s.nome } }))
   };
   const ldJson = JSON.stringify(ld).replace(/</g, "\\u003c");
@@ -463,7 +477,8 @@ ${previa ? '<div class="pg-faixa-previa" role="status">Prévia: só você está 
   ${galeriaHtml ? `<section class="pg-secao" aria-labelledby="t-gal"><h2 id="t-gal">Fotos</h2><ul class="pg-galeria">${galeriaHtml}</ul></section>` : ""}
   ${equipeHtml ? `<section class="pg-secao" aria-labelledby="t-eq"><h2 id="t-eq">Equipe</h2><ul class="pg-equipe">${equipeHtml}</ul></section>` : ""}
   ${p.sobre ? `<section class="pg-secao" aria-labelledby="t-sobre"><h2 id="t-sobre">Sobre</h2><p class="pg-sobre">${e(p.sobre)}</p></section>` : ""}
-  ${temFuncionamento ? `<section class="pg-secao" aria-labelledby="t-func"><h2 id="t-func">Horário de funcionamento</h2><ul class="pg-funcionamento">${linhasHorario}</ul></section>` : ""}
+  ${temFuncionamento || linhasEspeciais ? `<section class="pg-secao" aria-labelledby="t-func"><h2 id="t-func">Horário de funcionamento</h2>${temFuncionamento ? `<ul class="pg-funcionamento">${linhasHorario}</ul>` : ""}
+    ${linhasEspeciais ? `<div class="pg-especiais" data-teste="aberturas-especiais"><h3>Abertura em caráter especial</h3><ul class="pg-funcionamento">${linhasEspeciais}</ul></div>` : ""}</section>` : ""}
   ${end.completo ? `<section class="pg-secao" aria-labelledby="t-local"><h2 id="t-local">Localização</h2>
     ${mapaEmbutido ? `<div class="pg-mapa"><iframe src="${e(mapaEmbutido)}" title="Mapa: ${e(end.completo)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe></div>` : ""}
     <div class="pg-local"><p><strong>${e(end.linha1)}</strong>${end.linha2 ? `<br>${e(end.linha2)}` : ""}${p.end_cep ? `<br>CEP ${e(p.end_cep)}` : ""}</p>

@@ -3,7 +3,7 @@ import { json, fail, readJson, validId, exigirMotivo, auditoria, hojeBrasil } fr
 import { isGestao, atende } from "./perfis.js";
 import { exigirBarbearia, exigirGestao } from "./usuarios.js";
 import {
-  horaParaMin, minParaHora, exigirData, NOME_DIA, carregarModelos, linksWhatsapp
+  horaParaMin, minParaHora, exigirData, NOME_DIA, carregarModelos, linksWhatsapp, somarDias
 } from "./agenda-util.js";
 
 function diaPublico(dia, f) {
@@ -16,6 +16,11 @@ function diaPublico(dia, f) {
     intervaloFim: minParaHora(f?.intervalo_fim_min ?? null)
   };
 }
+
+export const aberturaPublica = a => ({
+  id: a.id, data: a.data, abre: minParaHora(a.abre_min), fecha: minParaHora(a.fecha_min),
+  intervaloIni: minParaHora(a.intervalo_ini_min ?? null), intervaloFim: minParaHora(a.intervalo_fim_min ?? null), motivo: a.motivo
+});
 
 // Lê os 7 dias enviados pela tela. Devolve linhas prontas para o banco ou lança erro com mensagem clara.
 function lerDias(dias, { campoAberto, campoIni, campoFim, comIntervalo }) {
@@ -67,16 +72,18 @@ export async function rotasFuncionamento(ctx, path, method) {
 
   if (path === "/funcionamento" && method === "GET") {
     exigirBarbearia(ctx);
-    const [f, d] = await Promise.all([
+    const [f, d, esp] = await Promise.all([
       db.prepare("SELECT * FROM funcionamento WHERE barbearia_id = ?").bind(ctx.barbeariaId).all(),
       db.prepare(`SELECT id, data_ini, data_fim, motivo FROM datas_fechadas
-                  WHERE barbearia_id = ? AND ativo = 1 AND data_fim >= ? ORDER BY data_ini`).bind(ctx.barbeariaId, hojeBrasil()).all()
+                  WHERE barbearia_id = ? AND ativo = 1 AND data_fim >= ? ORDER BY data_ini`).bind(ctx.barbeariaId, hojeBrasil()).all(),
+      db.prepare(`SELECT * FROM aberturas_especiais WHERE barbearia_id = ? AND ativo = 1 AND data >= ? ORDER BY data`).bind(ctx.barbeariaId, hojeBrasil()).all()
     ]);
     const porDia = Object.fromEntries(f.results.map(x => [x.dia_semana, x]));
     return json({
       configurado: f.results.length === 7,
       dias: [0, 1, 2, 3, 4, 5, 6].map(i => diaPublico(i, porDia[i])),
-      datasFechadas: d.results.map(x => ({ id: x.id, dataIni: x.data_ini, dataFim: x.data_fim, motivo: x.motivo }))
+      datasFechadas: d.results.map(x => ({ id: x.id, dataIni: x.data_ini, dataFim: x.data_fim, motivo: x.motivo })),
+      aberturasEspeciais: esp.results.map(aberturaPublica)
     });
   }
 
@@ -134,6 +141,9 @@ export async function rotasFuncionamento(ctx, path, method) {
     const fim = exigirData(input.dataFim || ini, "Data final");
     if (fim < ini) return fail("A data final precisa ser igual ou depois da inicial.");
     const motivo = exigirMotivo(input.motivo);
+    const comEspecial = await db.prepare("SELECT data FROM aberturas_especiais WHERE barbearia_id = ? AND ativo = 1 AND data >= ? AND data <= ? ORDER BY data LIMIT 1")
+      .bind(ctx.barbeariaId, ini, fim).first();
+    if (comEspecial) return fail(`Já existe uma abertura especial em ${comEspecial.data.split("-").reverse().join("/")}. Cancele a abertura especial antes de fechar esse dia.`, 409);
     const id = crypto.randomUUID();
     await db.batch([
       db.prepare("INSERT INTO datas_fechadas (id, barbearia_id, data_ini, data_fim, motivo, criado_por) VALUES (?, ?, ?, ?, ?, ?)")
@@ -156,6 +166,54 @@ export async function rotasFuncionamento(ctx, path, method) {
       auditoria(ctx, "data_fechada_desativada", atual.id, { motivo, antes: { ativo: 1 }, depois: { ativo: 0 } })
     ]);
     return json({ mensagem: "A agenda volta a aceitar horários nesse período." });
+  }
+
+  // ---------- abertura em caráter especial (26/11/2026) ----------
+  // O dia vira "aberto" na agenda (para todos que atendem) e aparece na página pública da barbearia.
+  if (path === "/funcionamento/aberturas-especiais" && method === "POST") {
+    exigirGestao(ctx);
+    const input = await readJson(request);
+    const data = exigirData(input.data, "Data");
+    const hoje = hojeBrasil();
+    if (data < hoje) return fail("Escolha hoje ou um dia que ainda vai chegar.");
+    if (data > somarDias(hoje, 366)) return fail("Escolha uma data de até 1 ano à frente.");
+    const abre = horaParaMin(input.abre), fecha = horaParaMin(input.fecha);
+    if (abre === null || fecha === null || abre >= fecha) return fail("Horário inválido: a abertura precisa ser antes do fechamento (ex.: 09:00 às 14:00).");
+    let intIni = null, intFim = null;
+    if (input.intervaloIni || input.intervaloFim) {
+      intIni = horaParaMin(input.intervaloIni); intFim = horaParaMin(input.intervaloFim);
+      if (intIni === null || intFim === null || intIni >= intFim || intIni <= abre || intFim >= fecha) return fail("Intervalo inválido: precisa ficar dentro do horário (ex.: 12:00 às 13:00).");
+    }
+    const motivo = exigirMotivo(input.motivo);
+    const fechada = await db.prepare("SELECT motivo FROM datas_fechadas WHERE barbearia_id = ? AND ativo = 1 AND data_ini <= ? AND data_fim >= ? LIMIT 1")
+      .bind(ctx.barbeariaId, data, data).first();
+    if (fechada) return fail(`Esse dia está marcado como fechado (${fechada.motivo}). Reative a agenda nesse dia (em Datas fechadas) antes de abrir em caráter especial.`, 409);
+    if (await db.prepare("SELECT 1 FROM aberturas_especiais WHERE barbearia_id = ? AND ativo = 1 AND data = ?").bind(ctx.barbeariaId, data).first())
+      return fail("Já existe uma abertura especial nesse dia. Cancele a atual para criar outra.", 409);
+    const id = crypto.randomUUID();
+    await db.batch([
+      db.prepare(`INSERT INTO aberturas_especiais (id, barbearia_id, data, abre_min, fecha_min, intervalo_ini_min, intervalo_fim_min, motivo, criado_por)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, ctx.barbeariaId, data, abre, fecha, intIni, intFim, motivo, user.id),
+      auditoria(ctx, "abertura_especial_criada", id, { depois: { data, abre: minParaHora(abre), fecha: minParaHora(fecha), motivo } })
+    ]);
+    const a = await db.prepare("SELECT * FROM aberturas_especiais WHERE id = ?").bind(id).first();
+    return json({ aberturaEspecial: aberturaPublica(a), mensagem: "Dia aberto em caráter especial. Já aparece na agenda e na página da barbearia." }, 201);
+  }
+
+  if (path === "/funcionamento/aberturas-especiais/cancelar" && method === "POST") {
+    exigirGestao(ctx);
+    const input = await readJson(request);
+    if (!validId(input.id)) return fail("Registro inválido.");
+    const motivo = exigirMotivo(input.motivo);
+    const atual = await db.prepare("SELECT * FROM aberturas_especiais WHERE id = ? AND barbearia_id = ? AND ativo = 1").bind(input.id, ctx.barbeariaId).first();
+    if (!atual) return fail("Abertura especial não encontrada.", 404);
+    const marcados = await agendadosNoPeriodo(ctx, atual.data, atual.data);
+    if (marcados.length) return fail(`Há ${marcados.length} horário(s) marcado(s) nesse dia. Remarque ou cancele esses horários antes de cancelar a abertura especial.`, 409);
+    await db.batch([
+      db.prepare("UPDATE aberturas_especiais SET ativo = 0, motivo_cancelamento = ? WHERE id = ? AND barbearia_id = ?").bind(motivo, atual.id, ctx.barbeariaId),
+      auditoria(ctx, "abertura_especial_cancelada", atual.id, { motivo, antes: { data: atual.data, ativo: 1 }, depois: { ativo: 0 } })
+    ]);
+    return json({ mensagem: "Abertura especial cancelada. O dia volta ao funcionamento normal." });
   }
 
   // ---------- horário de trabalho de quem atende ----------

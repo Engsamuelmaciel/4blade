@@ -410,7 +410,7 @@ async function rodar(tela) {
 
     passo("caixa (recepção) vê a agenda de todos, marca para um barbeiro e acessa clientes, mensagens e catálogo");
     const abasCaixa = await page.locator("#nav-topo [data-nav-topo]").allInnerTexts();
-    assert.deepEqual(abasCaixa, ["Hoje", "Caixa", "Agenda", "Clientes", "Notas"], `menu do caixa: ${abasCaixa}`);
+    assert.deepEqual(abasCaixa, ["Hoje", "Caixa", "Agenda", "Clientes", "Mensagens", "Notas"], `menu do caixa: ${abasCaixa}`);
     const gruposCaixa = await page.locator("#menu .grupo-titulo").allTextContents();
     assert.ok(gruposCaixa.some(t => /Catálogo/.test(t)), `Mais do caixa: ${gruposCaixa}`);
     await ir(page, "Agenda");
@@ -608,6 +608,27 @@ async function rodar(tela) {
     await visao("Mês");
     await page.waitForSelector(".calendario .dia-cal");
     await print("gerente-agenda-mes");
+
+    // Abertura em caráter especial (26/11/2026): lança o dia, aparece na lista, no Mês da agenda e pode ser cancelada
+    passo("gerente abre um dia em caráter especial e vê na lista e no Mês da agenda");
+    await ir(page, "Funcionamento");
+    await page.waitForSelector("[data-teste=form-especial]");
+    await page.fill("#c-eData", HOJE);
+    await page.fill("#c-eMotivo", "Abertura especial fictícia");
+    await page.fill("#c-eAbre", "07:00"); await page.fill("#c-eFecha", "08:00");
+    await page.click("button:has-text('Abrir esse dia')");
+    await page.waitForSelector(`[data-teste=aberturas-especiais] [data-especial="${HOJE}"]`);
+    await print("gerente-funcionamento-abertura-especial");
+    await ir(page, "Agenda");
+    await page.waitForSelector(".barra-agenda");
+    await visao("Mês");
+    await page.waitForSelector(".calendario [data-teste=dia-especial]");
+    await print("gerente-agenda-mes-dia-especial");
+    await ir(page, "Funcionamento");
+    await page.click(`[data-especial="${HOJE}"] button:has-text('Cancelar abertura')`);
+    await page.fill("dialog[open] [name=motivo]", "Teste encerrado");
+    await page.click("dialog[open] button[type=submit]");
+    await page.waitForFunction(() => !document.querySelector("[data-especial]"));
     await sair();
 
     assert.deepEqual(problemas, [], `erros no console: ${problemas.join(" | ")}`);

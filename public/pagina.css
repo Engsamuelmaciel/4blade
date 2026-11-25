@@ -206,3 +206,8 @@ html { background: var(--fundo); }
 .pg-promos-dica { margin: -4px 0 0; font-size: 13px; color: var(--suave); }
 @media (min-width: 720px) { .pg-promos { --altura-promo: 380px; } }
 
+
+/* Abertura em caráter especial (26/11/2026) */
+.pg-especiais { margin-top: 16px; padding: 12px 14px; border: 1px dashed var(--c, var(--realce)); border-radius: 14px; }
+.pg-especiais h3 { margin: 0 0 6px; font-size: 14px; font-weight: 800; color: var(--realce); }
+.pg-especiais .pg-funcionamento li:last-child { border-bottom: 0; }

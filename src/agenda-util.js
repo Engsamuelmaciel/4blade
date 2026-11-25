@@ -34,37 +34,45 @@ export function exigirMomento(v, rotulo) {
   return v;
 }
 
+// Abertura especial (26/11/2026): o dia vira "aberto" com o horário da abertura especial, para TODOS que atendem (sem olhar o
+// horário semanal de cada um). Fechamento por data (feriado) continua mandando mais que tudo.
+function funcionamentoEspecial(a) {
+  return { aberto: 1, abre_min: a.abre_min, fecha_min: a.fecha_min, intervalo_ini_min: a.intervalo_ini_min, intervalo_fim_min: a.intervalo_fim_min,
+    especial: { id: a.id, motivo: a.motivo } };
+}
+
 // Carrega o que decide se um horário pode ser usado num dia: funcionamento, horário do profissional, data fechada.
 export async function regrasDoDia(db, barbeariaId, barbeiroId, data) {
   const dia = diaSemana(data);
-  const [func, trab, fechada] = await Promise.all([
+  const [func, trab, fechada, especial] = await Promise.all([
     db.prepare("SELECT * FROM funcionamento WHERE barbearia_id = ? AND dia_semana = ?").bind(barbeariaId, dia).first(),
     db.prepare("SELECT * FROM horario_trabalho WHERE barbearia_id = ? AND usuario_id = ? AND dia_semana = ?").bind(barbeariaId, barbeiroId, dia).first(),
     db.prepare(`SELECT motivo FROM datas_fechadas WHERE barbearia_id = ? AND ativo = 1 AND data_ini <= ? AND data_fim >= ? LIMIT 1`)
-      .bind(barbeariaId, data, data).first()
+      .bind(barbeariaId, data, data).first(),
+    db.prepare("SELECT * FROM aberturas_especiais WHERE barbearia_id = ? AND ativo = 1 AND data = ?").bind(barbeariaId, data).first()
   ]);
+  if (especial) return { dia, func: funcionamentoEspecial(especial), trab: null, fechada };
   return { dia, func, trab, fechada };
 }
 
 // Carrega de uma vez as regras de um PERÍODO (poucas consultas, mesmo para meses/anos) e devolve regras(data, barbeiroId).
 export async function carregarRegras(db, barbeariaId, ini, fim) {
-  const [func, trab, fechadas] = await Promise.all([
+  const [func, trab, fechadas, especiais] = await Promise.all([
     db.prepare("SELECT * FROM funcionamento WHERE barbearia_id = ?").bind(barbeariaId).all(),
     db.prepare("SELECT * FROM horario_trabalho WHERE barbearia_id = ?").bind(barbeariaId).all(),
     db.prepare("SELECT data_ini, data_fim, motivo FROM datas_fechadas WHERE barbearia_id = ? AND ativo = 1 AND data_ini <= ? AND data_fim >= ?")
-      .bind(barbeariaId, fim, ini).all()
+      .bind(barbeariaId, fim, ini).all(),
+    db.prepare("SELECT * FROM aberturas_especiais WHERE barbearia_id = ? AND ativo = 1 AND data >= ? AND data <= ?").bind(barbeariaId, ini, fim).all()
   ]);
   const funcPor = Object.fromEntries(func.results.map(f => [f.dia_semana, f]));
+  const especialPor = Object.fromEntries(especiais.results.map(a => [a.data, a]));
   const trabPor = {};
   for (const t of trab.results) (trabPor[t.usuario_id] ||= {})[t.dia_semana] = t;
   return (data, barbeiroId) => {
     const dia = diaSemana(data);
-    return {
-      dia,
-      func: funcPor[dia] || null,
-      trab: trabPor[barbeiroId]?.[dia] || null,
-      fechada: fechadas.results.find(f => f.data_ini <= data && f.data_fim >= data) || null
-    };
+    const fechada = fechadas.results.find(f => f.data_ini <= data && f.data_fim >= data) || null;
+    if (especialPor[data]) return { dia, func: funcionamentoEspecial(especialPor[data]), trab: null, fechada };
+    return { dia, func: funcPor[dia] || null, trab: trabPor[barbeiroId]?.[dia] || null, fechada };
   };
 }
 

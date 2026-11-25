@@ -1496,6 +1496,7 @@ async function telaAgenda() {
       el("div", { class: "resumo-topo" },
         el("strong", { text: x.livres.length ? `${x.livres.length} horário(s) livre(s)` : "Agenda cheia" }),
         el("span", { class: "suave", text: `${x.janela.ini}–${x.janela.fim}` })),
+      disp.especial ? el("p", { class: "etiqueta laranja largo", "data-teste": "dia-especial", text: `Aberto em caráter especial · ${disp.especial.motivo}` }) : null,
       x.livres.length ? el("p", { class: "suave", text: "Toque num horário livre da lista para marcar." }) : null);
   };
 
@@ -1580,6 +1581,7 @@ async function telaAgenda() {
         el("strong", { text: `${DIAS[diaDaSemana(d)]} ${dataBR(d).slice(0, 5)}${d === ag.hoje ? " (hoje)" : ""}` }),
         el("span", { class: "contagens" },
           el("span", { class: `etiqueta ${marcados ? "" : "neutra"}`, "data-marcados": String(marcados), text: `${marcados} marcado${marcados === 1 ? "" : "s"}` }),
+          o?.especial ? el("span", { class: "etiqueta laranja", "data-teste": "dia-especial", title: o.especial, text: "especial" }) : null,
           fechado ? el("span", { class: "etiqueta neutra", text: "fechado" })
             : !passado && o ? el("span", { class: `etiqueta ${o.livres ? "verde" : "vermelha"}`, "data-livres": String(o.livres), text: o.livres ? `${o.livres} livre${o.livres === 1 ? "" : "s"}` : "cheio" }) : null),
         svg("svg", { viewBox: "0 0 24 24", class: "icone seta", "aria-hidden": "true" }, svg("path", { d: ICONES.seta })));
@@ -2138,6 +2140,7 @@ function calendarioMesNovo(oc, ag, ym, irPara, profs) {
       onclick: () => irPara(data, "dia")
     },
       el("span", { class: "mes-topo" }, el("span", { class: "num", text: String(n) }),
+        d.especial ? el("span", { class: "mes-tag especial", "data-teste": "dia-especial", title: d.especial, text: "especial" }) : null,
         d.status === "fechado" ? el("span", { class: "mes-tag", text: "fechado" }) : evs.length ? el("span", { class: "mes-qtd", text: String(evs.length) }) : null),
       d.status === "fechado" ? null : barra,
       el("span", { class: "mes-evs" }, evs.slice(0, 3).map(a => el("span", { class: `mes-ev cor-${corDe[a.barbeiroId] ?? 0} ${a.situacao}` }, el("i"), `${a.inicio} ${a.cliente.nome.split(" ")[0]}`)),
@@ -2491,7 +2494,7 @@ function painelDisponibilidade() {
         el("summary", { class: "disp-topo", "data-teste": "disp-resumo" },
           el("strong", { text: titulo }),
           el("span", { class: `etiqueta ${p.livres.length ? "verde" : "vermelha"}`, "data-teste": "disp-situacao", text: p.livres.length ? `${p.livres.length} horário(s) livre(s)` : "Agenda cheia" })),
-        el("p", { class: "suave", text: `Atende das ${p.janela.ini} às ${p.janela.fim} · horários para ${d.duracao} min. Toque num horário livre:` }),
+        el("p", { class: "suave", text: `${d.especial ? `Abertura em caráter especial (${d.especial.motivo}). ` : ""}Atende das ${p.janela.ini} às ${p.janela.fim} · horários para ${d.duracao} min. Toque num horário livre:` }),
         p.livres.length ? el("div", { class: "chips-hora" }, chips) : el("p", { class: "disp-aviso cheio", text: "Nenhum horário livre para essa duração neste dia. Tente outro dia ou outro profissional." }),
         p.ocupados.length ? el("ul", { class: "disp-ocupados" }, p.ocupados.map(o => el("li", { class: `ocup-${o.tipo}` },
           el("span", { class: "hora", text: `${o.ini}–${o.fim}` }), el("span", { text: o.tipo === "horario" ? `Ocupado · ${o.texto}` : o.texto })))) : null));
@@ -2900,8 +2903,45 @@ async function telaFuncionamento() {
           }, "Reabrir"), "pequeno")))))
       : el("p", { class: "suave", text: "Nenhuma data fechada daqui para frente." }));
 
+  // Abertura em caráter especial (26/11/2026): dia que normalmente não abre (ou com horário diferente). Vale na agenda e na página pública.
+  const formEspecial = el("form", { class: "cartao", "data-teste": "form-especial" },
+    el("h3", { text: "Abrir em caráter especial" }),
+    el("p", { class: "suave", text: "Para um dia em que a barbearia normalmente não abre (ex.: domingo antes do Natal). O dia fica aberto na agenda e aparece na página da barbearia." }),
+    el("div", { class: "lado-a-lado" },
+      campo("Dia", { name: "eData", type: "date", required: true, value: somaDias(hojeLocal(), 1) }),
+      campo("Motivo", { name: "eMotivo", required: true, minlength: "3", maxlength: "80", placeholder: "Ex.: Abertura de Natal" })),
+    el("div", { class: "lado-a-lado" },
+      campo("Abre às", { name: "eAbre", type: "time", required: true, value: "09:00" }),
+      campo("Fecha às", { name: "eFecha", type: "time", required: true, value: "14:00" })),
+    el("details", { class: "mais-opcoes" }, el("summary", { text: "Pausa (opcional)" }),
+      el("div", { class: "lado-a-lado" },
+        campo("Pausa de", { name: "eII", type: "time" }),
+        campo("Pausa até", { name: "eIF", type: "time" }))),
+    el("button", { type: "submit", class: "botao principal", text: "Abrir esse dia" }));
+  formEspecial.addEventListener("submit", ev => {
+    ev.preventDefault();
+    enviar(formEspecial, async () => {
+      const r = await api("/funcionamento/aberturas-especiais", { metodo: "POST", corpo: {
+        data: formEspecial.eData.value, motivo: formEspecial.eMotivo.value, abre: formEspecial.eAbre.value, fecha: formEspecial.eFecha.value,
+        ...(formEspecial.eII.value && formEspecial.eIF.value ? { intervaloIni: formEspecial.eII.value, intervaloFim: formEspecial.eIF.value } : {}) } });
+      avisar(r.mensagem); telaFuncionamento();
+    });
+  });
+  const especiais = el("section", { class: "cartao", "data-teste": "aberturas-especiais" },
+    el("h3", { text: "Dias abertos em caráter especial" }),
+    f.aberturasEspeciais?.length
+      ? el("ul", { class: "lista" }, f.aberturasEspeciais.map(a => el("li", { class: "item", "data-especial": a.data },
+        el("div", { class: "item-topo" }, el("strong", { text: dataLonga(a.data) }), el("span", { class: "etiqueta verde", text: `${a.abre} – ${a.fecha}` })),
+        el("p", { class: "suave", text: a.motivo + (a.intervaloIni ? ` · pausa ${a.intervaloIni}–${a.intervaloFim}` : "") }),
+        el("div", { class: "item-acoes" },
+          botao("Cancelar abertura", () => pedirMotivo(`Cancelar a abertura de ${dataBR(a.data)}`, "O dia volta ao funcionamento normal (fechado, se não for um dia de trabalho). Só dá para cancelar se não houver horário marcado nesse dia.", async motivo => {
+            await api("/funcionamento/aberturas-especiais/cancelar", { metodo: "POST", corpo: { id: a.id, motivo } });
+            avisar("Abertura especial cancelada."); telaFuncionamento();
+          }, "Cancelar abertura"), "pequeno perigo")))))
+      : el("p", { class: "suave", text: "Nenhum dia especial daqui para frente." }));
+
   mostrar(cabecalho("Funcionamento", "Dias e horários em que a barbearia atende. O horário de cada profissional fica em Equipe."),
-    el("div", { class: "duas-colunas" }, el("section", {}, form), el("section", {}, formFechar, fechadas)));
+    el("div", { class: "duas-colunas" }, el("section", {}, form), el("section", {}, formEspecial, especiais, formFechar, fechadas)));
 }
 
 function mostrarAfetados(afetados) {

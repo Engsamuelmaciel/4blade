@@ -2472,3 +2472,7 @@ main:has(.fc) { padding-top: 12px; }
 [data-teste=est-modos] { margin-bottom: 12px; }
 [data-teste=est-modos] .chip-filtro { flex: 1; text-align: center; }
 [data-teste=est-existente][hidden], [data-teste=est-novo][hidden], [data-teste=est-preco-venda][hidden] { display: none; }
+
+/* Abertura em caráter especial (26/11/2026) */
+.mes-tag.especial { background: color-mix(in srgb, var(--dourado) 22%, var(--cartao)); color: var(--texto); }
+.etiqueta.largo { display: block; margin: 6px 0 0; }

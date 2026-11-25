@@ -908,7 +908,8 @@ async function disponibilidade(ctx) {
       livres: livres.map(minParaHora)
     };
   });
-  return json({ data, passado: data < hoje, duracao, profissionais });
+  const esp = regras(data, null).func?.especial;
+  return json({ data, passado: data < hoje, duracao, profissionais, ...(esp ? { especial: { motivo: esp.motivo } } : {}) });
 }
 
 // ---------- OCUPAÇÃO POR DIA (calendário Mês/Ano): livre, poucos horários, cheio, fechado ----------
@@ -956,7 +957,8 @@ async function ocupacao(ctx) {
         duracaoMinima, d, hoje, agoraMin).length;
     }
     const status = !trabalham ? "fechado" : maior < duracaoMinima ? "cheio" : livre / Math.max(total, 1) < 0.34 ? "poucos" : "livre";
-    dias.push({ data: d, status, passado: d < hoje, livreMin: livre, totalMin: total, agendados, horariosLivres: Math.floor(livre / duracaoMinima), livres });
+    const esp = regras(d, null).func?.especial;
+    dias.push({ data: d, status, passado: d < hoje, livreMin: livre, totalMin: total, agendados, horariosLivres: Math.floor(livre / duracaoMinima), livres, ...(esp ? { especial: esp.motivo } : {}) });
   }
   return json({ inicio: ini, fim, duracaoMinima, profissionais: profs.map(p => ({ id: p.id, nome: p.nome })), dias });
 }
