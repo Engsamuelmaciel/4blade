@@ -22,7 +22,8 @@ const aparenciaDe = p => (CORES_PAGINA.includes(p.ap_cor) && MODOS_PAGINA.includ
   ? { cor: p.ap_cor, modo: p.ap_modo }
   : (([cor, modo]) => ({ cor, modo }))(TEMA_ANTIGO[p.tema] || TEMA_ANTIGO.classico));
 const classeAparencia = p => { const a = aparenciaDe(p); return `modo-${a.modo} cor-${a.cor}`; };
-const SQL_PAGINA = "SELECT p.*, a.cor AS ap_cor, a.modo AS ap_modo FROM paginas p LEFT JOIN paginas_aparencia a ON a.barbearia_id = p.barbearia_id";
+const SQL_PAGINA = `SELECT p.*, a.cor AS ap_cor, a.modo AS ap_modo, COALESCE(o.mostrar_novidades, 1) AS mostrar_novidades FROM paginas p
+  LEFT JOIN paginas_aparencia a ON a.barbearia_id = p.barbearia_id LEFT JOIN paginas_opcoes o ON o.barbearia_id = p.barbearia_id`;
 export const FORMAS_PAGINA = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro" };
 export const MAX_GALERIA = 12;
 export const MAX_FOTO_BYTES = 700 * 1024;              // o celular já reduz para ~500 KB; folga para PNG pequeno
@@ -538,7 +539,6 @@ function lerCamposPagina(input, atual) {
     novo.tema = input.tema;
   }
   if (input.mostrarHorarios !== undefined) novo.mostrar_horarios = input.mostrarHorarios ? 1 : 0;
-  if (input.mostrarNovidades !== undefined) novo.mostrar_novidades = input.mostrarNovidades ? 1 : 0;
   const antes = {};
   for (const k of Object.keys(novo)) antes[k] = atual[k] ?? null;
   return { novo, antes };
@@ -662,7 +662,16 @@ async function salvarPagina(ctx, p) {
     cmds.push(db.prepare(`UPDATE paginas SET ${cols.map(c => `${c} = ?`).join(", ")}, atualizado_em = CURRENT_TIMESTAMP WHERE barbearia_id = ?`)
       .bind(...cols.map(c => dif.depois[c]), ctx.barbeariaId));
   }
-  let mudouServicos = false, mudouEquipe = false, mudouAparencia = null;
+  let mudouServicos = false, mudouEquipe = false, mudouAparencia = null, mudouNovidades = null;
+  if (input.mostrarNovidades !== undefined) {
+    const nv = input.mostrarNovidades ? 1 : 0;
+    if (nv !== p.mostrar_novidades) {
+      cmds.push(db.prepare(`INSERT INTO paginas_opcoes (barbearia_id, mostrar_novidades, atualizado_por) VALUES (?, ?, ?)
+                            ON CONFLICT(barbearia_id) DO UPDATE SET mostrar_novidades = excluded.mostrar_novidades, atualizado_por = excluded.atualizado_por, atualizado_em = CURRENT_TIMESTAMP`)
+        .bind(ctx.barbeariaId, nv, ctx.user.id));
+      mudouNovidades = { antes: Boolean(p.mostrar_novidades), depois: Boolean(nv) };
+    }
+  }
   if (input.cor !== undefined || input.modo !== undefined || input.tema !== undefined) {
     const atual = aparenciaDe(p);
     const base = input.tema !== undefined && TEMA_ANTIGO[input.tema] ? { cor: TEMA_ANTIGO[input.tema][0], modo: TEMA_ANTIGO[input.tema][1] } : atual;
@@ -707,7 +716,8 @@ async function salvarPagina(ctx, p) {
     ...(dif.mudou ? { antes: dif.antes, depois: dif.depois } : {}),
     ...(mudouServicos ? { servicos: input.servicos.map(s => `${s.visivel === false ? "-" : "+"}${s.id.slice(0, 8)}`) } : {}),
     ...(mudouEquipe ? { equipe: input.equipe.map(u => `${u.visivel ? "+" : "-"}${u.id.slice(0, 8)}`) } : {}),
-    ...(mudouAparencia ? { aparencia: mudouAparencia } : {})
+    ...(mudouAparencia ? { aparencia: mudouAparencia } : {}),
+    ...(mudouNovidades ? { mostrarNovidades: mudouNovidades } : {})
   }));
   await db.batch(cmds);
   return json({ mensagem: "Página salva." });
