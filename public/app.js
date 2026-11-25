@@ -3319,11 +3319,11 @@ async function telaCaixa(dataHistorico = null) {
       blocoFechamento(c), gestao() ? botao("Reabrir caixa", reabrir, "pequeno") : null)
     : null;
   mostrar(
-    cabecalho("Caixa", dataBR(c.data)),
     cartaoAbrir,
     aviso,
-    // Situação à esquerda, ferramentas do caixa à direita (uma faixa só, como a barra de uma frente de caixa)
-    el("div", { class: "fc-barra" }, situacao,
+    // Uma faixa só no alto (aproveita o espaço): nome da tela + data + situação à esquerda, ferramentas do caixa à direita
+    el("header", { class: "fc-topo" },
+      el("div", { class: "fc-topo-titulo" }, el("h2", { text: "Caixa" }), el("span", { class: "fc-data", text: dataBR(c.data) }), situacao),
       el("section", { class: "pdv-ferramentas", "aria-label": "Ações do caixa" },
         el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("sangria", recarregar) }, icone("setaBaixo"), el("span", { text: "Sangria" })),
         el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("suprimento", recarregar) }, icone("setaCima"), el("span", { text: "Suprimento" })),
