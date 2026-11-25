@@ -2419,3 +2419,13 @@ main:has(.fc) { padding-top: 12px; }
   .fc-topo .pdv-ferramentas { flex-basis: 100%; }
 }
 @media (max-width: 560px) { .fc-topo .pdv-ferramentas .botao.ferramenta { padding: 0 10px; font-size: 12.5px; gap: 5px; } }
+
+/* frente de caixa (celular/tablet): linha do item sem sobreposição — nome em cima; quantidade, valor e subtotal embaixo */
+@media (max-width: 1099px) {
+  .fc-linha { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "item item x" "qtd valor sub"; column-gap: 12px; }
+  .fc-linha > .qtd { grid-area: qtd; justify-self: start; flex: none; min-width: max-content; }
+  .fc-linha > .fc-valor { grid-area: valor; width: 100%; max-width: 140px; justify-self: end; }
+  .fc-linha > .fc-sub { grid-area: sub; justify-self: end; }
+  .fc-linha > .fc-x { grid-area: x; justify-self: end; }
+}
+.fc-pagos-vazio { display: none; }

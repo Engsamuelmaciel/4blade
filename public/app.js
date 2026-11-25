@@ -3385,6 +3385,7 @@ async function frenteCaixa(c, recarregar) {
   if (cm.ag && !aCobrar.some(a => a.id === cm.ag.id)) { cm.ag = null; cm.servicos = []; cm.cliente = null; }   // já foi pago/sumiu da fila
   const ehBarbeiro = usuario.perfil === "barbeiro";
   const saldoDe = p => p.saldo ?? 999;
+  let pagosAbertos = false;   // "Pagos hoje" começa sempre recolhido; quem quer ver, toca
 
   // ---------- contas da comanda ----------
   const valorDe = l => paraCentavos(l.valor) ?? 0;
@@ -3562,7 +3563,7 @@ async function frenteCaixa(c, recarregar) {
       corpo = el("div", { class: "fc-lista" },
         ...(vis.length ? vis.map(ticket) : [el("p", { class: "vazio", text: aCobrar.length ? "Ninguém com esse nome na fila." : "Ninguém aguardando pagamento. Quando o barbeiro terminar, o atendimento aparece aqui." })]),
         botao("+ Atendimento sem horário", () => { estadoCaixa.vitrine = "servicos"; if (cm.ag) { cm.ag = null; cm.servicos = []; cm.cliente = null; desenharComanda(); } desenharVitrine(); buscaEl.focus(); }, "dourado"),
-        pagos.length ? el("details", { class: "pagos-hoje", open: aCobrar.length ? null : true }, el("summary", { class: "titulo-pagos", text: `Pagos hoje (${pagos.length}) · ${reais(pagos.reduce((x, a) => x + (a.totalCentavos || 0), 0))}` }),
+        pagos.length ? el("details", { class: "pagos-hoje", "data-teste": "pagos-hoje", open: pagosAbertos || null, ontoggle: ev => { pagosAbertos = ev.target.open; } }, el("summary", { class: "titulo-pagos", text: `Pagos hoje (${pagos.length}) · ${reais(pagos.reduce((x, a) => x + (a.totalCentavos || 0), 0))}` }),
           el("div", { class: "fc-lista" }, pagos.map(ticket))) : null);
     } else if (v === "servicos") {
       const vis = filtradosServ();
