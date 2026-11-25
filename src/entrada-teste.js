@@ -87,5 +87,8 @@ const ASSETS = {
 export default {
   fetch(request, env, ctx) {
     return worker.fetch(request, { ...env, ASSETS }, ctx);
+  },
+  scheduled(evento, env, ctx) {
+    return worker.scheduled(evento, { ...env, ASSETS }, ctx);
   }
 };

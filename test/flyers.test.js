@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import sharp from "sharp";
 import { ambiente } from "./ambiente.js";
 import worker from "../src/index.js";
-import { MAX_FLYERS } from "../src/pagina.js";
+import { MAX_FLYERS, limparFlyersExpirados } from "../src/pagina.js";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -134,5 +134,46 @@ describe("flyers", () => {
     // a B não oculta/exclui flyer da A
     assert.equal((await b.post("/api/pagina/flyers/alterar", b.ger.token, { id: r2.dados.flyer.id, publicado: false })).status, 404);
     assert.equal((await b.post("/api/pagina/flyers/excluir", b.ger.token, { id: r2.dados.flyer.id })).status, 404);
+  });
+
+  test("24 horas, como stories: some da página, da lista e do link; a limpeza (de hora em hora) apaga o arquivo do R2", async () => {
+    const amb = ambiente();
+    const a = await cenario("fl5", amb);
+    const b = await cenario("fl6", amb, a.plat);
+    const img = await imagemFlyer();
+    const velho = (await enviar(a, a.ger.token, { titulo: "Velho", estilo: "moderno", formato: "story" }, img)).dados.flyer;
+    const novo = (await enviar(a, a.ger.token, { titulo: "Novo", estilo: "moderno", formato: "story" }, img)).dados.flyer;
+    const daB = (await enviar(b, b.ger.token, { titulo: "Da B", estilo: "moderno", formato: "story" }, img)).dados.flyer;
+    assert.ok(Date.parse(novo.expiraEm) - Date.now() > 23.9 * 3600e3, "expira em ~24 h");
+    // o "velho" e o da B passam de 24 h
+    amb.env.DB.raw.prepare("UPDATE paginas_flyers SET criado_em = datetime('now', '-25 hours') WHERE id IN (?, ?)").run(velho.id, daB.id);
+    let pg = await abrir(a, `/${a.slug}`);
+    assert.doesNotMatch(pg.texto, new RegExp(velho.id), "some da página na hora");
+    assert.match(pg.texto, new RegExp(novo.id));
+    assert.equal((await worker.fetch(new Request(`https://forblade.teste/f/${velho.id}`), amb.env)).status, 404, "imagem não é mais servida");
+    pg = await abrir(a, `/${a.slug}?promo=${velho.id}`);
+    assert.doesNotMatch(pg.texto, new RegExp(velho.id), "link antigo cai na página normal");
+    assert.equal((await a.post("/api/pagina/flyers/alterar", a.ger.token, { id: velho.id, publicado: false })).status, 404);
+    // abrir a Divulgação da A limpa só os dela: arquivo apagado do R2 + registrado como expirado pelo sistema
+    const chave = id => [...amb.env.FOTOS.mapa.keys()].some(k => k.endsWith(id));
+    assert.ok(chave(velho.id) && chave(daB.id));
+    const lista = (await a.get("/api/pagina/flyers", a.ger.token)).dados.flyers;
+    assert.deepEqual(lista.map(f => f.titulo), ["Novo"]);
+    assert.ok(!chave(velho.id), "arquivo do flyer vencido apagado");
+    assert.ok(chave(daB.id), "a limpeza pela tela da A não mexe na B");
+    const linha = amb.env.DB.raw.prepare("SELECT removido_em, removido_por FROM paginas_flyers WHERE id = ?").get(velho.id);
+    assert.ok(linha.removido_em); assert.equal(linha.removido_por, null, "sem usuário: foi a limpeza automática (auditoria flyer_expirado)");
+    assert.equal(amb.env.DB.raw.prepare("SELECT COUNT(*) AS n FROM auditoria WHERE acao = 'flyer_expirado' AND alvo = ?").get(velho.id).n, 1);
+    // limpeza de hora em hora (todas as barbearias)
+    assert.equal(await limparFlyersExpirados(amb.env.DB, amb.env), 1);
+    assert.ok(!chave(daB.id));
+    assert.ok(chave(novo.id), "o novo continua");
+    assert.equal(await limparFlyersExpirados(amb.env.DB, amb.env), 0, "nada para limpar de novo");
+    // o agendamento de hora em hora chama a mesma limpeza
+    amb.env.DB.raw.prepare("UPDATE paginas_flyers SET criado_em = datetime('now', '-30 hours') WHERE id = ?").run(novo.id);
+    const esperas = [];
+    await worker.scheduled({ cron: "17 * * * *" }, amb.env, { waitUntil: p => esperas.push(p) });
+    await Promise.all(esperas);
+    assert.ok(!chave(novo.id), "agendamento apagou o flyer vencido");
   });
 });

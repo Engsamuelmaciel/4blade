@@ -54,6 +54,9 @@ export function sugerirSlug(nome) {
 
 // ---------- ARMAZENAMENTO DAS FOTOS (R2 da Cloudflare: binding FOTOS) ----------
 const chaveFoto = (barbeariaId, id) => `paginas/${barbeariaId}/${id}`;
+// Flyers duram 24 horas, como um story (pedido do responsável): depois disso somem de tudo e a limpeza apaga o arquivo do R2.
+export const HORAS_FLYER = 24;
+const FLYER_VIVO = `criado_em > datetime('now', '-${HORAS_FLYER} hours')`;
 // Flyers (25/11/2026): imagem pronta gerada no aparelho; até 12 no ar por barbearia, 1,2 MB cada.
 export const ESTILOS_FLYER = ["moderno", "contemporaneo", "retro", "vintage", "neon", "luxo", "urbano", "editorial", "minimal", "giz", "tropical", "polaroid"];
 export const FORMATOS_FLYER = ["story", "quadrado", "retrato"];
@@ -159,7 +162,7 @@ async function conteudoPagina(db, p) {
                 ORDER BY tipo, ordem, criado_em`).bind(id).all(),
     db.prepare("SELECT * FROM funcionamento WHERE barbearia_id = ? ORDER BY dia_semana").bind(id).all(),
     db.prepare(`SELECT id, titulo, texto, formato FROM paginas_flyers WHERE barbearia_id = ? AND removido_em IS NULL AND publicado = 1
-                AND (validade IS NULL OR validade >= ?) ORDER BY criado_em DESC LIMIT ?`).bind(id, hojeBrasil(), MAX_FLYERS).all()
+                AND (validade IS NULL OR validade >= ?) AND ${FLYER_VIVO} ORDER BY criado_em DESC LIMIT ?`).bind(id, hojeBrasil(), MAX_FLYERS).all()
   ]);
   const ultima = tipo => fotos.results.filter(f => f.tipo === tipo).at(-1) || null;
   const fotoDe = uid => fotos.results.filter(f => f.tipo === "equipe" && f.usuario_id === uid).at(-1) || null;
@@ -263,7 +266,7 @@ export async function rotaPublicaPagina(request, env) {
   let promo = c.flyers.find(f => f.id === idPromo) || null;
   if (!promo && idPromo && validId(idPromo)) {
     promo = await db.prepare(`SELECT id, titulo, texto, formato FROM paginas_flyers WHERE id = ? AND barbearia_id = ? AND removido_em IS NULL
-                              AND (validade IS NULL OR validade >= ?)`).bind(idPromo, p.barbearia_id, hojeBrasil()).first() || null;
+                              AND (validade IS NULL OR validade >= ?) AND ${FLYER_VIVO}`).bind(idPromo, p.barbearia_id, hojeBrasil()).first() || null;
   }
   const html = montarHtml({ p, c, aberto, horarios, origem: url.origin, previa: ehPrevia, promo, suporte });
   return new Response(request.method === "HEAD" ? null : html, {
@@ -291,7 +294,7 @@ function paginaIndisponivel() {
 
 async function servirFoto(db, env, id) {
   const f = await db.prepare(`SELECT f.barbearia_id, f.mime FROM paginas_fotos f WHERE f.id = ? AND f.removida_em IS NULL
-                              UNION ALL SELECT x.barbearia_id, x.mime FROM paginas_flyers x WHERE x.id = ? AND x.removido_em IS NULL LIMIT 1`).bind(id, id).first();
+                              UNION ALL SELECT x.barbearia_id, x.mime FROM paginas_flyers x WHERE x.id = ? AND x.removido_em IS NULL AND x.${FLYER_VIVO} LIMIT 1`).bind(id, id).first();
   const r2 = armazenamento(env);
   if (!f || !r2) return new Response("Não encontrada", { status: 404, headers: CABECALHOS });
   const obj = await r2.get(chaveFoto(f.barbearia_id, id));
@@ -558,7 +561,7 @@ async function dadosEditor(ctx, p) {
     db.prepare("SELECT id, tipo, usuario_id, legenda, ordem, bytes FROM paginas_fotos WHERE barbearia_id = ? AND removida_em IS NULL ORDER BY tipo, ordem, criado_em").bind(id).all(),
     db.prepare("SELECT tipo, SUM(quantidade) AS q FROM paginas_eventos WHERE barbearia_id = ? AND dia >= ? GROUP BY tipo").bind(id, somarDias(hoje, -6)).all(),
     db.prepare("SELECT slug, valido_ate FROM paginas_slugs_antigos WHERE barbearia_id = ? AND valido_ate >= ? ORDER BY criado_em DESC").bind(id, hoje).all(),
-    db.prepare(`SELECT COUNT(*) AS n FROM paginas_flyers WHERE barbearia_id = ? AND removido_em IS NULL AND publicado = 1
+    db.prepare(`SELECT COUNT(*) AS n FROM paginas_flyers WHERE barbearia_id = ? AND removido_em IS NULL AND publicado = 1 AND ${FLYER_VIVO}
                 AND (validade IS NULL OR validade >= ?)`).bind(id, hoje).first()
   ]);
   const eqPor = Object.fromEntries(equipe.results.map(e => [e.usuario_id, e]));
@@ -816,12 +819,14 @@ async function excluirFoto(ctx) {
 const flyerPublico = (f, p, origem) => ({
   id: f.id, titulo: f.titulo, texto: f.texto || null, estilo: f.estilo, formato: f.formato, validade: f.validade || null,
   publicado: Boolean(f.publicado), noAr: Boolean(f.publicado) && (!f.validade || f.validade >= hojeBrasil()),
-  criadoEm: f.criado_em, bytes: f.bytes, imagem: `/f/${f.id}`, link: `${origem}/${p.slug}?promo=${f.id}`,
+  criadoEm: f.criado_em, expiraEm: new Date(Date.parse(`${String(f.criado_em).replace(" ", "T")}Z`) + HORAS_FLYER * 3600e3).toISOString(),
+  bytes: f.bytes, imagem: `/f/${f.id}`, link: `${origem}/${p.slug}?promo=${f.id}`,
   dados: (() => { try { return JSON.parse(f.dados || "null"); } catch { return null; } })()
 });
 
 async function listarFlyers(ctx, p) {
-  const r = await ctx.db.prepare("SELECT * FROM paginas_flyers WHERE barbearia_id = ? AND removido_em IS NULL ORDER BY criado_em DESC")
+  await limparFlyersExpirados(ctx.db, ctx.env, ctx.barbeariaId);   // limpeza também ao abrir a Divulgação (além da de hora em hora)
+  const r = await ctx.db.prepare(`SELECT * FROM paginas_flyers WHERE barbearia_id = ? AND removido_em IS NULL AND ${FLYER_VIVO} ORDER BY criado_em DESC`)
     .bind(ctx.barbeariaId).all();
   const origem = new URL(ctx.request.url).origin;
   return json({ flyers: r.results.map(f => flyerPublico(f, p, origem)), limite: MAX_FLYERS, estilos: ESTILOS_FLYER, formatos: FORMATOS_FLYER,
@@ -858,7 +863,7 @@ async function enviarFlyer(ctx, p) {
   const mime = tipoImagem(bruto);
   if (!mime) erro("Arquivo não é uma imagem aceita (JPG, PNG ou WEBP).", 415);
   const bytes = semExif(bruto, mime);
-  const ativos = await db.prepare("SELECT COUNT(*) AS n FROM paginas_flyers WHERE barbearia_id = ? AND removido_em IS NULL").bind(ctx.barbeariaId).first();
+  const ativos = await db.prepare(`SELECT COUNT(*) AS n FROM paginas_flyers WHERE barbearia_id = ? AND removido_em IS NULL AND ${FLYER_VIVO}`).bind(ctx.barbeariaId).first();
   if (Number(ativos.n) >= MAX_FLYERS) erro(`Você já tem ${MAX_FLYERS} flyers guardados. Exclua um antigo para publicar outro.`, 409);
   const noCarrossel = meta.noCarrossel !== false;   // 25/11/2026: o gerente escolhe se vai para "Novidades e promoções"
   const id = crypto.randomUUID();
@@ -877,7 +882,7 @@ async function enviarFlyer(ctx, p) {
 
 async function flyerDaBarbearia(ctx, id) {
   if (!validId(id)) erro("Flyer inválido.");
-  const f = await ctx.db.prepare("SELECT * FROM paginas_flyers WHERE id = ? AND barbearia_id = ? AND removido_em IS NULL").bind(id, ctx.barbeariaId).first();
+  const f = await ctx.db.prepare(`SELECT * FROM paginas_flyers WHERE id = ? AND barbearia_id = ? AND removido_em IS NULL AND ${FLYER_VIVO}`).bind(id, ctx.barbeariaId).first();
   if (!f) erro("Flyer não encontrado.", 404);
   return f;
 }
@@ -926,4 +931,23 @@ async function numerosPagina(ctx) {
   const totais = { visita: 0, whatsapp: 0, rota: 0, instagram: 0 };
   for (const x of r.results) { if (por[x.dia]) por[x.dia][x.tipo] = x.quantidade; totais[x.tipo] += x.quantidade; }
   return { periodo, inicio: ini, fim: hoje, dias, totais };
+}
+
+// Limpeza dos flyers com mais de 24 h: marca como removido (nada some do histórico) e apaga a imagem do R2.
+// Roda de hora em hora (scheduled em index.js) e ao abrir a Divulgação. barbeariaId = só daquela barbearia.
+export async function limparFlyersExpirados(db, env, barbeariaId = null, limite = 200) {
+  const r = await db.prepare(`SELECT id, barbearia_id, titulo, bytes FROM paginas_flyers WHERE removido_em IS NULL AND NOT (${FLYER_VIVO})
+                              ${barbeariaId ? "AND barbearia_id = ?" : ""} LIMIT ?`).bind(...(barbeariaId ? [barbeariaId, limite] : [limite])).all();
+  if (!r.results.length) return 0;
+  // primeiro apaga os arquivos (se falhar, o flyer continua para a próxima limpeza tentar de novo)
+  const r2 = armazenamento(env);
+  const apagados = [];
+  for (const f of r.results) { try { if (r2) await r2.delete(chaveFoto(f.barbearia_id, f.id)); apagados.push(f); } catch { /* fica para a próxima */ } }
+  if (!apagados.length) return 0;
+  await db.batch(apagados.flatMap(f => [
+    db.prepare("UPDATE paginas_flyers SET removido_em = CURRENT_TIMESTAMP, removido_por = NULL WHERE id = ? AND removido_em IS NULL").bind(f.id),
+    db.prepare("INSERT INTO auditoria (barbearia_id, usuario_id, acao, alvo, detalhes) VALUES (?, NULL, 'flyer_expirado', ?, ?)")
+      .bind(f.barbearia_id, f.id, JSON.stringify({ titulo: f.titulo, bytes: f.bytes, horas: HORAS_FLYER }))
+  ]));
+  return apagados.length;
 }

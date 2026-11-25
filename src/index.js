@@ -22,7 +22,7 @@ import { rotasPromissorias } from "./promissorias.js";
 import { rotasNotificacoes } from "./notificacoes.js";
 import { rotasEquipe } from "./equipe.js";
 import { rotaUso, usoDaBarbearia } from "./uso.js";
-import { rotaPublicaPagina, rotaEventoPagina, rotasPagina } from "./pagina.js";
+import { rotaPublicaPagina, rotaEventoPagina, rotasPagina, limparFlyersExpirados } from "./pagina.js";
 import { rotasCaixa } from "./caixa.js";
 import { rotasEstoque, rotasVendas } from "./estoque.js";
 import { rotasGestao } from "./gestao.js";
@@ -138,6 +138,10 @@ async function issueSession(db, user, env) {
 const FALLBACK_HASH = `pbkdf2$${ITERACOES}$00000000000000000000000000000000$` + "0".repeat(64);
 
 export default {
+  // De hora em hora (wrangler.toml → [triggers]): apaga os flyers com mais de 24 h (como stories) do R2.
+  async scheduled(evento, env, ctx) {
+    ctx.waitUntil(limparFlyersExpirados(env.DB, env).catch(() => 0));
+  },
   async fetch(request, env) {
     const url = new URL(request.url);
     const method = request.method;

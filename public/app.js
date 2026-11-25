@@ -6726,8 +6726,7 @@ function montarFlyers(FL, d, lista, logo) {
       inp("Preço normal (riscado, opcional)", "precoDe", { inputmode: "decimal", maxlength: "12", placeholder: "Ex.: 70,00" }),
       inp("Preço da promoção (opcional)", "precoPor", { inputmode: "decimal", maxlength: "12", placeholder: "Ex.: 55,00" })),
     el("p", { class: "ajuda", text: "Sem preço, o flyer vira um convite (\"marque seu horário\", aviso, novidade)." }),
-    inp("Detalhe (opcional)", "detalhe", { maxlength: "90", placeholder: "Ex.: Terça e quarta · chame no WhatsApp" }),
-    inp("Válido até (opcional)", "validade", { type: "date", min: hojeLocal() }, "Depois dessa data o flyer sai sozinho do catálogo."));
+    inp("Detalhe (opcional)", "detalhe", { maxlength: "90", placeholder: "Ex.: Terça e quarta · chame no WhatsApp" }));
 
   // ---- 6. cor e detalhes ----
   const cores = el("div", { class: "fl-cores", role: "radiogroup", "aria-label": "Cor de destaque" },
@@ -6787,7 +6786,8 @@ function montarFlyers(FL, d, lista, logo) {
     el("div", { class: "fl-item-info" },
       el("strong", { text: f.titulo }),
       el("span", { class: `etiqueta ${f.noAr ? "verde" : "amarela"}`, "data-teste": "flyer-situacao", text: f.noAr ? "Na página" : !f.publicado ? "Oculto da página" : "Vencido" }),
-      el("small", { class: "suave", text: [FL.ESTILOS.find(e => e.id === f.estilo)?.nome, FL.FORMATOS[f.formato]?.nome, f.validade ? `até ${dataBR(f.validade)}` : "sem validade"].filter(Boolean).join(" · ") }),
+      el("small", { class: "suave", text: [FL.ESTILOS.find(e => e.id === f.estilo)?.nome, FL.FORMATOS[f.formato]?.nome].filter(Boolean).join(" · ") }),
+      el("small", { class: "fl-expira", "data-teste": "flyer-expira", text: textoExpira(f.expiraEm) }),
       // 25/11/2026: ocultar/mostrar e excluir à vista (antes ficavam em "Mais")
       el("div", { class: "item-acoes fl-item-acoes" },
         botao("Compartilhar", () => janelaCompartilharFlyer(f, nome, null, lista.paginaPublicada), "pequeno principal"),
@@ -6798,7 +6798,7 @@ function montarFlyers(FL, d, lista, logo) {
         f.dados ? botao("Usar de novo", () => {
           const dd = f.dados;
           for (const k of CAMPOS_MODELO) st[k] = dd[k] || "";
-          Object.assign(st, { modelo: dd.modelo || "", cor: dd.cor || "", validade: dd.validade && dd.validade >= hojeLocal() ? dd.validade : "", qr: dd.qr !== false,
+          Object.assign(st, { modelo: dd.modelo || "", cor: dd.cor || "", validade: "", qr: dd.qr !== false,
             mostrarWhats: Boolean(dd.mostrarWhats), mostrarLogo: dd.mostrarLogo !== false, filtro: dd.filtro || "original", estilo: f.estilo, formato: f.formato });
           if (st.fotoBase) aplicarFiltro();
           avisar("Textos carregados no editor. Escolha a foto de novo, se quiser."); remontar();
@@ -6808,6 +6808,7 @@ function montarFlyers(FL, d, lista, logo) {
 
   const avisos = [
     !d.fotos.armazenamento ? el("p", { class: "info", text: "O envio de imagens ainda está sendo ligado pela equipe 4Blade. Você já pode criar e baixar o flyer." }) : null,
+    el("p", { class: "info", "data-teste": "flyer-24h", text: "Os flyers duram 24 horas, como os stories do Instagram e do WhatsApp: depois disso somem da página e são apagados sozinhos." }),
     !p.publicada ? el("p", { class: "info", "data-teste": "flyer-pagina-rascunho", text: "Sua página ainda está em rascunho. O flyer fica guardado e aparece no catálogo quando você publicar a página (em Minha página)." }) : null
   ];
   const passo = (n, titulo, ...conteudo) => el("section", { class: "fl-passo", "aria-labelledby": `fl-p${n}` },
@@ -6852,6 +6853,11 @@ function montarFlyers(FL, d, lista, logo) {
   redesenhar(); redesenharMinis();
 }
 
+// Flyer dura 24 h: "Some em 23 h" / "Some em 40 min"
+function textoExpira(iso) {
+  const min = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 60000));
+  return min >= 60 ? `Some em ${Math.floor(min / 60)} h${min % 60 && min < 600 ? ` ${min % 60} min` : ""}` : min > 0 ? `Some em ${min} min` : "Saindo agora";
+}
 function baixarBlob(blob, nomeArq) {
   const url = URL.createObjectURL(blob);
   const a = el("a", { href: url, download: nomeArq, hidden: true });
@@ -6886,7 +6892,7 @@ function janelaCompartilharFlyer(f, nome, blob, paginaPublicada) {
         el("li", { text: "Toque em \"Compartilhar a imagem\" e escolha o Instagram (ou baixe a imagem e abra o Instagram)." }),
         el("li", { text: "No Story: toque no adesivo \"Link\" e cole o link copiado. Quem tocar cai direto na promoção no seu catálogo." }),
         el("li", { text: "No feed: cole a legenda (o Instagram não deixa link clicável no feed; deixe o link da página na bio)." }))),
-    el("p", { class: "suave", text: "No WhatsApp, o link mostra o próprio flyer na prévia e abre a promoção no seu catálogo." })
+    el("p", { class: "suave", text: "No WhatsApp, o link mostra o próprio flyer na prévia e abre a sua página. O flyer fica no ar por 24 horas, como um story." })
   ], { semCancelar: true, ok: "Fechar", aoConfirmar: async () => true });
 }
 

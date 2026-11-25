@@ -228,6 +228,9 @@ async function rodar(tela) {
     await page.click("dialog[open] button[type=submit]");
     await page.waitForSelector("[data-teste=flyers-lista] [data-flyer='Corte + barba']");
     assert.match(await page.textContent("[data-flyer='Corte + barba'] [data-teste=flyer-situacao]"), /Na página/);
+    assert.match(await page.textContent("[data-flyer='Corte + barba'] [data-teste=flyer-expira]"), /^Some em (23 h|24 h)/, "dura 24 horas");
+    assert.match(await page.textContent("[data-teste=flyer-24h]"), /24 horas/);
+    assert.equal(await page.locator("#fl-validade").count(), 0, "sem campo de validade: dura 24 h");
     await print("lista-flyers");
 
     passo("baixar imagem gera um JPG");

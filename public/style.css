@@ -2020,3 +2020,4 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--suav
 .fl-carrossel .ajuda { margin-top: 4px; }
 .fl-item-acoes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .fl-item-acoes .botao { width: auto; margin: 0; }
+.fl-expira { font-weight: 700; color: var(--destaque); }

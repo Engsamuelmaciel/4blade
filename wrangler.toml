@@ -29,3 +29,7 @@ migrations_dir = "migrations"
 [[r2_buckets]]
 binding = "FOTOS"
 bucket_name = "4blade-fotos"
+
+# De hora em hora: apaga os flyers com mais de 24 h (Divulgação funciona como stories). Ver limparFlyersExpirados em src/pagina.js.
+[triggers]
+crons = ["17 * * * *"]
