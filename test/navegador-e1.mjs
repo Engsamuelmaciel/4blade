@@ -281,7 +281,7 @@ async function rodar(tela) {
     // ---------- BARBEIRO ----------
     passo("barbeiro entra e não vê custo/margem");
     await primeiroAcesso("bruno.navalha", senhaBarb, "Senha-Bruno-2026");
-    await page.waitForSelector("h2:has-text('Minha agenda')");   // barbeiro abre direto na própria agenda
+    await page.waitForSelector("[data-teste=boas-vindas-barbeiro]");   // barbeiro abre no Início dele (25/11/2026)
     assert.equal(await page.locator("#menu [data-nav='Equipe']").count(), 0, "barbeiro não tem Equipe");
     await print("barbeiro-inicio");
     await ir(page, "Produtos");
@@ -292,7 +292,7 @@ async function rodar(tela) {
     await print("barbeiro-produtos-sem-custo");
     // tentar abrir a tela da equipe pelo endereço leva de volta ao início
     await page.goto(`${base}/#/equipe`);
-    await page.waitForSelector("h2:has-text('Minha agenda')");
+    await page.waitForSelector("[data-teste=boas-vindas-barbeiro]");
     passo("barbeiro troca a própria senha pela \"Minha conta\" (vale em todas as telas)");
     await page.click("#btn-conta");
     await page.click("[data-teste=trocar-senha]");
@@ -306,12 +306,12 @@ async function rodar(tela) {
     await print("barbeiro-trocar-senha");
     await page.click("dialog button:has-text('Salvar nova senha')");
     await page.waitForSelector("text=Senha alterada com sucesso.");
-    await page.waitForSelector("h2:has-text('Minha agenda')");   // continua no sistema, sem pedir login
+    await page.waitForSelector("[data-teste=boas-vindas-barbeiro]");   // continua no sistema, sem pedir login
     await sair();
     await entrar("bruno.navalha", "Senha-Bruno-2026");
     await page.waitForSelector("text=Usuário ou senha incorretos");
     await entrar("bruno.navalha", "Senha-Bruno-2027");
-    await page.waitForSelector("h2:has-text('Minha agenda')");
+    await page.waitForSelector("[data-teste=boas-vindas-barbeiro]");
     await sair();
 
     // ---------- CAIXA ----------

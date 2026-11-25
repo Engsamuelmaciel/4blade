@@ -124,8 +124,8 @@ async function rodar(tela) {
     // ---------- MENU ----------
     passo("menu superior: abas das telas mais usadas + \"Mais\" com o resto por assunto (19/11/2026)");
     await entrar("ana.semana");
-    await page.waitForSelector("h2:has-text('Minha agenda')");
-    assert.deepEqual(await page.locator("#nav-topo [data-nav-topo]").allInnerTexts(), ["Agenda", "Produção", "Serviços", "Produtos"], "barbeiro: abas do topo");
+    await page.waitForSelector("[data-teste=boas-vindas-barbeiro]");
+    assert.deepEqual(await page.locator("#nav-topo [data-nav-topo]").allInnerTexts(), ["Início", "Agenda", "Produção", "Serviços", "Produtos"], "barbeiro: abas do topo");
     // Minha produção (19/11/2026): produção e comissão do mês, só dela
     await page.click("#nav-topo [data-nav-topo='Produção']");
     await page.waitForSelector("[data-teste=minha-producao]");
