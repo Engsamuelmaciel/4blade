@@ -8,6 +8,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { hojeBrasil } from "../src/util.js";
+import { acao } from "./navegacao.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright");
 const sharp = createRequire(import.meta.url)("sharp");
@@ -108,6 +109,48 @@ async function rodar(tela) {
     assert.match(await page.locator("dialog[open]").innerText(), /Cliente Noite Fictício/);
     await print("ficha-do-cliente");
     await page.click("dialog[open] button[type=submit]");
+
+    // 3b) Do Início o barbeiro mexe no próprio horário (fixo, cancelar, excluir) e bloqueia, SEM ir para a agenda
+    await chamar("/agenda", { data: HOJE, hora: "22:00", servicoIds: [corte.id], cliente: { nome: "Cliente Fixo Fictício" }, aceiteForaHorario: true, repetir: { intervaloSemanas: 1, ate: HOJE.replace(/^(\d{4})/, y => String(Number(y) + 1)) } }, beto);
+    await chamar("/agenda", { data: HOJE, hora: "21:00", servicoIds: [corte.id], cliente: { nome: "Cliente Cancela Fictício" }, aceiteForaHorario: true }, beto);
+    await chamar("/agenda", { data: HOJE, hora: "20:00", servicoIds: [corte.id], cliente: { nome: "Cliente Exclui Fictício" }, aceiteForaHorario: true }, beto);
+    await page.reload(); await pronto();
+    const noInicio = () => assert.match(page.url(), /#\/inicio/);
+    // editar a repetição do horário fixo
+    await page.locator("[data-teste=clientes-hoje] .linha-hoje", { hasText: "Cliente Fixo Fictício" }).click();
+    await acao(page, "dialog[open]", "[data-teste=editar-repeticao]");
+    await page.selectOption("dialog[open] #c-rRep", "2");
+    await page.click("dialog[open] button[type=submit]");
+    await page.waitForTimeout(900);
+    if (await page.locator("dialog[open]").count()) await page.click("dialog[open] button[type=submit]");   // aviso dos dias pulados
+    await page.waitForSelector("[data-teste=boas-vindas-barbeiro]"); await pronto(); noInicio();
+    // cancelar
+    await page.locator("[data-teste=clientes-hoje] .linha-hoje", { hasText: "Cliente Cancela Fictício" }).click();
+    await acao(page, "dialog[open]", "button:has-text('Cancelar')");
+    await page.fill("dialog[open] [name=motivo]", "Cliente desistiu");
+    await page.click("dialog[open] button[type=submit]");
+    await page.waitForSelector("[data-teste=boas-vindas-barbeiro]"); await pronto(); noInicio();
+    await page.waitForFunction(() => [...document.querySelectorAll("[data-teste=clientes-hoje] .linha-hoje")].some(l => /Cancela/.test(l.innerText) && /Cancelado/i.test(l.innerText)));
+    // excluir
+    await page.locator("[data-teste=clientes-hoje] .linha-hoje", { hasText: "Cliente Exclui Fictício" }).click();
+    await acao(page, "dialog[open]", "[data-excluir]");
+    await page.fill("dialog[open] [name=motivo]", "Lançado por engano");
+    await page.click("dialog[open] button[type=submit]");
+    await page.waitForSelector("[data-teste=boas-vindas-barbeiro]"); await pronto(); noInicio();
+    await page.waitForFunction(() => ![...document.querySelectorAll("[data-teste=clientes-hoje] .linha-hoje")].some(l => /Exclui/.test(l.innerText)));
+    // bloquear (de manhã cedo, sem horários marcados) e ver o bloqueio na lista
+    await page.click("[data-teste=bloquear-inicio]");
+    await page.waitForSelector("dialog[open]");
+    await page.fill("dialog[open] [name=hIni]", "06:00"); await page.fill("dialog[open] [name=hFim]", "07:00");
+    await page.fill("dialog[open] [name=motivoBloq]", "Dentista fictício");
+    await page.click("dialog[open] button[type=submit]");
+    await page.waitForSelector("[data-teste=bloqueios-hoje] [data-bloqueio]"); noInicio();
+    await print("inicio-bloqueio-e-acoes");
+    // desbloquear
+    await page.click("[data-teste=bloqueios-hoje] button:has-text('Desbloquear')");
+    await page.fill("dialog[open] [name=motivo]", "Mudou o plano");
+    await page.click("dialog[open] button[type=submit]");
+    await page.waitForFunction(() => !document.querySelector("[data-teste=bloqueios-hoje]")); noInicio();
 
     // 4) Atalhos levam à agenda e à produção
     await page.click("[data-atalho=Produção]"); await pronto();

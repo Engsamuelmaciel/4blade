@@ -1463,6 +1463,7 @@ const ultimoDiaMes = ym => somaDias(`${somaMes(ym, 1)}-01`, -1);
 function somaMes(ym, n) { const [a, m] = ym.split("-").map(Number); const d = new Date(Date.UTC(a, m - 1 + n, 1)); return d.toISOString().slice(0, 7); }
 
 async function telaAgenda() {
+  depoisDeHorario = null;
   estadoAgenda.data ||= hojeLocal();
   const v = estadoAgenda.visao;
   const d0 = estadoAgenda.data;
@@ -2186,7 +2187,7 @@ function cartaoBloqueio(b, ini, fim, mostrarNome) {
       ehCaixa() ? null : botao("Desbloquear", () => pedirMotivo("Desbloquear horário", "O horário volta a ficar livre na agenda.", async motivo => {
         await api("/agenda/bloqueios/cancelar", { metodo: "POST", corpo: { id: b.id, motivo } });
         avisar("Horário desbloqueado.");
-        telaAgenda();
+        recarregarHorarios();
       }, "Desbloquear"), "pequeno")));
 }
 
@@ -2235,7 +2236,7 @@ function acoesAgrupadas(principais, grupos) {
   return el("div", { class: "acoes-agrupadas" }, el("div", { class: "item-acoes" }, ...principais.flat().filter(Boolean), ...toggles), ...paineis);
 }
 function acoesDoHorario(a) {
-  const recarregar = () => telaAgenda();
+  const recarregar = () => recarregarHorarios();
   const excluir = () => pedirMotivo("Excluir horário", `O horário de ${a.cliente.nome} (${dataBR(a.data)} ${a.inicio}) sai da agenda. Fica registrado quem excluiu e o motivo.`, async motivo => {
     const r = await api("/agenda/excluir", { metodo: "POST", corpo: { id: a.id, motivo } });
     cartoesAbertos.delete(a.id);
@@ -2256,7 +2257,7 @@ function acoesDoHorario(a) {
       botao("Remarcar", () => janelaRemarcar(a, ultimaAgenda), "pequeno"),
       botao("Editar", () => janelaEditarHorario(a), "pequeno"),
       a.serie ? el("button", { type: "button", class: "botao pequeno", "data-teste": "editar-repeticao", text: "Editar repetição", onclick: () => janelaEditarRepeticao(a) }) : null,
-      ehCaixa() ? null : botao("Vender produto", () => janelaVenda({ agendamento: a, aoTerminar: telaAgenda }), "pequeno"),
+      ehCaixa() ? null : botao("Vender produto", () => janelaVenda({ agendamento: a, aoTerminar: recarregarHorarios }), "pequeno"),
       botao("Faltou", () => abrirJanela(`${a.cliente.nome} faltou?`, el("p", { text: "O horário fica registrado como falta." }), {
         ok: "Registrar falta", aoConfirmar: async () => {
           await api("/agenda/situacao", { metodo: "POST", corpo: { id: a.id, situacao: "faltou" } });
@@ -2280,7 +2281,7 @@ function acoesDoHorario(a) {
   if (a.situacao === "finalizado") {
     if (ehCaixa()) return null;
     return acoesAgrupadas([], [{ chave: "mais", rotulo: "Mais opções", itens: [
-      botao("Vender produto", () => janelaVenda({ agendamento: a, aoTerminar: telaAgenda }), "pequeno"),
+      botao("Vender produto", () => janelaVenda({ agendamento: a, aoTerminar: recarregarHorarios }), "pequeno"),
       botao("Reabrir", () => pedirMotivo("Reabrir atendimento", "Estorna a entrada no caixa e a comissão, e o horário volta para agendado. Fica registrado.", async motivo => {
         await api("/agenda/reabrir", { metodo: "POST", corpo: { id: a.id, motivo } });
         avisar("Atendimento reaberto."); recarregar();
@@ -2300,6 +2301,9 @@ function acoesDoHorario(a) {
 
 // Horários abertos (expandidos) na agenda: continuam abertos quando a tela é montada de novo.
 const cartoesAbertos = new Set();
+// Onde recarregar depois de mexer num horário (agenda por padrão; o Início do barbeiro troca por ele mesmo).
+let depoisDeHorario = null;
+const recarregarHorarios = () => (depoisDeHorario || telaAgenda)();
 // recolhivel: na agenda o cartão fica compacto (hora, situação, cliente e serviço); tocar abre as informações e as ações.
 function cartaoAgendamento(a, mostrarNome, { recolhivel = false } = {}) {
   const f = a.finalizacao;
@@ -2373,7 +2377,7 @@ async function janelaEditarHorario(a) {
         : (f.eNome.value.trim() || f.eTel.value.trim()) ? { nome: f.eNome.value.trim() || undefined, telefone: f.eTel.value, aceiteLgpd: f.eLgpd.checked } : undefined;
       const r = await comAceiteNota(extra => api("/agenda/editar", { metodo: "POST", corpo: { ...extra, id: a.id, servicoIds, observacao: f.eObs.value, ...(cliente ? { cliente } : {}) } }));
       avisar(`${r.mensagem} Termina às ${r.fim}.`);
-      telaAgenda();
+      recarregarHorarios();
     }
   });
   const f = janela.querySelector("form");
@@ -2394,7 +2398,7 @@ function janelaEditarRepeticao(a) {
     aoConfirmar: async f => {
       const n = Number(f.rRep.value);
       const r = await api("/agenda/serie/editar", { metodo: "POST", corpo: { id: a.id, intervaloSemanas: n, ...(n ? { ate: f.rAte.value } : {}), ...(f.rFora.checked ? { aceiteForaHorario: true } : {}) } });
-      telaAgenda();
+      recarregarHorarios();
       if (!n || !r.pulados.length) { avisar(n ? `${r.mensagem} ${textoRepeticao(n, r.diaSemana)} às ${a.inicio}.` : r.mensagem); return; }
       setTimeout(() => abrirJanela("Repetição alterada", [
         el("p", { text: `${r.criados} horário(s) marcado(s), ${textoRepeticao(n, r.diaSemana)} às ${a.inicio}.` }),
@@ -2635,7 +2639,7 @@ function janelaRemarcar(a, ag) {
     aoConfirmar: async f => {
       const r = await api("/agenda/remarcar", { metodo: "POST", corpo: { id: a.id, data: f.rData.value, hora: f.rHora.value, ...(f.prof ? { barbeiroId: f.prof.value } : {}) } });
       estadoAgenda.data = f.rData.value;
-      telaAgenda();
+      recarregarHorarios();
       if (r.whatsapp) {
         return abrirJanela("Horário remarcado", [
           el("p", { text: r.mensagem }),
@@ -2666,7 +2670,7 @@ function janelaBloquear(ag) {
         corpo: { barbeiroId: f.prof?.value, inicio: `${f.dIni.value}T${f.hIni.value}`, fim: `${f.dFim.value}T${f.hFim.value}`, motivo: f.motivoBloq.value || null }
       });
       avisar("Horário bloqueado.");
-      telaAgenda();
+      recarregarHorarios();
     }
   });
 }
@@ -4312,6 +4316,7 @@ async function telaMinhaProducao() {
 // ---------- INÍCIO DO BARBEIRO (25/11/2026) ----------
 // Recepção do barbeiro: foto dele (a mesma da Minha página), clientes de hoje, ganhos de hoje e do mês, vales e avisos.
 async function telaInicioBarbeiro() {
+  depoisDeHorario = telaInicioBarbeiro;
   const hojeD = hojeLocal();
   const [r, ag] = await Promise.all([api(`/equipe/minha-producao?mes=${hojeD.slice(0, 7)}`), api(`/agenda?data=${hojeD}`)]);
   const p = r.pessoa, pr = p.producao, co = p.comissao, h = r.hoje;
@@ -4320,6 +4325,7 @@ async function telaInicioBarbeiro() {
   const agora = new Date().toTimeString().slice(0, 5);
   const proximo = meus.find(a => a.situacao === "agendado" && a.fim > agora);
   const faltam = meus.filter(a => a.situacao === "agendado").length;
+  const bloqueiosHoje = (ag.bloqueios || []).filter(b => b.barbeiroId === usuario.id && b.inicio.slice(0, 10) <= hojeD && b.fim.slice(0, 10) >= hojeD);
   const d = new Date(`${hojeD}T12:00:00`);
   const hora = new Date().getHours();
   const saudacao = hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite";
@@ -4355,7 +4361,12 @@ async function telaInicioBarbeiro() {
   const COR_SIT = { agendado: "neutra", finalizado: "verde", faltou: "vermelha", cancelado: "amarela" };
   const etiqueta = a => el("span", { class: `etiqueta ${COR_SIT[a.situacao] || ""}`, text: a.situacao === "finalizado" ? "Atendido" : NOME_SITUACAO[a.situacao] });
   const clientes = el("section", { class: "cartao", "data-teste": "clientes-hoje" },
-    el("div", { class: "secao-titulo" }, el("h3", { text: "Meus clientes de hoje" }), el("small", { class: "suave", text: faltam ? `${faltam} a atender` : "" })),
+    el("div", { class: "secao-titulo" }, el("h3", { text: "Meus clientes de hoje" }), el("small", { class: "suave", text: faltam ? `${faltam} a atender` : "" }),
+      el("button", { type: "button", class: "botao pequeno", "data-teste": "bloquear-inicio", text: "Bloquear horário", onclick: () => { estadoAgenda.data = hojeD; janelaBloquear(ag); } })),
+    bloqueiosHoje.length ? el("div", { class: "bloqueios-hoje", "data-teste": "bloqueios-hoje" }, bloqueiosHoje.map(b => {
+      const di = b.inicio.slice(0, 10) < hojeD ? "00:00" : b.inicio.slice(11, 16), df = b.fim.slice(0, 10) > hojeD ? "23:59" : b.fim.slice(11, 16);
+      return cartaoBloqueio(b, di, df, false);
+    })) : null,
     meus.length ? el("ul", { class: "lista-hoje-barbeiro" }, meus.map(a => el("li", {},
       el("button", { type: "button", class: `linha-hoje ${a === proximo ? "proximo" : ""}`, "data-hoje": a.id, onclick: () => janelaAtendimento(a, true) },
         el("strong", { class: "linha-hoje-hora", text: a.inicio }),
