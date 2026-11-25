@@ -2458,7 +2458,7 @@ function seletorCliente({ id, preSelecionado = null, aoMudar = () => {} }) {
 // Painel de disponibilidade do dia: situação do profissional, ocupados e horários livres (tocar preenche a hora).
 function painelDisponibilidade() {
   const painel = el("div", { class: "disponibilidade", "data-teste": "disponibilidade", "aria-live": "polite" });
-  let vez = 0;
+  let vez = 0, aberto = false;   // começa recolhido (só o título e quantos horários livres); o gerente expande se quiser
   async function atualizar({ data, barbeiroId, duracao, hora, aoEscolher }) {
     const minha = ++vez;
     if (!data) { painel.replaceChildren(); return; }
@@ -2478,15 +2478,14 @@ function painelDisponibilidade() {
       }
       const chips = p.livres.map(h => el("button", { type: "button", class: `chip-hora ${h === hora ? "ativo" : ""}`, "data-hora-livre": h, text: h,
         onclick: () => { aoEscolher(h); painel.querySelectorAll(".chip-hora").forEach(b => b.classList.toggle("ativo", b.dataset.horaLivre === h)); } }));
-      painel.replaceChildren(...[
-        el("div", { class: "disp-topo" },
+      painel.replaceChildren(el("details", { class: "disp-recolhivel", "data-teste": "disp-recolhivel", open: aberto || null, ontoggle: ev => { aberto = ev.target.open; } },
+        el("summary", { class: "disp-topo", "data-teste": "disp-resumo" },
           el("strong", { text: titulo }),
           el("span", { class: `etiqueta ${p.livres.length ? "verde" : "vermelha"}`, "data-teste": "disp-situacao", text: p.livres.length ? `${p.livres.length} horário(s) livre(s)` : "Agenda cheia" })),
         el("p", { class: "suave", text: `Atende das ${p.janela.ini} às ${p.janela.fim} · horários para ${d.duracao} min. Toque num horário livre:` }),
         p.livres.length ? el("div", { class: "chips-hora" }, chips) : el("p", { class: "disp-aviso cheio", text: "Nenhum horário livre para essa duração neste dia. Tente outro dia ou outro profissional." }),
         p.ocupados.length ? el("ul", { class: "disp-ocupados" }, p.ocupados.map(o => el("li", { class: `ocup-${o.tipo}` },
-          el("span", { class: "hora", text: `${o.ini}–${o.fim}` }), el("span", { text: o.tipo === "horario" ? `Ocupado · ${o.texto}` : o.texto })))) : null
-      ].filter(Boolean));
+          el("span", { class: "hora", text: `${o.ini}–${o.fim}` }), el("span", { text: o.tipo === "horario" ? `Ocupado · ${o.texto}` : o.texto })))) : null));
     } catch (e) { if (minha === vez) painel.replaceChildren(el("p", { class: "erro", text: e.message })); }
   }
   return { el: painel, atualizar };

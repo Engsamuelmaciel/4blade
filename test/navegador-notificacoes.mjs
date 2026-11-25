@@ -7,7 +7,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir, abrirItem } from "./navegacao.mjs";
+import { ir, abrirItem, abrirLivres } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -122,6 +122,7 @@ async function rodar(tela) {
     await page.selectOption("dialog[open] #c-prof", { label: "Ana Barbeira" });
     await page.fill("dialog[open] #c-data", AMANHA);
     await page.locator("dialog[open] #c-data").dispatchEvent("change");
+    await abrirLivres(page);
     await page.waitForSelector('dialog[open] [data-teste=disponibilidade] [data-hora-livre="15:00"]');
     await page.click('dialog[open] [data-hora-livre="15:00"]');
     await page.check("dialog[open] input[name=serv] >> nth=0");

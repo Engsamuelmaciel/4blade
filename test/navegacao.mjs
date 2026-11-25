@@ -105,3 +105,10 @@ export async function abrirProfissionais(page) {
     await page.waitForFunction(() => !document.body.dataset.carregando);
   }
 }
+
+// Painel de horários livres do "Novo horário" começa recolhido: abre antes de tocar num horário.
+export async function abrirLivres(page) {
+  const d = page.locator("dialog[open] [data-teste=disp-recolhivel]");
+  await d.waitFor();
+  if (!(await d.evaluate(e => e.open))) await d.locator("summary").click();
+}

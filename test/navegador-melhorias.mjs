@@ -9,7 +9,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir, abrirHorarios, abrirItem, abrirCadastro, acao } from "./navegacao.mjs";
+import { ir, abrirHorarios, abrirItem, abrirCadastro, acao, abrirLivres } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -407,6 +407,14 @@ async function rodar(tela) {
     await page.fill("dialog[open] #c-data", AMANHA);
     await page.locator("dialog[open] #c-data").dispatchEvent("change");
     // o dia do barbeiro aparece antes de marcar: livres/ocupados (17:00 está livre)
+    // começa RECOLHIDO: só o título e quantos horários livres; os horários aparecem ao expandir (25/11/2026)
+    await page.waitForSelector("dialog[open] [data-teste=disp-resumo]");
+    assert.match(await page.locator("dialog[open] [data-teste=disp-situacao]").innerText(), /livre/);
+    assert.equal(await page.locator("dialog[open] [data-teste=disp-recolhivel]").evaluate(e => e.open), false, "recolhido por padrão");
+    assert.equal(await page.locator("dialog[open] [data-hora-livre]").first().isVisible(), false, "horários escondidos");
+    await print("novo-horario-livres-recolhido");
+    await abrirLivres(page);
+    await print("novo-horario-livres-aberto");
     await page.waitForSelector('dialog[open] [data-teste=disponibilidade] [data-hora-livre="17:00"]');
     await page.click('dialog[open] [data-hora-livre="17:00"]');
     assert.equal(await page.inputValue("dialog[open] #c-hora"), "17:00", "tocar no horário livre preenche a hora");
@@ -422,6 +430,7 @@ async function rodar(tela) {
     // remanejar: o horário das 17:00 vai para as 18:00 (mesmo dia e barbeiro)
     await abrirHorarios(page, "Ivo Recepção Fictício");
     await acao(page, '[data-agendamento="Ivo Recepção Fictício"]', 'button:has-text("Remarcar")');
+    await abrirLivres(page);
     await page.waitForSelector('dialog[open] [data-teste=disponibilidade] [data-hora-livre="18:00"]');
     await page.click('dialog[open] [data-hora-livre="18:00"]');
     await print("remarcar-horario", false);
@@ -448,6 +457,7 @@ async function rodar(tela) {
     await page.fill("dialog[open] #c-data", AMANHA);
     await page.locator("dialog[open] #c-data").dispatchEvent("change");
     await page.check("dialog[open] input[name=serv] >> nth=0");
+    await abrirLivres(page);
     await page.waitForSelector('dialog[open] [data-teste=disponibilidade] [data-hora-livre]');
     assert.ok(await page.locator('dialog[open] .disp-ocupados >> text=Fábio Fixo Fictício').count(), "mostra o horário ocupado do dia");
     await print("marcar-com-disponibilidade-e-cliente-da-base", false);

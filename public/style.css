@@ -2046,3 +2046,11 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--suav
 .menu-barbearia-logo { width: 24px; height: 24px; flex: none; border-radius: 50%; object-fit: cover; background: #fff; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .25); }
 .menu-barbearia-nome { display: block; min-width: 0; overflow-wrap: anywhere; line-height: 1.2; font-size: inherit; color: inherit; }
 .menu-cabecalho strong .menu-barbearia-nome { color: #fff; font-size: 16px; }
+
+/* Disponibilidade do Novo horário: recolhida (só título + quantos livres); toca para expandir (25/11/2026) */
+.disp-recolhivel > summary { list-style: none; cursor: pointer; min-height: 40px; position: relative; padding-right: 26px; }
+.disp-recolhivel > summary::-webkit-details-marker { display: none; }
+.disp-recolhivel > summary::after { content: ""; position: absolute; right: 4px; top: 50%; width: 8px; height: 8px; margin-top: -6px;
+  border-right: 2px solid var(--suave); border-bottom: 2px solid var(--suave); transform: rotate(45deg); transition: transform .15s; }
+.disp-recolhivel[open] > summary::after { transform: rotate(-135deg); margin-top: -2px; }
+.disp-recolhivel[open] > summary { margin-bottom: 4px; }
