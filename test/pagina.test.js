@@ -110,6 +110,24 @@ describe("página da barbearia", () => {
     assert.doesNotMatch(pg.headers.get("content-security-policy"), /script-src[^;]*google/);
     assert.match(pg.texto, /São Paulo\/SP/);
     assert.match(pg.texto, /instagram\.com\/navalhaeco/);
+    // 25/11/2026: ícone do Instagram em SVG; "Telefone" só com o que o gerente digitou (não cai no telefone do cadastro)
+    assert.match(pg.texto, /class="pg-insta"[^>]*><svg class="pg-ico"/);
+    env.DB.raw.prepare("UPDATE barbearias SET telefone = '11988887777' WHERE id = (SELECT barbearia_id FROM paginas WHERE slug = 'navalhaeco')").run();
+    let pt = await abrir(amb, "/navalhaeco");
+    assert.doesNotMatch(pt.texto, /href="tel:/, "telefone do cadastro não aparece sozinho");
+    assert.equal((await post("/api/pagina/salvar", ger.token, { telefone: "(11) 90000-0000" })).status, 200);
+    assert.doesNotMatch((await abrir(amb, "/navalhaeco")).texto, /href="tel:/, "igual ao WhatsApp não repete");
+    assert.equal((await post("/api/pagina/salvar", ger.token, { telefone: "(11) 3333-4444" })).status, 200);
+    pt = await abrir(amb, "/navalhaeco");
+    assert.match(pt.texto, /href="tel:\+551133334444"/);
+    // rodapé: cartão do 4blade (sem WhatsApp do suporte → pedido de teste grátis; com → WhatsApp da equipe)
+    assert.match(pt.texto, /<img src="\/icons\/logo\.png" alt="4blade"/);
+    assert.match(pt.texto, /href="\/#\/teste-gratis" >Fale com a equipe 4blade<\/a>/);
+    env.DB.raw.prepare("INSERT INTO plataforma_config (chave, valor) VALUES ('suporte_whatsapp', '11955550000')").run();
+    pt = await abrir(amb, "/navalhaeco");
+    const fale = decodeURIComponent(pt.texto.match(/href="https:\/\/wa\.me\/5511955550000\?text=([^"]+)"[^>]*>Fale com a equipe 4blade/)[1]);
+    assert.match(fale, /^Olá, equipe 4blade! Vi a página da Navalha & Co\. e quero uma página assim/);
+    assert.equal((await post("/api/pagina/salvar", ger.token, { telefone: "" })).status, 200);
     const msg = decodeURIComponent(pg.texto.match(/id="pg-solicitar" data-evento="whatsapp" href="https:\/\/wa\.me\/5511900000000\?text=([^"]+)"/)[1]);
     assert.equal(msg, "Olá, Navalha & Co.! Vim pela sua página e quero agendar um horário.");
     // Catálogo enxuto (25/11/2026): sem link "Agendar" por serviço; cada linha leva os dados para o "Solicitar meu horário" montar a mensagem

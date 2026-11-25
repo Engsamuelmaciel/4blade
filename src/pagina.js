@@ -8,6 +8,7 @@ import { isGestao } from "./perfis.js";
 import { carregarRegras, janelaDoDia, horaParaMin, minParaHora, somarDias, diaSemana, NOME_DIA } from "./agenda-util.js";
 import { iniciosLivres } from "./agenda.js";
 import { cobrancaAtiva, situacaoAssinatura } from "./assinatura.js";
+import { contatoSuporte } from "./suporte.js";
 
 const erro = (msg, status = 400, extra) => { throw new HttpError(msg, status, extra); };
 
@@ -25,6 +26,10 @@ export const RESERVADOS = new Set(["api", "entrar", "planos", "assinar", "duvida
   "inicio", "teste-gratis", "plataforma", "pedidos", "chamados", "pagina", "paginas", "index", "favicon", "robots", "sitemap",
   "style", "tema", "legal", "4blade", "forblade", "suporte-4blade", "agenda", "caixa", "painel", "clientes", "equipe"]);
 // frame-src: só o mapa do Google (25/11/2026: mapa visível na Localização).
+// Ícones simples em SVG (atributos, sem style: a CSP não deixa estilo embutido).
+const ICONE_INSTA = '<svg class="pg-ico" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none"/></svg>';
+const ICONE_WHATS = '<svg class="pg-ico" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20.5 11.6a8.4 8.4 0 0 1-12.4 7.4L3.5 20.5l1.6-4.4A8.4 8.4 0 1 1 20.5 11.6z"/><path d="M9 8.6c.2 2.6 2.7 5.2 5.4 5.6l1-1.3 1.9.9-.4 1.6c-3.8.3-8.4-4.2-8.2-8l1.5-.5 1 1.8z" fill="currentColor" stroke="none"/></svg>';
+const ICONE_TEL = '<svg class="pg-ico" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2z"/></svg>';
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; frame-src https://maps.google.com https://www.google.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'";
 const CABECALHOS = { "Content-Security-Policy": CSP, "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
   "X-Frame-Options": "DENY", "Permissions-Policy": "geolocation=(), camera=(), microphone=()" };
@@ -237,13 +242,14 @@ export async function rotaPublicaPagina(request, env) {
   if (!p.publicada && !ehPrevia) return paginaIndisponivel();
   if (!(await barbeariaNoAr(db, env, p.barbearia_id))) return paginaIndisponivel();
   const c = await conteudoPagina(db, p);
-  const [aberto, horarios] = await Promise.all([
+  const [aberto, horarios, suporte] = await Promise.all([
     abertoAgora(db, p.barbearia_id, c.funcionamento),
-    p.mostrar_horarios ? horariosLivres(db, p.barbearia_id) : null
+    p.mostrar_horarios ? horariosLivres(db, p.barbearia_id) : null,
+    contatoSuporte(db).catch(() => ({}))
   ]);
   if (!ehPrevia && !BOTS.test(request.headers.get("user-agent") || "")) await contarEvento(db, p.barbearia_id, "visita");
   const promo = c.flyers.find(f => f.id === url.searchParams.get("promo")) || null;
-  const html = montarHtml({ p, c, aberto, horarios, origem: url.origin, previa: ehPrevia, promo });
+  const html = montarHtml({ p, c, aberto, horarios, origem: url.origin, previa: ehPrevia, promo, suporte });
   return new Response(request.method === "HEAD" ? null : html, {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": ehPrevia ? "no-store" : "no-cache", ...CABECALHOS,
       ...(ehPrevia ? { "X-Robots-Tag": "noindex" } : {}) }
@@ -312,7 +318,7 @@ function endereco(p) {
 }
 const DIAS_CURTOS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-function montarHtml({ p, c, aberto, horarios, origem, previa, promo = null }) {
+function montarHtml({ p, c, aberto, horarios, origem, previa, promo = null, suporte = {} }) {
   const e = escapar;
   const nome = c.nome;
   const end = endereco(p);
@@ -336,7 +342,12 @@ function montarHtml({ p, c, aberto, horarios, origem, previa, promo = null }) {
   const mapaEmbutido = end.completo ? `https://maps.google.com/maps?q=${encodeURIComponent(end.completo)}&z=16&hl=pt-BR&output=embed` : null;
   const waze = end.completo ? `https://waze.com/ul?q=${encodeURIComponent(end.completo)}&navigate=yes` : null;
   const insta = p.instagram ? `https://instagram.com/${encodeURIComponent(p.instagram)}` : null;
-  const tel = normalizarTelefone(p.telefone || "") || normalizarTelefone(c.barbearia?.telefone || "");
+  // 25/11/2026: o "Telefone" só aparece se o gerente preencher em Minha página (antes caía no telefone do cadastro).
+  const telDigitado = normalizarTelefone(p.telefone || "");
+  const rodape4blade = normalizarTelefone(suporte?.whatsapp || "")
+    ? linkWhats(normalizarTelefone(suporte.whatsapp), `Olá, equipe 4blade! Vi a página da ${nome} e quero uma página assim para a minha barbearia.`)
+    : "/#/teste-gratis";
+  const tel = telDigitado && telDigitado !== c.whatsapp ? telDigitado : null;
   const foneTexto = t => (t ? `(${t.slice(0, 2)}) ${t.length === 11 ? `${t.slice(2, 7)}-${t.slice(7)}` : `${t.slice(2, 6)}-${t.slice(6)}`}` : "");
   const funcPor = Object.fromEntries(c.funcionamento.map(f => [f.dia_semana, f]));
   const hojeDia = diaSemana(hojeBrasil());
@@ -418,7 +429,7 @@ ${previa ? '<div class="pg-faixa-previa" role="status">Prévia: só você está 
     <h1>${e(nome)}</h1>
     ${p.frase ? `<p class="pg-frase">${e(p.frase)}</p>` : ""}
     <p class="pg-selos">${temFuncionamento ? `<span class="pg-aberto ${aberto ? "sim" : "nao"}">${aberto ? "Aberto agora" : "Fechado agora"}</span>` : ""}
-      ${insta ? `<a class="pg-insta" data-evento="instagram" href="${e(insta)}" target="_blank" rel="noopener">@${e(p.instagram)}</a>` : ""}</p>
+      ${insta ? `<a class="pg-insta" data-evento="instagram" href="${e(insta)}" target="_blank" rel="noopener">${ICONE_INSTA}@${e(p.instagram)}</a>` : ""}</p>
   </div>
 </header>
 <main class="pg-corpo">
@@ -440,13 +451,20 @@ ${previa ? '<div class="pg-faixa-previa" role="status">Prévia: só você está 
     <div class="pg-acoes">${mapa ? `<a class="pg-botao" data-evento="rota" href="${e(mapa)}" target="_blank" rel="noopener">Como chegar (Google Maps)</a>` : ""}
       ${waze ? `<a class="pg-botao contorno" data-evento="rota" href="${e(waze)}" target="_blank" rel="noopener">Abrir no Waze</a>` : ""}</div></div></section>` : ""}
   ${insta || c.whatsapp || tel ? `<section class="pg-secao" aria-labelledby="t-cont"><h2 id="t-cont">Contato</h2><ul class="pg-contato">
-    ${c.whatsapp ? `<li><a data-evento="whatsapp" href="${e(whats)}" target="_blank" rel="noopener">WhatsApp ${e(foneTexto(c.whatsapp))}</a></li>` : ""}
-    ${tel ? `<li><a href="tel:+55${e(tel)}">Telefone ${e(foneTexto(tel))}</a></li>` : ""}
-    ${insta ? `<li><a data-evento="instagram" href="${e(insta)}" target="_blank" rel="noopener">Instagram @${e(p.instagram)}</a></li>` : ""}</ul></section>` : ""}
+    ${c.whatsapp ? `<li><a data-evento="whatsapp" href="${e(whats)}" target="_blank" rel="noopener">${ICONE_WHATS}WhatsApp ${e(foneTexto(c.whatsapp))}</a></li>` : ""}
+    ${tel ? `<li><a href="tel:+55${e(tel)}">${ICONE_TEL}Telefone ${e(foneTexto(tel))}</a></li>` : ""}
+    ${insta ? `<li><a data-evento="instagram" href="${e(insta)}" target="_blank" rel="noopener">${ICONE_INSTA}Instagram @${e(p.instagram)}</a></li>` : ""}</ul></section>` : ""}
   ${c.formas.length ? `<section class="pg-secao" aria-labelledby="t-pag"><h2 id="t-pag">Formas de pagamento</h2>
     <p class="pg-formas">${c.formas.map(f => `<span>${e(FORMAS_PAGINA[f])}</span>`).join("")}</p></section>` : ""}
 </main>
-<footer class="pg-rodape"><a href="/">Página criada com o <strong>4Blade</strong></a></footer>
+<footer class="pg-rodape" aria-label="Sobre o 4blade">
+  <div class="pg-4b">
+    <a class="pg-4b-marca" href="/" aria-label="4blade: conhecer o sistema"><img src="/icons/logo.png" alt="4blade" width="88" height="36" loading="lazy"></a>
+    <p class="pg-4b-texto">Página feita com o <strong>4blade</strong>: agenda, caixa, comissões e WhatsApp num só app para barbearias.</p>
+    <p class="pg-4b-acoes"><span>Gostou desta página?</span>
+      <a class="pg-4b-link" href="${e(rodape4blade)}" ${rodape4blade.startsWith("https://wa.me") ? 'target="_blank" rel="noopener"' : ""}>Fale com a equipe 4blade</a></p>
+  </div>
+</footer>
 <dialog class="pg-ampliar" id="pg-ampliar" aria-label="Foto ampliada"><button type="button" class="pg-fechar" aria-label="Fechar">×</button><img alt=""><p></p></dialog>
 </body>
 </html>`;

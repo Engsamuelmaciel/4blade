@@ -6288,7 +6288,7 @@ async function telaMinhaPagina() {
       placeholder: `Olá, ${p.nomeExibicao || d.barbearia.nome}! Vim pela sua página e quero agendar um horário.` }, "Usada quando o cliente não escolhe serviço."),
     el("div", { class: "lado-a-lado" },
       campo("Instagram", { name: "instagram", value: p.instagram ? `@${p.instagram}` : "", autocapitalize: "none", autocomplete: "off", placeholder: "@suabarbearia" }),
-      campo("Telefone fixo (opcional)", { name: "telefone", value: p.telefone || "", inputmode: "tel", autocomplete: "off" })),
+      campo("Outro telefone (opcional)", { name: "telefone", value: p.telefone || "", inputmode: "tel", autocomplete: "off" }, "Só aparece na página se você preencher. Vazio = só o WhatsApp.")),
     el("h4", { text: "Endereço" }),
     el("div", { class: "lado-a-lado" },
       campo("Rua", { name: "endRua", value: p.endRua || "", maxlength: "120", autocomplete: "address-line1" }),

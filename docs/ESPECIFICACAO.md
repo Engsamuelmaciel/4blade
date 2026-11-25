@@ -359,3 +359,5 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - Gerente e dono: sai o grupo "Visão geral". **Início** (no alto do menu) = a Visão do dia como página inicial, com a **logo da barbearia** (da Minha página), boas-vindas ("Bom dia, <nome>!"), a data, quantos horários hoje e atalhos (Agenda, Caixa, Clientes, Divulgação, Relatórios). O caixa também vê as boas-vindas na tela dele.
 - **Contador e dados** e o **Painel** ficam dentro do Relatório financeiro (abas "Relatório | Painel e lucro | Contador e dados").
 - **Pagamento da equipe** fica dentro de Despesas (abas "Despesas | Pagamento da equipe").
+- **Contato e rodapé da página (25/11/2026):** o "Telefone" só aparece se o gerente preencher "Outro telefone" em Minha página (não usa mais o telefone do cadastro) e não repete o WhatsApp. Ícones de WhatsApp, telefone e Instagram desenhados. No fim da página, um cartão discreto do 4blade (logo, uma frase sobre o sistema e "Gostou desta página? Fale com a equipe 4blade", que abre o WhatsApp do suporte ou o pedido de teste grátis).
+

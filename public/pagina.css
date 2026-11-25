@@ -35,7 +35,6 @@ a { color: inherit; }
   background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28); color: #fff; text-decoration: none; backdrop-filter: blur(4px); }
 .pg-aberto::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; }
 .pg-aberto.sim::before { background: #4ade80; }
-.pg-insta::before { content: "◎"; font-size: 13px; }
 
 /* ---------- Corpo ---------- */
 .pg-corpo { max-width: 760px; margin: 0 auto; padding: 8px 16px 24px; }
@@ -119,9 +118,22 @@ ul { list-style: none; margin: 0; padding: 0; }
 .pg-contato a { display: flex; align-items: center; min-height: 44px; padding: 0 14px; border: 1px solid var(--borda); border-radius: 12px; text-decoration: none; font-weight: 700; }
 .pg-formas { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
 .pg-formas span { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--borda); font-weight: 700; font-size: 14px; }
-.pg-rodape { text-align: center; padding: 18px 16px 8px; color: var(--suave); font-size: 14px; }
-.pg-rodape a { text-decoration: none; }
-.pg-rodape strong { color: var(--realce); }
+/* Ícones (Instagram, WhatsApp, telefone) */
+.pg-ico { width: 1.05em; height: 1.05em; flex: none; }
+.pg-contato a { gap: 10px; }
+.pg-contato .pg-ico { width: 20px; height: 20px; color: var(--realce); }
+
+/* Rodapé: cartão de visita discreto do 4blade (sempre escuro: a logo é feita para fundo escuro) */
+.pg-rodape { padding: 22px 16px 26px; }
+.pg-4b { max-width: 440px; margin: 0 auto; display: grid; justify-items: center; gap: 8px; text-align: center;
+  padding: 16px 18px; border-radius: 16px; background: #15171b; color: #c9ccd1; border: 1px solid rgba(255,255,255,.08); font-size: 13.5px; line-height: 1.45; }
+.pg-4b-marca img { display: block; height: 30px; width: auto; opacity: .95; }
+.pg-4b-texto { margin: 0; }
+.pg-4b-texto strong { color: #fff; }
+.pg-4b-acoes { margin: 2px 0 0; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 10px; }
+.pg-4b-link { display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 700;
+  color: #111317; background: #e0a330; }
+.pg-4b-link:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .pg-faixa-previa { position: sticky; top: 0; z-index: 20; background: #fde68a; color: #422006; text-align: center; padding: 8px 12px; font-weight: 700; font-size: 14px; }
 
 /* Indisponível */
