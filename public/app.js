@@ -293,11 +293,16 @@ function botao(texto, onclick, classe = "") {
   return el("button", { type: "button", class: `botao ${classe}`.trim(), onclick, text: texto });
 }
 
+// Cabeçalho das telas: título + (se o subtítulo for uma data/período) uma "etiqueta" emoldurada ao lado do título;
+// subtítulo explicativo fica embaixo, mais discreto.
+const ehSubtituloData = t => Boolean(t) && t.length <= 44 && /\d{2}\/\d{2}/.test(t);
+const etiquetaData = texto => el("span", { class: "cab-chip", "data-teste": "cab-data" }, icone("agenda"), el("span", { text: texto }));
 function cabecalho(titulo, subtitulo = null, voltar = null) {
-  return el("div", { class: "cabecalho" },
+  const chip = ehSubtituloData(subtitulo);
+  return el("div", { class: `cabecalho ${chip ? "com-chip" : ""}` },
     voltar ? el("a", { class: "voltar", href: voltar, text: "‹ Voltar" }) : null,
-    el("h2", { text: titulo }),
-    subtitulo ? el("p", { class: "suave", text: subtitulo }) : null);
+    el("div", { class: "cab-linha" }, el("h2", { text: titulo }), chip ? etiquetaData(subtitulo) : null),
+    subtitulo && !chip ? el("p", { class: "suave", text: subtitulo }) : null);
 }
 
 function erroForm(form, msg) {
@@ -3323,7 +3328,7 @@ async function telaCaixa(dataHistorico = null) {
     aviso,
     // Uma faixa só no alto (aproveita o espaço): nome da tela + data + situação à esquerda, ferramentas do caixa à direita
     el("header", { class: "fc-topo" },
-      el("div", { class: "fc-topo-titulo" }, el("h2", { text: "Caixa" }), el("span", { class: "fc-data", text: dataBR(c.data) }), situacao),
+      el("div", { class: "fc-topo-titulo" }, el("h2", { text: "Caixa" }), etiquetaData(dataBR(c.data)), situacao),
       el("section", { class: "pdv-ferramentas", "aria-label": "Ações do caixa" },
         el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("sangria", recarregar) }, icone("setaBaixo"), el("span", { text: "Sangria" })),
         el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("suprimento", recarregar) }, icone("setaCima"), el("span", { text: "Suprimento" })),

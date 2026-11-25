@@ -237,6 +237,7 @@ async function rodar(tela) {
     await page.click("dialog[open] button[type=submit]");
     await page.waitForSelector("text=Atendimento corrigido");
     await pronto();
+    await page.waitForFunction(() => document.querySelectorAll("[data-lancamento='Diego Cliente Fictício']").length >= 3);   // a lista recarrega depois do aviso
     const lancs = await page.locator("[data-lancamento='Diego Cliente Fictício']").allInnerTexts();
     assert.ok(lancs.some(t => /-R\$\s?40,00|R\$\s?-40,00/.test(t)), `estorno aparece: ${lancs.join(" | ")}`);
     assert.ok(lancs.some(t => /R\$\s?35,00/.test(t) && /Dinheiro/.test(t)), `cobrança certa aparece: ${lancs.join(" | ")}`);
