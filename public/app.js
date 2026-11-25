@@ -3344,8 +3344,17 @@ async function telaCaixa(dataHistorico = null) {
     el("div", { class: "fc-resumo" }, ...topo),
     c.reaberturas?.length ? el("p", { class: "suave", text: `Reaberto ${c.reaberturas.length}x (último motivo: ${c.reaberturas[0].motivo})` }) : null,
     frente.el);
+  ajustarAlturaCaixa();
   timerCaixa = setTimeout(() => { if (location.hash === "#/caixa" && !janela.open && frente.vazia() && estadoCaixa.visao === "venda" && !document.activeElement?.matches?.("input, select, textarea")) telaCaixa().catch(() => {}); }, 30000);
 }
+
+// A frente de caixa ocupa só o que sobra da janela (no computador): cada zona rola por dentro e o "Finalizar" fica sempre à vista.
+function ajustarAlturaCaixa() {
+  const fc = document.querySelector(".fc");
+  if (!fc) return;
+  fc.style.setProperty("--fc-y", `${Math.max(0, Math.round(fc.getBoundingClientRect().top + window.scrollY))}px`);
+}
+window.addEventListener("resize", () => ajustarAlturaCaixa());
 
 // ---------- FRENTE DE CAIXA (25/11/2026) ----------
 // Três zonas, como numa frente de caixa de loja: Vitrine (fila, serviços, produtos) · Comanda (busca + itens) · Total e pagamento.
