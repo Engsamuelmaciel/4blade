@@ -1837,3 +1837,10 @@ html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adj
 .fl-opcao { font: inherit; font-weight: 600; border: 0; background: transparent; color: var(--suave); padding: 10px 18px; border-radius: 9px; cursor: pointer; min-height: 44px; }
 .fl-opcao.ativo { background: var(--cartao); color: var(--texto); box-shadow: var(--sombra); }
 .fl-logo-escolha p { margin: 0 0 8px; }
+/* Sem fechar (Início/Visão do dia): linha inteira tocável, sem botão repetido */
+.linha-cobrar .hora-lista { min-width: 46px; }
+.cobrar-seta { flex: none; font-size: 24px; line-height: 1; color: var(--suave); }
+.dica-lista { margin: -4px 0 8px; font-size: 13px; }
+.ver-mais-lista > summary { cursor: pointer; padding: 10px 4px 4px; font-weight: 700; color: var(--destaque); list-style: none; }
+.ver-mais-lista > summary::-webkit-details-marker { display: none; }
+.ver-mais-lista[open] > summary { padding-bottom: 8px; }

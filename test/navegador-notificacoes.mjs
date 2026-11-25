@@ -48,12 +48,15 @@ async function rodar(tela) {
   page.on("pageerror", e => problemas.push(e.message));
   let n = 0;
   const pronto = () => page.waitForFunction(() => !document.body.dataset.carregando);
-  const print = async (nome, { inteira = true } = {}) => {
+  const print = async (nome, { inteira = true, alvo = null } = {}) => {
     n++;
     const arq = `${tela.nome}-${String(n).padStart(2, "0")}-${nome}.png`;
     await page.waitForTimeout(250);
-    if (inteira) await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({ path: join(PRINTS, arq), fullPage: inteira });
+    if (alvo) await page.locator(alvo).screenshot({ path: join(PRINTS, arq) });
+    else {
+      if (inteira) await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: join(PRINTS, arq), fullPage: inteira });
+    }
     const texto = await page.locator("body").innerText();
     assert.ok(!/\bnull\b|\bundefined\b|NaN/.test(texto), `texto estranho na tela ${nome}`);
     console.log(`  print: docs/prints/notificacoes/${arq}`);
@@ -173,6 +176,35 @@ async function rodar(tela) {
     await page.waitForSelector("[data-teste=visao-resumo]");
     assert.equal(await page.locator('#menu [data-nav="Visão do dia"], #menu [data-nav="Painel"], #menu [data-nav="Contador e dados"], #menu [data-nav="Pagamento da equipe"]').count(), 0);
     await print("gerente-inicio");
+
+    passo("Sem fechar: 7 atendimentos de ontem; linha inteira tocável (sem botão repetido), 5 à vista + \"Ver mais 2\"; tocar abre a cobrança");
+    const criados = await page.evaluate(async () => {
+      const t = localStorage.getItem("4blade.token");
+      const h = { Authorization: `Bearer ${t}`, "Content-Type": "application/json" };
+      const ag = await (await fetch("/api/agenda", { headers: h })).json();
+      const prof = (ag.profissionais || [])[0];
+      const serv = (await (await fetch("/api/servicos", { headers: h })).json()).servicos[0];
+      const ontem = new Date(Date.now() - 27 * 3600 * 1000).toISOString().slice(0, 10);
+      let ok = 0;
+      for (let i = 0; i < 7; i++) {
+        const r = await fetch("/api/agenda", { method: "POST", headers: h, body: JSON.stringify({ data: ontem, hora: `${String(i).padStart(2, "0")}:00`,
+          barbeiroId: prof.id, servicoIds: [serv.id], cliente: { nome: `Cliente Ontem ${i + 1}` }, aceiteForaHorario: true, aceiteNotaVencida: true }) });
+        if (r.ok) ok++; else console.log(await r.text());
+      }
+      return ok;
+    });
+    assert.equal(criados, 7);
+    await page.reload();
+    await page.waitForSelector("[data-secao=nao-fechados]");
+    await page.waitForSelector("#carregador", { state: "hidden" });
+    const sec = page.locator("[data-secao=nao-fechados]");
+    assert.equal(await sec.locator(":scope > ul [data-nao-fechado]").count(), 5);
+    assert.equal(await sec.locator("a.botao, button.botao").count(), 0, "sem botão Cobrar repetido");
+    assert.match(await sec.locator(".ver-mais-lista > summary").textContent(), /Ver mais 2/);
+    await print("gerente-sem-fechar", { inteira: false, alvo: "[data-secao=nao-fechados]" });
+    await sec.locator('[data-nao-fechado="Cliente Ontem 1"] button').click();
+    await page.waitForSelector("dialog[open] h3:has-text('Concluir atendimento de Cliente Ontem 1')");
+    await page.click("dialog[open] button:has-text('Cancelar')");
     await sair();
 
     passo("caixa recebe a nota direto na Visão do dia; cliente sem telefone: WhatsApp abre para escolher o contato, com a mensagem pronta");

@@ -5739,9 +5739,27 @@ async function telaVisaoDia() {
   const whats = (link, texto, comNumero = true) => link ? el("a", { class: "botao pequeno whats", href: link, target: "_blank", rel: "noopener",
     "data-com-numero": comNumero ? "sim" : "nao", text: comNumero ? texto : `${texto} (escolher contato)` }) : null;
 
-  const naoFechados = secao("Sem fechar", v.naoFechados.length, "nao-fechados", lista(v.naoFechados.map(a => el("li", { class: "item-x linha-simples", "data-nao-fechado": a.cliente },
-    el("div", { class: "item-x-resumo estatico" }, el("span", { class: "item-x-txt" }, el("strong", { text: a.cliente }), el("small", { text: `${dataBR(a.data)} às ${a.hora} · ${a.barbeiro}` })),
-      el("a", { class: "botao pequeno principal", href: "#/caixa", text: "Cobrar" })))), "Tudo fechado. ✔"));
+  // Sem fechar (25/11/2026): a linha inteira abre a cobrança daquele atendimento (antes: um botão "Cobrar" por linha
+  // que levava ao Caixa, onde só aparecem os de hoje). Mostra 5 e o resto em "Ver mais".
+  const cobrarAtendimento = async id => {
+    try {
+      const { atendimentos } = await api("/caixa/atendimentos");
+      const at = atendimentos.find(x => x.id === id && x.situacao === "agendado");
+      if (!at) { avisar("Esse atendimento não está mais aguardando pagamento."); return recarregar(); }
+      janelaFinalizar(at, { endpoint: "/caixa/cobrar", aoTerminar: recarregar, titulo: `Concluir atendimento de ${at.cliente.nome}` });
+    } catch (e) { avisar(e.message, "erro"); }
+  };
+  const linhaSemFechar = a => el("li", { class: "item-x linha-simples", "data-nao-fechado": a.cliente },
+    el("button", { type: "button", class: "item-x-resumo linha-cobrar", "aria-label": `Cobrar ${a.cliente} (${dataBR(a.data)} às ${a.hora})`, onclick: () => cobrarAtendimento(a.id) },
+      el("span", { class: "hora-lista", text: a.data === v.hoje ? a.hora : `${dataBR(a.data).slice(0, 5)}` }),
+      el("span", { class: "item-x-txt" }, el("strong", { text: a.cliente }), el("small", { text: `${a.data === v.hoje ? "hoje" : `às ${a.hora}`} · ${a.barbeiro}` })),
+      el("span", { class: "cobrar-seta", "aria-hidden": "true", text: "›" })));
+  const primeiros = v.naoFechados.slice(0, 5), resto = v.naoFechados.slice(5);
+  const naoFechados = secao("Sem fechar", v.naoFechados.length, "nao-fechados", v.naoFechados.length ? [
+    el("p", { class: "suave dica-lista", text: "Toque no atendimento para cobrar." }),
+    el("ul", { class: "lista-x" }, primeiros.map(linhaSemFechar)),
+    resto.length ? el("details", { class: "ver-mais-lista" }, el("summary", { text: `Ver mais ${resto.length}` }), el("ul", { class: "lista-x" }, resto.map(linhaSemFechar))) : null
+  ].filter(Boolean) : el("p", { class: "suave", text: "Tudo fechado. ✔" }));
 
   const notas = secao("Notas vencidas (30 dias ou mais)", v.notasVencidas.length, "notas-vencidas", lista(v.notasVencidas.map(n => itemExpansivel({
     chave: `vd-nota:${n.clienteId}`, attrs: { "data-nota-vencida": n.cliente }, avatar: iniciais(n.cliente),
