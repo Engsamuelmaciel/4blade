@@ -2054,3 +2054,139 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--suav
   border-right: 2px solid var(--suave); border-bottom: 2px solid var(--suave); transform: rotate(45deg); transition: transform .15s; }
 .disp-recolhivel[open] > summary::after { transform: rotate(-135deg); margin-top: -2px; }
 .disp-recolhivel[open] > summary { margin-bottom: 4px; }
+
+/* =====================================================================================
+   REFINAMENTO VISUAL v4 (25/11/2026, pedido do responsável): janelas e formulários.
+   Seções com título pequeno (em vez de caixa dentro de caixa), serviços em linhas que se
+   marcam inteiras, botões fixos embaixo, textos curtos. Camada no FIM: fácil de ajustar.
+   ===================================================================================== */
+
+/* ---- janela: cabeçalho com linha fina e botões sempre à vista ---- */
+.janela { overflow-y: auto; overscroll-behavior: contain; }
+.janela-form { padding: 22px 22px 0; }
+.janela-form h3 { margin: 0 -22px 16px; padding: 0 22px 14px; font-size: 20px; border-bottom: 1px solid var(--linha); }
+.janela-form > p:not([class]) { color: var(--suave); line-height: 1.5; margin: 0 0 12px; }
+.janela-botoes { position: sticky; bottom: 0; z-index: 2; margin: 20px -22px 0; padding: 14px 22px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--cartao) 0%, transparent), var(--cartao) 14px); border-top: 1px solid var(--linha); }
+.janela-botoes .botao { margin-top: 0; min-height: 48px; font-size: 15px; }
+
+/* ---- seções do formulário: título pequeno + conteúdo, sem moldura ---- */
+.form-secao { margin: 22px 0 0; padding: 0; border: 0; min-width: 0; }
+.form-secao:first-of-type { margin-top: 6px; }
+.form-secao-titulo { display: block; margin: 0 0 4px; padding: 0; font-family: "Marca", system-ui, sans-serif; font-size: 12px; font-weight: 800;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--suave); }
+.form-secao > .campo:first-of-type { margin-top: 8px; }
+fieldset.servicos-escolha { border: 0; border-radius: 0; margin: 22px 0 0; padding: 0; min-width: 0; }
+fieldset.servicos-escolha > legend { padding: 0; float: left; width: 100%; margin-bottom: 8px; }
+fieldset.servicos-escolha > legend + * { clear: both; }
+.servicos-escolha[data-teste=conta-estoque] { border: 1px solid var(--linha); border-radius: 14px; padding: 4px 14px 14px; }
+
+/* link "marcar vários de uma vez": pílula discreta alinhada à direita */
+.link-chip-linha { margin: -4px 0 0; text-align: right; }
+.link-chip { display: inline-flex; align-items: center; min-height: 34px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 650;
+  color: var(--texto); background: var(--neutro); border: 1px solid var(--linha); text-decoration: none; transition: background var(--transicao); }
+.link-chip:hover { background: var(--neutro-2); }
+
+/* ---- serviço = linha inteira que se marca (nome à esquerda, preço e tempo à direita) ---- */
+.marcar-linha, .servicos-escolha .marcar { align-items: center; gap: 0; margin-top: 8px; padding: 0 14px; min-height: 54px; border: 1px solid var(--linha); border-radius: 13px;
+  background: var(--cartao); cursor: pointer; transition: border-color var(--transicao), background var(--transicao); }
+.marcar-linha:hover, .servicos-escolha .marcar:hover { border-color: var(--borda); }
+.marcar-linha input, .servicos-escolha .marcar input { margin: 0 12px 0 0; width: 22px; height: 22px; min-height: 22px; border-radius: 7px; }
+.marcar-linha label { flex: 1; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0; padding: 14px 0; font-size: 15px; font-weight: 600; cursor: pointer; }
+.servicos-escolha .marcar label { flex: 1; margin: 0; padding: 14px 0; cursor: pointer; }
+.serv-nome { min-width: 0; }
+.serv-meta { flex: none; font-size: 13px; font-weight: 500; color: var(--suave); font-variant-numeric: tabular-nums; }
+.marcar-linha:has(input:checked), .servicos-escolha .marcar:has(input:checked) { border-color: var(--dourado); background: color-mix(in srgb, var(--dourado) 9%, var(--cartao)); }
+.marcar-linha:has(input:checked) .serv-meta { color: var(--texto); }
+
+/* ---- painel de horários livres (recolhível): cartão leve ---- */
+.disponibilidade { margin: 12px 0 0; padding: 0; border: 1px solid var(--linha); border-radius: 14px; background: var(--cartao); }
+.disp-recolhivel > summary { padding: 12px 40px 12px 14px; min-height: 56px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 5px; }
+.disp-recolhivel > summary > strong { font-size: 15px; }
+.disp-recolhivel > summary::after { right: 16px; margin-top: -7px; }
+.disp-recolhivel[open] > summary::after { margin-top: -3px; }
+.disp-recolhivel[open] > summary { margin-bottom: 0; border-bottom: 1px solid var(--linha); }
+.disp-recolhivel > :not(summary) { margin-left: 14px; margin-right: 14px; }
+.disp-recolhivel > .chips-hora { margin-top: 10px; margin-bottom: 14px; }
+.disp-recolhivel > .suave { margin-top: 10px; margin-bottom: 0; font-size: 13px; }
+.disponibilidade > .disp-aviso { margin: 12px; }
+.chip-hora { min-height: 40px; min-width: 66px; border-radius: 10px; }
+
+/* ---- cliente: busca, "ou", e cadastro novo ---- */
+.bloco-cliente { margin-top: 22px; }
+.separador-ou { display: flex; align-items: center; gap: 12px; margin: 16px 0 4px; font-size: 12px; font-weight: 600; letter-spacing: .02em; text-transform: none; color: var(--suave); }
+.separador-ou::before, .separador-ou::after { content: ""; flex: 1; height: 1px; background: var(--linha); }
+.cliente-achado:empty { display: none; }
+.cliente-escolhido { border-width: 1px; border-radius: 14px; padding: 12px 14px; background: color-mix(in srgb, var(--dourado) 7%, var(--cartao)); }
+.ajuda { margin-top: 6px; line-height: 1.4; }
+.lado-a-lado { gap: 12px; }
+
+/* ---- campos soltos dentro das janelas: rótulo discreto ---- */
+.janela-form .campo > label { font-size: 12.5px; font-weight: 650; color: var(--suave); margin-bottom: 6px; }
+.janela-form .campo { margin-top: 14px; }
+.janela-form select { appearance: none; -webkit-appearance: none; padding-right: 38px;
+  background: var(--campo) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238a919c' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center; }
+.janela-form input[type=date] { padding-right: 10px; }
+
+/* celular: janela quase em tela cheia, botões sempre à vista */
+@media (max-width: 520px) {
+  .janela { width: calc(100vw - 16px); max-height: calc(100dvh - 24px); border-radius: 20px; }
+  .janela-form { padding: 20px 18px 0; }
+  .janela-form h3 { margin: 0 -18px 14px; padding: 0 18px 12px; }
+  .janela-botoes { margin: 18px -18px 0; padding: 12px 18px calc(14px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* v4 (ajustes): título das seções igual em todas; marcador próprio; mais ar entre blocos */
+fieldset.servicos-escolha > legend.form-secao-titulo, .form-secao > h4.form-secao-titulo { font-family: "Marca", system-ui, sans-serif; font-size: 12px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--suave); }
+.form-secao, fieldset.servicos-escolha.form-secao { margin-top: 28px; }
+.form-secao:first-of-type { margin-top: 8px; }
+.marcar-linha input[type=checkbox], .servicos-escolha .marcar input[type=checkbox] {
+  appearance: none; -webkit-appearance: none; flex: none; width: 24px; height: 24px; min-height: 24px; margin: 0 14px 0 0; padding: 0;
+  border: 2px solid var(--campo-borda); border-radius: 8px; background: var(--campo); display: grid; place-content: center; cursor: pointer;
+  transition: background var(--transicao), border-color var(--transicao); }
+.marcar-linha input[type=checkbox]::after, .servicos-escolha .marcar input[type=checkbox]::after {
+  content: ""; width: 12px; height: 7px; margin-top: -2px; border-left: 3px solid var(--sobre-dourado, #111317); border-bottom: 3px solid var(--sobre-dourado, #111317);
+  transform: rotate(-45deg) scale(0); transition: transform .12s ease-out; }
+.marcar-linha input[type=checkbox]:checked, .servicos-escolha .marcar input[type=checkbox]:checked { background: var(--dourado); border-color: var(--dourado); }
+.marcar-linha input[type=checkbox]:checked::after, .servicos-escolha .marcar input[type=checkbox]:checked::after { transform: rotate(-45deg) scale(1); }
+.marcar-linha input[type=checkbox]:focus-visible, .servicos-escolha .marcar input[type=checkbox]:focus-visible { box-shadow: 0 0 0 4px color-mix(in srgb, var(--dourado) 28%, transparent); }
+.lado-a-lado:has(> .campo[hidden]) { grid-template-columns: 1fr; }
+
+/* ---- v4: harmonia geral (campos, marcadores, listas de dias, "mais opções") ---- */
+/* seta própria em todo select (igual em todas as telas) */
+select { appearance: none; -webkit-appearance: none; padding-right: 38px;
+  background: var(--campo) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238a919c' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center; }
+/* marcador próprio em todo "marcar" (as linhas de serviço já têm o seu) */
+.marcar { gap: 12px; align-items: center; }
+.marcar input[type=checkbox] { appearance: none; -webkit-appearance: none; flex: none; width: 24px; height: 24px; min-height: 24px; margin: 0; padding: 0;
+  border: 2px solid var(--campo-borda); border-radius: 8px; background: var(--campo); display: grid; place-content: center; cursor: pointer; transition: background var(--transicao), border-color var(--transicao); }
+.marcar input[type=checkbox]::after { content: ""; width: 12px; height: 7px; margin-top: -2px; border-left: 3px solid var(--sobre-dourado, #111317); border-bottom: 3px solid var(--sobre-dourado, #111317);
+  transform: rotate(-45deg) scale(0); transition: transform .12s ease-out; }
+.marcar input[type=checkbox]:checked { background: var(--dourado); border-color: var(--dourado); }
+.marcar input[type=checkbox]:checked::after { transform: rotate(-45deg) scale(1); }
+.marcar input[type=checkbox]:disabled { opacity: .45; cursor: not-allowed; }
+.marcar input[type=checkbox]:focus-visible { box-shadow: 0 0 0 4px color-mix(in srgb, var(--dourado) 28%, transparent); }
+.marcar label { font-weight: 500; font-size: 14.5px; line-height: 1.35; }
+.marcar.aceite { margin-top: 16px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; background: var(--neutro-2); }
+.marcar.aceite input { margin-top: 1px; }
+
+/* rótulos de campo: discretos e iguais em formulários de cartão */
+.cartao form .campo > label, form.cartao .campo > label { font-size: 12.5px; font-weight: 650; color: var(--suave); }
+
+/* "Mais opções": seta que gira, em vez do triângulo */
+.mais-opcoes > summary { list-style: none; display: flex; align-items: center; gap: 8px; min-height: 40px; cursor: pointer; }
+.mais-opcoes > summary::-webkit-details-marker { display: none; }
+.mais-opcoes > summary::after { content: ""; width: 8px; height: 8px; border-right: 2px solid var(--suave); border-bottom: 2px solid var(--suave); transform: rotate(45deg); margin-top: -3px; transition: transform .15s; }
+.mais-opcoes[open] > summary::after { transform: rotate(-135deg); margin-top: 3px; }
+
+/* Funcionamento / Horário de trabalho: cada dia é um cartão; dia fechado fica apagado */
+.dias-func { gap: 10px; margin-top: 12px; }
+.linha-dia { padding: 12px 14px 14px; border: 1px solid var(--linha); border-radius: 14px; background: var(--cartao); }
+.linha-dia .marcar { margin: 0; }
+.linha-dia .marcar label { font-weight: 700; font-size: 15px; }
+.linha-dia .horas { gap: 10px 12px; margin-top: 12px; }
+.linha-dia:has(.marcar input:not(:checked)) .horas { opacity: .4; }
+.linha-dia:has(.marcar input:not(:checked)) { background: var(--neutro-2); }
+.mini.intervalo { font-weight: 500; }
+.mini { font-size: 12px; letter-spacing: .01em; }
+.mini input { min-height: 44px; font-size: 16px; margin-top: 4px; border-radius: 11px; }

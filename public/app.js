@@ -348,7 +348,7 @@ function abrirJanela(titulo, conteudo, { ok = "Confirmar", perigo = false, aoCon
     janela.addEventListener("close", () => resolve(null), { once: true });   // Esc também fecha
     janela.showModal();
     const primeiro = form.querySelector("input, textarea, select");
-    if (primeiro) primeiro.focus();
+    if (primeiro && window.matchMedia("(pointer: fine)").matches) primeiro.focus({ preventScroll: true });
   });
 }
 
@@ -2422,8 +2422,8 @@ function campoProfissional(ag, escolhido = null) {
 function seletorCliente({ id, preSelecionado = null, aoMudar = () => {} }) {
   let escolhido = preSelecionado;
   const resultados = el("ul", { class: "resultados-cliente", "data-teste": `${id}-resultados` });
-  const busca = el("input", { type: "search", id: `${id}-busca`, autocomplete: "off", placeholder: "Digite o nome ou o telefone", "aria-label": "Buscar cliente cadastrado" });
-  const blocoBusca = el("div", { class: "campo" }, el("label", { for: `${id}-busca`, text: "Cliente cadastrado" }), busca, resultados);
+  const busca = el("input", { type: "search", id: `${id}-busca`, autocomplete: "off", placeholder: "Nome ou telefone", "aria-label": "Buscar cliente cadastrado" });
+  const blocoBusca = el("div", { class: "campo" }, el("label", { for: `${id}-busca`, text: "Buscar cliente cadastrado" }), busca, resultados);
   const escolhidoEl = el("div", { class: "cliente-escolhido", "data-teste": `${id}-escolhido` });
   let temporizador;
   const desenhar = () => {
@@ -2502,9 +2502,9 @@ function janelaMarcar(ag, pre = {}) {
   const blocoNovo = el("div", { class: "cliente-novo" }, nomeCampo, lgpd);
   lgpd.hidden = true;
   const achado = el("p", { class: "cliente-achado", role: "status" });
-  const tel = campo("Telefone do cliente (WhatsApp) — opcional", { name: "cliTel", inputmode: "tel", autocomplete: "off", placeholder: "(11) 91234-5678" },
-    "Sem telefone, o cliente fica só com o nome. As mensagens abrem o WhatsApp para você escolher o contato.");
-  const blocoAvulso = el("div", { class: "cliente-avulso" }, el("p", { class: "separador-ou", text: "ou cliente novo / avulso" }), tel, achado, blocoNovo);
+  const tel = campo("WhatsApp do cliente (opcional)", { name: "cliTel", inputmode: "tel", autocomplete: "off", placeholder: "(11) 91234-5678" },
+    "Sem número, o cliente fica só com o nome e a mensagem abre o WhatsApp para você escolher o contato.");
+  const blocoAvulso = el("div", { class: "cliente-avulso" }, el("p", { class: "separador-ou", text: "ou cadastre um cliente novo" }), tel, achado, blocoNovo);
   const seletor = seletorCliente({ id: "cli", preSelecionado: pre.cliente || null, aoMudar: c => { blocoAvulso.hidden = Boolean(c); } });
   const buscar = async () => {
     const v = tel.querySelector("input").value.replace(/\D/g, "");
@@ -2540,20 +2540,29 @@ function janelaMarcar(ag, pre = {}) {
     f.querySelectorAll("input[name=serv]").forEach(c => c.addEventListener("change", recalcular));
     recalcular();
   });
+  // Serviço como linha selecionável: nome à esquerda, preço e tempo à direita
+  const linhaServico = sv => {
+    const id = `serv-${sv.id}`;
+    return el("div", { class: "marcar marcar-linha" },
+      el("input", { type: "checkbox", name: "serv", value: sv.id, id }),
+      el("label", { for: id }, el("span", { class: "serv-nome", text: sv.nome }), el("span", { class: "serv-meta", text: `${reais(sv.precoCentavos)} · ${sv.duracaoMin} min` })));
+  };
   return abrirJanela("Novo horário", [
-    el("p", { class: "link-discreto" }, el("a", { href: "#/agenda-lote", "data-teste": "link-lote", text: "Tem vários para marcar? Use a lista (vários de uma vez)", onclick: () => { voltarLote = "#/agenda"; janela.close(); } })),
-    campoProfissional(ag, pre.barbeiroId),
-    el("div", { class: "lado-a-lado" },
-      campo("Data", { name: "data", type: "date", value: pre.data || estadoAgenda.data, required: true }),
-      campo("Hora", { name: "hora", type: "time", step: "300", required: true })),
-    el("fieldset", { class: "servicos-escolha" }, el("legend", { text: "Serviços" }),
-      servicos.map(s => caixaMarcar(`${s.nome} · ${reais(s.precoCentavos)} · ${s.duracaoMin} min`, { name: "serv", value: s.id, id: `serv-${s.id}` }))),
-    disp.el,
-    el("fieldset", { class: "servicos-escolha bloco-cliente" }, el("legend", { text: "Cliente" }), seletor.el, blocoAvulso),
-    campo("Observação (opcional)", { name: "obs", maxlength: "300", autocomplete: "off" }),
-    el("div", { class: "lado-a-lado" },
-      campo("Repetir (horário fixo)", { tag: "select", name: "repetir", opcoes: OPCOES_REPETIR }),
-      Object.assign(campo("Repetir até", { name: "repAte", type: "date" }), { hidden: true }))
+    el("p", { class: "link-chip-linha" }, el("a", { class: "link-chip", href: "#/agenda-lote", "data-teste": "link-lote", text: "Marcar vários de uma vez  ›", onclick: () => { voltarLote = "#/agenda"; janela.close(); } })),
+    el("section", { class: "form-secao" }, el("h4", { class: "form-secao-titulo", text: "Quando" }),
+      campoProfissional(ag, pre.barbeiroId),
+      el("div", { class: "lado-a-lado" },
+        campo("Data", { name: "data", type: "date", value: pre.data || estadoAgenda.data, required: true }),
+        campo("Hora", { name: "hora", type: "time", step: "300", required: true })),
+      disp.el),
+    el("fieldset", { class: "servicos-escolha form-secao" }, el("legend", { class: "form-secao-titulo", text: "Serviços" }),
+      servicos.map(linhaServico)),
+    el("fieldset", { class: "servicos-escolha bloco-cliente form-secao" }, el("legend", { class: "form-secao-titulo", text: "Cliente" }), seletor.el, blocoAvulso),
+    el("section", { class: "form-secao" }, el("h4", { class: "form-secao-titulo", text: "Detalhes" }),
+      campo("Observação", { name: "obs", maxlength: "300", autocomplete: "off", placeholder: "Opcional" }),
+      el("div", { class: "lado-a-lado" },
+        campo("Horário fixo", { tag: "select", name: "repetir", opcoes: OPCOES_REPETIR }),
+        Object.assign(campo("Repetir até", { name: "repAte", type: "date" }), { hidden: true })))
   ], {
     ok: "Marcar",
     aoConfirmar: async f => {
@@ -2818,14 +2827,14 @@ async function telaFuncionamento() {
       el("div", { class: "horas" },
         el("label", { class: "mini" }, "Abre", el("input", { type: "time", name: `${id}-abre`, value: d.abre || "09:00" })),
         el("label", { class: "mini" }, "Fecha", el("input", { type: "time", name: `${id}-fecha`, value: d.fecha || "19:00" })),
-        el("label", { class: "mini" }, "Intervalo de", el("input", { type: "time", name: `${id}-ii`, value: d.intervaloIni || "" })),
-        el("label", { class: "mini" }, "até", el("input", { type: "time", name: `${id}-if`, value: d.intervaloFim || "" }))));
+        el("label", { class: "mini intervalo" }, "Pausa de (opcional)", el("input", { type: "time", name: `${id}-ii`, value: d.intervaloIni || "" })),
+        el("label", { class: "mini intervalo" }, "Pausa até", el("input", { type: "time", name: `${id}-if`, value: d.intervaloFim || "" }))));
   });
   const form = el("form", { class: "cartao" },
     el("h3", { text: "Dias e horários da semana" }),
     !f.configurado ? el("p", { class: "info", text: "Ainda não cadastrado: a agenda só aceita horários depois que o funcionamento for salvo." }) : null,
     el("div", { class: "dias-func" }, linhas),
-    el("p", { class: "ajuda", text: "Intervalo é opcional (ex.: almoço 12:00 até 13:00). Deixe em branco se não houver." }),
+    el("p", { class: "ajuda", text: "A pausa é opcional (ex.: almoço das 12:00 às 13:00). Deixe em branco se não houver." }),
     el("button", { type: "submit", class: "botao principal", text: "Salvar funcionamento" }));
   form.addEventListener("submit", ev => {
     ev.preventDefault();
@@ -3388,7 +3397,7 @@ async function abaCobrar(recarregar) {
 function janelaAvulso(profissionais, recarregar) {
   const servicos = servicosCache || [];
   const avulsoCampos = el("div", { class: "cliente-avulso" },
-    el("p", { class: "separador-ou", text: "ou cliente novo / avulso" }),
+    el("p", { class: "separador-ou", text: "ou cadastre um cliente novo" }),
     campo("Telefone do cliente (WhatsApp) — opcional", { name: "aTel", inputmode: "tel", autocomplete: "off" }),
     campo("Nome do cliente — opcional", { name: "aNome", autocomplete: "off" }, "Sem nome e sem telefone, fica como \"Cliente não identificado\"."),
     Object.assign(caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "aLgpd" }), { hidden: true }));
