@@ -2015,3 +2015,8 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--suav
 .mpv-linha { display: block; height: 8px; border-radius: 4px; background: var(--pl); }
 .mpv-linha.curta { width: 60%; background: var(--pb); opacity: .85; }
 .mpv-botao { display: block; height: 26px; border-radius: 999px; background: var(--pb); margin-top: auto; }
+.fl-carrossel { width: 100%; max-width: 420px; }
+.fl-carrossel .marcar { margin-top: 0; }
+.fl-carrossel .ajuda { margin-top: 4px; }
+.fl-item-acoes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.fl-item-acoes .botao { width: auto; margin: 0; }

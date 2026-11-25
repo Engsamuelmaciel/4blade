@@ -211,6 +211,11 @@ async function rodar(tela) {
     await page.click("[data-cor='#d4af37']");
     await previaCom("luxo", "story");
     await print("gerador-preenchido");
+    assert.ok(await page.isChecked("#fl-carrossel"), "por padrão vai para as Novidades da página");
+    assert.equal(await page.textContent("[data-teste=publicar-flyer]"), "Salvar e pôr na página");
+    await page.click("#fl-carrossel");
+    assert.equal(await page.textContent("[data-teste=publicar-flyer]"), "Salvar (fora da página)");
+    await page.click("#fl-carrossel");
     await page.click("[data-teste=publicar-flyer]");
     await page.waitForSelector("dialog[open] [data-teste=compartilhar-flyer]");
     const whats = await page.getAttribute("[data-teste=flyer-whats]", "href");
@@ -222,7 +227,7 @@ async function rodar(tela) {
     await print("compartilhar", { inteira: false });
     await page.click("dialog[open] button[type=submit]");
     await page.waitForSelector("[data-teste=flyers-lista] [data-flyer='Corte + barba']");
-    assert.match(await page.textContent("[data-flyer='Corte + barba'] [data-teste=flyer-situacao]"), /No catálogo/);
+    assert.match(await page.textContent("[data-flyer='Corte + barba'] [data-teste=flyer-situacao]"), /Na página/);
     await print("lista-flyers");
 
     passo("baixar imagem gera um JPG");
@@ -251,11 +256,30 @@ async function rodar(tela) {
     await pub.close();
 
     passo("tira do catálogo: some da página pública");
-    await page.click("[data-flyer='Corte + barba'] [data-grupo=mais]");
-    await page.click("[data-flyer='Corte + barba'] button:has-text('Tirar do catálogo')");
-    await page.waitForSelector("[data-flyer='Corte + barba'] [data-teste=flyer-situacao]:has-text('Fora do catálogo')");
+    await page.click("[data-flyer='Corte + barba'] button:has-text('Ocultar da página')");
+    await page.waitForSelector("[data-flyer='Corte + barba'] [data-teste=flyer-situacao]:has-text('Oculto da página')");
     const html = await (await fetch(`${base}/barbearia-semana-ficticia`)).text();
     assert.ok(!/class="pg-promo/.test(html), "sem promoções na página depois de tirar");
+    await print("flyer-oculto-acoes", { alvo: "[data-flyer='Corte + barba']" });
+
+    passo("Minha página: chave para ocultar o carrossel de Novidades");
+    await ir(page, "Minha página");
+    const secNov = page.locator("[data-secao-pagina=novidades]");
+    await secNov.locator(":scope > summary").click();
+    assert.ok(await page.isChecked("#mp-novidades"));
+    await page.click("#mp-novidades");
+    await secNov.locator("button:has-text('Salvar')").click();
+    await page.waitForSelector("text=Salvo.");
+    await pronto();
+    assert.match(await page.textContent("[data-secao-pagina=novidades] > summary"), /carrossel oculto/);
+
+    passo("excluir o flyer (à vista na lista)");
+    await ir(page, "Divulgação");
+    await page.waitForSelector("[data-flyer='Corte + barba']");
+    await page.click("[data-flyer='Corte + barba'] button:has-text('Excluir')");
+    await page.click("dialog[open] button[type=submit]");
+    await page.waitForSelector("text=Flyer excluído.");
+    await page.waitForFunction(() => !document.querySelector("[data-flyer='Corte + barba']"));
 
     assert.deepEqual(problemas, [], `erros no navegador: ${problemas.join(" | ")}`);
     passo("OK");

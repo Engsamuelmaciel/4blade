@@ -6382,6 +6382,15 @@ async function telaMinhaPagina() {
     botao("Salvar", () => salvar({ mostrarHorarios: document.getElementById("mp-horarios").checked }), "principal pequeno")
   ];
 
+  // ---- Novidades e promoções (carrossel dos flyers) ----
+  const blocoNov = [
+    el("p", { class: "suave", text: "O carrossel mostra os flyers que você criou em Divulgação. Desligado, a seção some da página; os flyers continuam guardados e os links compartilhados continuam funcionando." }),
+    caixaMarcar("Mostrar Novidades e promoções na página", { id: "mp-novidades", checked: p.mostrarNovidades || null }),
+    el("div", { class: "item-acoes" },
+      botao("Salvar", () => salvar({ mostrarNovidades: document.getElementById("mp-novidades").checked }), "principal pequeno"),
+      el("a", { class: "botao pequeno", href: "#/divulgacao", text: "Ver meus flyers" }))
+  ];
+
   mostrar(
     cabecalho("Minha página", "Sua vitrine na internet: para a bio do Instagram, o WhatsApp e o Google."),
     topo,
@@ -6393,6 +6402,7 @@ async function telaMinhaPagina() {
       secao("servicos", "Serviços na página", `${servicos.filter(s => s.visivel).length} de ${servicos.length}`, blocoServ),
       secao("equipe", "Equipe na página", `${equipe.filter(u => u.visivel).length} aparecendo`, blocoEq),
       secao("horarios", "Horários livres", p.mostrarHorarios ? "aparecem na página" : "escondidos", blocoHor),
+      secao("novidades", "Novidades e promoções", p.mostrarNovidades ? `${d.flyersNoAr || 0} flyer(s) aparecendo` : "carrossel oculto", blocoNov),
       secao("endereco", "Endereço do link", `${location.host}/${p.slug}`, blocoSlug)));
 }
 const secoesPaginaAbertas = new Set(["fotos"]);
@@ -6547,7 +6557,7 @@ const CHAMADAS_FLYER = ["Agenda aberta", "Promoção", "Novidade", "Só hoje", "
 const estadoFlyer = {
   iniciado: false, modelo: "", objetivo: "todos",
   formato: "story", estilo: "moderno", chamada: "", titulo: "", precoDe: "", precoPor: "", detalhe: "", validade: "",
-  cor: "", qr: true, mostrarWhats: true, mostrarLogo: true,
+  cor: "", qr: true, mostrarWhats: true, mostrarLogo: true, noCarrossel: true,
   foco: 50, focoX: 50, zoom: 100, filtro: "original", fotoBase: null, foto: null, fotoNome: ""
 };
 const legendaFlyer = (f, nome) => [
@@ -6757,7 +6767,7 @@ function montarFlyers(FL, d, lista, logo) {
     try {
       const blob = await comCarga(imagemFinal);
       const m = FL.MODELOS.find(x => x.id === st.modelo);
-      const meta = { titulo: st.titulo.trim(), texto: textoResumo(), estilo: st.estilo, formato: st.formato, validade: st.validade || null,
+      const meta = { titulo: st.titulo.trim(), texto: textoResumo(), estilo: st.estilo, formato: st.formato, validade: st.validade || null, noCarrossel: st.noCarrossel,
         dados: { modelo: st.modelo, objetivo: m?.objetivo || null, chamada: st.chamada, titulo: st.titulo, precoDe: st.precoDe, precoPor: st.precoPor, detalhe: st.detalhe,
           validade: st.validade, cor: st.cor, qr: st.qr, mostrarWhats: st.mostrarWhats, mostrarLogo: st.mostrarLogo, filtro: st.filtro } };
       const r = await comCarga(() => api(`/pagina/flyers?meta=${encodeURIComponent(JSON.stringify(meta))}`, { metodo: "POST", bruto: blob }));
@@ -6776,12 +6786,12 @@ function montarFlyers(FL, d, lista, logo) {
     el("img", { class: `fl-item-img ${f.formato}`, src: f.imagem, alt: f.titulo, loading: "lazy" }),
     el("div", { class: "fl-item-info" },
       el("strong", { text: f.titulo }),
-      el("span", { class: `etiqueta ${f.noAr ? "verde" : "amarela"}`, "data-teste": "flyer-situacao", text: f.noAr ? "No catálogo" : !f.publicado ? "Fora do catálogo" : "Vencido" }),
+      el("span", { class: `etiqueta ${f.noAr ? "verde" : "amarela"}`, "data-teste": "flyer-situacao", text: f.noAr ? "Na página" : !f.publicado ? "Oculto da página" : "Vencido" }),
       el("small", { class: "suave", text: [FL.ESTILOS.find(e => e.id === f.estilo)?.nome, FL.FORMATOS[f.formato]?.nome, f.validade ? `até ${dataBR(f.validade)}` : "sem validade"].filter(Boolean).join(" · ") }),
-      acoesAgrupadas([
-        botao("Compartilhar", () => janelaCompartilharFlyer(f, nome, null, lista.paginaPublicada), "pequeno principal")
-      ], [{ chave: "mais", rotulo: "Mais", itens: [
-        botao(f.publicado ? "Tirar do catálogo" : "Voltar ao catálogo", async () => {
+      // 25/11/2026: ocultar/mostrar e excluir à vista (antes ficavam em "Mais")
+      el("div", { class: "item-acoes fl-item-acoes" },
+        botao("Compartilhar", () => janelaCompartilharFlyer(f, nome, null, lista.paginaPublicada), "pequeno principal"),
+        botao(f.publicado ? "Ocultar da página" : "Mostrar na página", async () => {
           try { const r = await api("/pagina/flyers/alterar", { metodo: "POST", corpo: { id: f.id, publicado: !f.publicado } }); avisar(r.mensagem); recarregar(); }
           catch (e) { avisar(e.message, "erro"); }
         }, "pequeno"),
@@ -6793,9 +6803,8 @@ function montarFlyers(FL, d, lista, logo) {
           if (st.fotoBase) aplicarFiltro();
           avisar("Textos carregados no editor. Escolha a foto de novo, se quiser."); remontar();
         }, "pequeno") : null,
-        botao("Excluir", () => abrirJanela("Excluir este flyer?", el("p", { text: "Ele sai do catálogo e a imagem é apagada. Fica registrado quem excluiu." }), {
-          ok: "Excluir", perigo: true, aoConfirmar: async () => { await api("/pagina/flyers/excluir", { metodo: "POST", corpo: { id: f.id } }); avisar("Flyer excluído."); recarregar(); } }), "pequeno texto-perigo")
-      ].filter(Boolean) }]))));
+        botao("Excluir", () => abrirJanela("Excluir este flyer?", el("p", { text: "Ele sai da página e a imagem é apagada. Links já enviados deixam de mostrar a arte. Fica registrado quem excluiu." }), {
+          ok: "Excluir", perigo: true, aoConfirmar: async () => { await api("/pagina/flyers/excluir", { metodo: "POST", corpo: { id: f.id } }); avisar("Flyer excluído."); recarregar(); } }), "pequeno texto-perigo")))));
 
   const avisos = [
     !d.fotos.armazenamento ? el("p", { class: "info", text: "O envio de imagens ainda está sendo ligado pela equipe 4Blade. Você já pode criar e baixar o flyer." }) : null,
@@ -6804,6 +6813,16 @@ function montarFlyers(FL, d, lista, logo) {
   const passo = (n, titulo, ...conteudo) => el("section", { class: "fl-passo", "aria-labelledby": `fl-p${n}` },
     el("h3", { id: `fl-p${n}` }, el("span", { class: "fl-num", text: String(n) }), titulo), ...conteudo);
   const cheio = lista.flyers.length >= lista.limite;
+  // Ir ou não para o carrossel "Novidades e promoções" da página (escolha de cada flyer)
+  const textoSalvar = () => (st.noCarrossel ? "Salvar e pôr na página" : "Salvar (fora da página)");
+  const botoesSalvar = [];
+  const botaoSalvar = principal => { const b = el("button", { type: "button", class: "botao principal", ...(principal ? { "data-teste": "publicar-flyer" } : {}), disabled: cheio || !d.fotos.armazenamento || null, onclick: publicar, text: textoSalvar() }); botoesSalvar.push(b); return b; };
+  const escolhaCarrossel = el("div", { class: "fl-carrossel", "data-teste": "flyer-carrossel" },
+    caixaMarcar("Mostrar nas Novidades da minha página", { id: "fl-carrossel", checked: st.noCarrossel || null,
+      onchange: ev => { st.noCarrossel = ev.target.checked; botoesSalvar.forEach(b => { b.textContent = textoSalvar(); }); } }),
+    el("p", { class: "ajuda", text: lista.mostrarNovidades === false
+      ? "O carrossel de Novidades está oculto na sua página (Minha página → Novidades e promoções). O flyer fica guardado e pode ser compartilhado."
+      : "Desmarcado: o flyer fica guardado só para compartilhar, sem aparecer na página." }));
 
   mostrar(
     cabecalho("Divulgação", "Flyers prontos para o Instagram e o WhatsApp, com link direto para o seu catálogo."),
@@ -6811,8 +6830,9 @@ function montarFlyers(FL, d, lista, logo) {
     el("div", { class: "fl-grade" },
       el("div", { class: "fl-previa-col" },
         el("div", { class: "fl-previa" }, tela),
+        escolhaCarrossel,
         el("div", { class: "fl-botoes" },
-          el("button", { type: "button", class: "botao principal", "data-teste": "publicar-flyer", disabled: cheio || !d.fotos.armazenamento || null, onclick: publicar, text: "Publicar no catálogo" }),
+          botaoSalvar(true),
           botao("Baixar imagem", baixar, "")),
         cheio ? el("p", { class: "suave", text: `Você já tem ${lista.limite} flyers guardados. Exclua um antigo para publicar outro.` }) : null),
       el("div", { class: "fl-editor" },
@@ -6825,7 +6845,7 @@ function montarFlyers(FL, d, lista, logo) {
         passo(7, "Cor e detalhes", cores, extras),
         el("div", { class: "fl-fim" },
           botao("Ver como ficou ↑", () => tela.scrollIntoView({ behavior: "smooth", block: "center" })),
-          el("button", { type: "button", class: "botao principal", disabled: cheio || !d.fotos.armazenamento || null, onclick: publicar, text: "Publicar no catálogo" })))),
+          botaoSalvar(false)))),
     el("section", { class: "fl-guardados", "aria-labelledby": "fl-guardados-t" },
       el("h3", { id: "fl-guardados-t", text: `Seus flyers (${lista.flyers.length} de ${lista.limite})` }),
       itensLista.length ? el("ul", { class: "fl-lista", "data-teste": "flyers-lista" }, itensLista) : el("p", { class: "vazio", text: "Nenhum flyer ainda. O primeiro fica pronto em um minuto." })));

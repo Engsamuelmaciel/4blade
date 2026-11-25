@@ -8,3 +8,6 @@ CREATE TABLE IF NOT EXISTS paginas_aparencia (
   atualizado_por TEXT,
   atualizado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Mostrar ou não o carrossel "Novidades e promoções" na página (como os horários livres). Padrão: mostra.
+ALTER TABLE paginas ADD COLUMN mostrar_novidades INTEGER NOT NULL DEFAULT 1 CHECK (mostrar_novidades IN (0, 1));

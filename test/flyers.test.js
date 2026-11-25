@@ -99,4 +99,40 @@ describe("flyers", () => {
     // ?promo de outra barbearia não muda a prévia
     assert.doesNotMatch((await abrir(amb, `/${outra.slug}?promo=${id}`)).texto, new RegExp(`og:image" content="[^"]*${id}`));
   });
+
+  test("Novidades (25/11/2026): flyer fora do carrossel, carrossel oculto e link só da própria barbearia", async () => {
+    const amb = ambiente();
+    const a = await cenario("fl3", amb);
+    const b = await cenario("fl4", amb, a.plat);
+    const img = await imagemFlyer();
+    const base = { titulo: "Agenda aberta", estilo: "moderno", formato: "story" };
+    // fora do carrossel: guardado, não aparece na página, mas o link mostra a arte na prévia
+    const r = await enviar(a, a.ger.token, { ...base, noCarrossel: false }, img);
+    assert.equal(r.status, 201, JSON.stringify(r.dados));
+    assert.equal(r.dados.flyer.publicado, false);
+    assert.match(r.dados.mensagem, /fora do carrossel/);
+    let pg = await abrir(a, `/${a.slug}`);
+    assert.doesNotMatch(pg.texto, /t-promo/);
+    pg = await abrir(a, `/${a.slug}?promo=${r.dados.flyer.id}`);
+    assert.match(pg.texto, new RegExp(`og:image" content="https://forblade.teste/f/${r.dados.flyer.id}"`));
+    assert.doesNotMatch(pg.texto, /t-promo/);
+    // no carrossel (padrão) + chave para ocultar a seção inteira
+    const r2 = await enviar(a, a.ger.token, base, img);
+    assert.equal(r2.dados.flyer.publicado, true);
+    assert.match((await abrir(a, `/${a.slug}`)).texto, /t-promo/);
+    assert.equal((await a.get("/api/pagina", a.ger.token)).dados.pagina.mostrarNovidades, true);
+    assert.equal((await a.post("/api/pagina/salvar", a.ger.token, { mostrarNovidades: false })).status, 200);
+    assert.equal((await a.get("/api/pagina", a.ger.token)).dados.pagina.mostrarNovidades, false);
+    assert.equal((await a.get("/api/pagina/flyers", a.ger.token)).dados.mostrarNovidades, false);
+    assert.doesNotMatch((await abrir(a, `/${a.slug}`)).texto, /t-promo/, "carrossel oculto");
+    assert.match((await abrir(a, `/${a.slug}?promo=${r2.dados.flyer.id}`)).texto, /og:image" content="https:\/\/forblade.teste\/f\//, "link continua funcionando");
+    assert.equal((await a.post("/api/pagina/salvar", a.ger.token, { mostrarNovidades: true })).status, 200);
+    assert.match((await abrir(a, `/${a.slug}`)).texto, /t-promo/);
+    // isolamento: o flyer da barbearia A não vira prévia na página da B
+    pg = await abrir(b, `/${b.slug}?promo=${r.dados.flyer.id}`);
+    assert.doesNotMatch(pg.texto, new RegExp(r.dados.flyer.id));
+    // a B não oculta/exclui flyer da A
+    assert.equal((await b.post("/api/pagina/flyers/alterar", b.ger.token, { id: r2.dados.flyer.id, publicado: false })).status, 404);
+    assert.equal((await b.post("/api/pagina/flyers/excluir", b.ger.token, { id: r2.dados.flyer.id })).status, 404);
+  });
 });

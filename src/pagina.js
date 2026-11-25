@@ -257,7 +257,13 @@ export async function rotaPublicaPagina(request, env) {
     contatoSuporte(db).catch(() => ({}))
   ]);
   if (!ehPrevia && !BOTS.test(request.headers.get("user-agent") || "")) await contarEvento(db, p.barbearia_id, "visita");
-  const promo = c.flyers.find(f => f.id === url.searchParams.get("promo")) || null;
+  // Link de um flyer: mostra a arte na prévia do WhatsApp mesmo se ele não estiver no carrossel (ou se o carrossel estiver oculto).
+  const idPromo = url.searchParams.get("promo");
+  let promo = c.flyers.find(f => f.id === idPromo) || null;
+  if (!promo && idPromo && validId(idPromo)) {
+    promo = await db.prepare(`SELECT id, titulo, texto, formato FROM paginas_flyers WHERE id = ? AND barbearia_id = ? AND removido_em IS NULL
+                              AND (validade IS NULL OR validade >= ?)`).bind(idPromo, p.barbearia_id, hojeBrasil()).first() || null;
+  }
   const html = montarHtml({ p, c, aberto, horarios, origem: url.origin, previa: ehPrevia, promo, suporte });
   return new Response(request.method === "HEAD" ? null : html, {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": ehPrevia ? "no-store" : "no-cache", ...CABECALHOS,
@@ -444,7 +450,7 @@ ${previa ? '<div class="pg-faixa-previa" role="status">Prévia: só você está 
 <main class="pg-corpo">
   ${whats ? `<div class="pg-cta"><a class="pg-botao grande" id="pg-solicitar" data-evento="whatsapp" href="${e(whats)}" target="_blank" rel="noopener">Solicitar meu horário</a>
     <p class="pg-cta-ajuda" id="pg-escolhidos" hidden></p></div>` : ""}
-  ${promosHtml ? `<section class="pg-secao" aria-labelledby="t-promo"><h2 id="t-promo">Novidades e promoções</h2><ul class="pg-promos">${promosHtml}</ul>${c.flyers.length > 1 ? '<p class="pg-promos-dica">Deslize para ver mais · toque para ampliar</p>' : ""}</section>` : ""}
+  ${promosHtml && p.mostrar_novidades !== 0 ? `<section class="pg-secao" aria-labelledby="t-promo"><h2 id="t-promo">Novidades e promoções</h2><ul class="pg-promos">${promosHtml}</ul>${c.flyers.length > 1 ? '<p class="pg-promos-dica">Deslize para ver mais · toque para ampliar</p>' : ""}</section>` : ""}
   ${c.servicos.length ? `<section class="pg-secao" aria-labelledby="t-serv"><h2 id="t-serv">Serviços</h2>
     ${c.whatsapp ? '<p class="pg-dica">Toque nos serviços que você quer e depois em <b>Solicitar meu horário</b>.</p>' : ""}
     ${servicosHtml}</section>` : ""}
@@ -532,6 +538,7 @@ function lerCamposPagina(input, atual) {
     novo.tema = input.tema;
   }
   if (input.mostrarHorarios !== undefined) novo.mostrar_horarios = input.mostrarHorarios ? 1 : 0;
+  if (input.mostrarNovidades !== undefined) novo.mostrar_novidades = input.mostrarNovidades ? 1 : 0;
   const antes = {};
   for (const k of Object.keys(novo)) antes[k] = atual[k] ?? null;
   return { novo, antes };
@@ -561,7 +568,7 @@ async function dadosEditor(ctx, p) {
   try { formas = JSON.parse(p.formas || "[]"); } catch { /* vazio */ }
   return {
     pagina: {
-      slug: p.slug, publicada: Boolean(p.publicada), publicadaEm: p.publicada_em, tema: p.tema, aparencia: aparenciaDe(p), mostrarHorarios: Boolean(p.mostrar_horarios),
+      slug: p.slug, publicada: Boolean(p.publicada), publicadaEm: p.publicada_em, tema: p.tema, aparencia: aparenciaDe(p), mostrarHorarios: Boolean(p.mostrar_horarios), mostrarNovidades: p.mostrar_novidades !== 0,
       nomeExibicao: p.nome_exibicao, frase: p.frase, sobre: p.sobre, whatsapp: p.whatsapp, mensagemPadrao: p.mensagem_padrao,
       instagram: p.instagram, telefone: p.telefone, endRua: p.end_rua, endNumero: p.end_numero, endBairro: p.end_bairro,
       endCidade: p.end_cidade, endUf: p.end_uf, endCep: p.end_cep, mapsUrl: p.maps_url, formas
@@ -808,7 +815,7 @@ async function listarFlyers(ctx, p) {
     .bind(ctx.barbeariaId).all();
   const origem = new URL(ctx.request.url).origin;
   return json({ flyers: r.results.map(f => flyerPublico(f, p, origem)), limite: MAX_FLYERS, estilos: ESTILOS_FLYER, formatos: FORMATOS_FLYER,
-    paginaPublicada: Boolean(p.publicada), slug: p.slug });
+    paginaPublicada: Boolean(p.publicada), mostrarNovidades: p.mostrar_novidades !== 0, slug: p.slug });
 }
 
 function lerValidade(v) {
@@ -843,17 +850,19 @@ async function enviarFlyer(ctx, p) {
   const bytes = semExif(bruto, mime);
   const ativos = await db.prepare("SELECT COUNT(*) AS n FROM paginas_flyers WHERE barbearia_id = ? AND removido_em IS NULL").bind(ctx.barbeariaId).first();
   if (Number(ativos.n) >= MAX_FLYERS) erro(`Você já tem ${MAX_FLYERS} flyers guardados. Exclua um antigo para publicar outro.`, 409);
+  const noCarrossel = meta.noCarrossel !== false;   // 25/11/2026: o gerente escolhe se vai para "Novidades e promoções"
   const id = crypto.randomUUID();
   await r2.put(chaveFoto(ctx.barbeariaId, id), bytes, { httpMetadata: { contentType: mime } });
   await db.batch([
-    db.prepare(`INSERT INTO paginas_flyers (id, barbearia_id, titulo, texto, estilo, formato, dados, mime, bytes, validade, criado_por)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, ctx.barbeariaId, titulo, texto || null, meta.estilo, meta.formato, dados, mime, bytes.length, validade, ctx.user.id),
-    auditoria(ctx, "flyer_publicado", id, { titulo, estilo: meta.estilo, formato: meta.formato, validade, bytes: bytes.length })
+    db.prepare(`INSERT INTO paginas_flyers (id, barbearia_id, titulo, texto, estilo, formato, dados, mime, bytes, validade, criado_por, publicado)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, ctx.barbeariaId, titulo, texto || null, meta.estilo, meta.formato, dados, mime, bytes.length, validade, ctx.user.id, noCarrossel ? 1 : 0),
+    auditoria(ctx, "flyer_publicado", id, { titulo, estilo: meta.estilo, formato: meta.formato, validade, bytes: bytes.length, noCarrossel })
   ]);
   const f = await db.prepare("SELECT * FROM paginas_flyers WHERE id = ?").bind(id).first();
   return json({ flyer: flyerPublico(f, p, new URL(request.url).origin), paginaPublicada: Boolean(p.publicada),
-    mensagem: p.publicada ? "Flyer publicado no seu catálogo." : "Flyer guardado. Ele aparece no catálogo quando a sua página estiver publicada." }, 201);
+    mensagem: !noCarrossel ? "Flyer guardado (fora do carrossel da página). Já pode compartilhar."
+      : p.publicada ? "Flyer publicado nas Novidades da sua página." : "Flyer guardado. Ele aparece nas Novidades quando a sua página estiver publicada." }, 201);
 }
 
 async function flyerDaBarbearia(ctx, id) {
@@ -878,7 +887,7 @@ async function alterarFlyer(ctx) {
       .bind(novo.publicado, novo.validade, f.id, ctx.barbeariaId),
     auditoria(ctx, "flyer_alterado", f.id, { antes: dif.antes, depois: dif.depois })
   ]);
-  return json({ mensagem: novo.publicado ? "Flyer no catálogo." : "Flyer tirado do catálogo (continua guardado aqui)." });
+  return json({ mensagem: novo.publicado ? "Flyer de volta nas Novidades da página." : "Flyer oculto da página (continua guardado aqui)." });
 }
 
 async function excluirFlyer(ctx) {
