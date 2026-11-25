@@ -238,7 +238,8 @@ async function rodar(tela) {
     assert.match(og, /\/f\/[\w-]+$/);
     const ogTitulo = await pub.getAttribute('meta[property="og:title"]', "content");
     assert.match(ogTitulo, /^Corte \+ barba — /);
-    const carregou = await pub.evaluate(() => { const i = document.querySelector(".pg-promo.destaque img"); return i.complete && i.naturalWidth; });
+    await pub.waitForFunction(() => { const i = document.querySelector(".pg-promo.destaque img"); return i.complete && i.naturalWidth > 0; });
+    const carregou = await pub.evaluate(() => document.querySelector(".pg-promo.destaque img").naturalWidth);
     assert.equal(carregou, 1080);
     const queroHref = await pub.getAttribute(".pg-promo.destaque .pg-promo-whats", "href");
     assert.match(decodeURIComponent(queroHref), /Vi "Corte \+ barba" na sua página/);
