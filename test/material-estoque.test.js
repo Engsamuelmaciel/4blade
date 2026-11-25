@@ -90,4 +90,70 @@ describe("material de uso e despesa com estoque", () => {
     assert.ok(!(await get("/api/estoque", outra.ger.token)).dados.produtos.some(x => x.id === mat.id));
     assert.equal((await post("/api/estoque/ajuste", outra.ger.token, { produtoId: mat.id, motivo: "uso_interno", quantidade: -1 })).status, 404);
   });
+
+  test("produto novo na própria despesa: cria o produto, entra no estoque e devolve margem e lucro (26/11/2026)", async () => {
+    const amb = await cenario("novo");
+    const { post, get, ger, barb, cx } = amb;
+    // 12 pomadas por R$ 240,00 → custo 20,00 cada; venda 45,00 → lucro 25,00 (55,56%) por unidade; 300,00 no total
+    const c = await post("/api/contas", ger.token, { categoria: "fornecedor", valorCentavos: 24000, vencimento: HOJE,
+      estoque: { quantidade: 12, novo: { nome: "Pomada modeladora" }, precoVendaCentavos: 4500 } });
+    assert.equal(c.status, 201, JSON.stringify(c.dados));
+    assert.deepEqual(c.dados.estoque, { produto: "Pomada modeladora", criado: true, quantidade: 12, custoUnitCentavos: 2000, precoVendaCentavos: 4500,
+      lucroUnitCentavos: 2500, margemBp: 5556, lucroTotalCentavos: 30000 });
+    assert.equal(c.dados.conta.descricao, "Compra: Pomada modeladora");
+    const prod = (await get("/api/estoque", ger.token)).dados.produtos.find(x => x.nome === "Pomada modeladora");
+    assert.equal(prod.saldo, 12);
+    assert.equal(prod.precoCentavos, 4500);
+    assert.equal(prod.custoMedioCentavos, 2000);
+    assert.equal(prod.usoInterno, false);
+    // já aparece para vender (barbeiro e caixa não veem custo)
+    const visto = (await get("/api/produtos", barb.token)).dados.produtos.find(x => x.nome === "Pomada modeladora");
+    assert.ok(visto && visto.custoMedioCentavos === undefined);
+    // nome repetido: pede para escolher o produto da lista
+    assert.equal((await post("/api/contas", ger.token, { categoria: "fornecedor", valorCentavos: 1000, vencimento: HOJE,
+      estoque: { quantidade: 1, novo: { nome: "pomada MODELADORA" }, precoVendaCentavos: 100 } })).status, 409);
+    // sem preço de venda (e sem ser material de uso) → recusa, e nada é criado
+    assert.equal((await post("/api/contas", ger.token, { categoria: "fornecedor", valorCentavos: 1000, vencimento: HOJE,
+      estoque: { quantidade: 1, novo: { nome: "Shampoo sem preço" } } })).status, 400);
+    assert.ok(!(await get("/api/estoque", ger.token)).dados.produtos.some(x => x.nome === "Shampoo sem preço"));
+    // material de uso novo: sem preço de venda, sem margem
+    const m = await post("/api/contas", ger.token, { categoria: "fornecedor", valorCentavos: 5000, vencimento: HOJE,
+      estoque: { quantidade: 50, novo: { nome: "Lâmina nova", usoInterno: true } } });
+    assert.equal(m.status, 201, JSON.stringify(m.dados));
+    assert.equal(m.dados.estoque.precoVendaCentavos, null);
+    assert.equal(m.dados.estoque.margemBp, null);
+    assert.equal((await get("/api/estoque", ger.token)).dados.produtos.find(x => x.nome === "Lâmina nova").usoInterno, true);
+    // barbeiro e caixa não lançam despesa
+    for (const u of [barb, cx]) assert.equal((await post("/api/contas", u.token, { categoria: "fornecedor", valorCentavos: 1000, vencimento: HOJE,
+      estoque: { quantidade: 1, novo: { nome: "Tentativa" }, precoVendaCentavos: 100 } })).status, 403);
+    // cancelar a despesa tira o que entrou do estoque (o produto continua cadastrado)
+    assert.equal((await post("/api/contas/cancelar", ger.token, { id: c.dados.conta.id, motivo: "Lançada errado" })).status, 200);
+    assert.equal((await get("/api/estoque", ger.token)).dados.produtos.find(x => x.nome === "Pomada modeladora").saldo, 0);
+  });
+
+  test("produto já cadastrado: preço de venda atualizado junto, com auditoria; isolamento do produto novo", async () => {
+    const amb = await cenario("preco");
+    const { post, get, ger } = amb;
+    const prod = (await post("/api/produtos", ger.token, { nome: "Cera", precoCentavos: 3000, aceiteLgpd: true })).dados.produto;
+    const c = await post("/api/contas", ger.token, { categoria: "fornecedor", valorCentavos: 10000, vencimento: HOJE,
+      estoque: { produtoId: prod.id, quantidade: 10, precoVendaCentavos: 3500 } });
+    assert.equal(c.status, 201, JSON.stringify(c.dados));
+    assert.equal(c.dados.estoque.criado, false);
+    assert.equal(c.dados.estoque.custoUnitCentavos, 1000);
+    assert.equal(c.dados.estoque.lucroUnitCentavos, 2500);
+    assert.equal((await get("/api/estoque", ger.token)).dados.produtos.find(x => x.id === prod.id).precoCentavos, 3500);
+    // sem informar preço, o preço não muda
+    await post("/api/contas", ger.token, { categoria: "fornecedor", valorCentavos: 1000, vencimento: HOJE, estoque: { produtoId: prod.id, quantidade: 1 } });
+    assert.equal((await get("/api/estoque", ger.token)).dados.produtos.find(x => x.id === prod.id).precoCentavos, 3500);
+    // outra barbearia cria o "mesmo nome" sem conflito e sem ver o produto desta
+    const outra = await cenario("preco2", amb, amb.p);
+    const o = await post("/api/contas", outra.ger.token, { categoria: "fornecedor", valorCentavos: 1000, vencimento: HOJE,
+      estoque: { quantidade: 1, novo: { nome: "Cera" }, precoVendaCentavos: 2000 } });
+    assert.equal(o.status, 201, JSON.stringify(o.dados));
+    assert.equal((await get("/api/estoque", ger.token)).dados.produtos.filter(x => x.nome === "Cera").length, 1);
+    // produto de outra barbearia por id → 404 (já coberto) e preço dele não muda
+    assert.equal((await post("/api/contas", outra.ger.token, { categoria: "fornecedor", valorCentavos: 1000, vencimento: HOJE,
+      estoque: { produtoId: prod.id, quantidade: 1, precoVendaCentavos: 1 } })).status, 404);
+    assert.equal((await get("/api/estoque", ger.token)).dados.produtos.find(x => x.id === prod.id).precoCentavos, 3500);
+  });
 });

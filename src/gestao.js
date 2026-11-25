@@ -342,15 +342,35 @@ async function rotasContas(ctx, path, method) {
     let est = null;
     if (input.estoque) {
       if (input.recorrente) erro("Conta recorrente não lança no estoque. Lance a compra do material como conta normal.");
-      if (!validId(input.estoque.produtoId)) erro("Escolha o produto ou material do estoque.");
-      const p = await db.prepare(`SELECT p.*, COALESCE(e.saldo, 0) AS saldo FROM produtos p LEFT JOIN produto_estoque e ON e.produto_id = p.id
-                                  WHERE p.id = ? AND p.barbearia_id = ?`).bind(input.estoque.produtoId, ctx.barbeariaId).first();
-      if (!p) erro("Produto não encontrado.", 404);
-      if (!p.ativo) erro("Produto desativado. Reative antes.");
       const q = input.estoque.quantidade;
       if (!Number.isInteger(q) || q < 1 || q > 100000) erro("Quantidade para o estoque inválida.");
-      est = { p, q, c: Math.round(input.valorCentavos / q), mov: crypto.randomUUID() };
-      if (semDescricao) descricao = `Compra: ${p.nome}`.slice(0, 100);
+      const precoIn = input.estoque.precoVendaCentavos;
+      if (precoIn !== undefined && precoIn !== null && (!validCentavos(precoIn) || precoIn > 100000000)) erro("Preço de venda inválido.");
+      if (input.estoque.novo) {
+        // Produto novo criado na própria despesa (pedido de 26/11/2026): evita lançar duas vezes (cadastro + compra).
+        const n = input.estoque.novo;
+        const nome = textoLimpo(n.nome, 2, 80);
+        if (!nome) erro("Informe o nome do produto (2 a 80 letras).");
+        const usoInterno = n.usoInterno === true;
+        const preco = usoInterno ? 0 : precoIn;
+        if (!usoInterno && (!Number.isInteger(preco) || preco <= 0)) erro("Informe o preço de venda do produto novo (ou marque que é material de uso, que não é vendido).");
+        if (await db.prepare("SELECT 1 FROM produtos WHERE barbearia_id = ? AND lower(nome) = lower(?)").bind(ctx.barbeariaId, nome).first())
+          erro("Já existe um produto ou material com esse nome. Escolha ele na lista, em vez de criar de novo.", 409);
+        const idNovo = crypto.randomUUID();
+        est = { p: { id: idNovo, nome, saldo: 0, custo_medio_centavos: 0 }, q, c: Math.round(input.valorCentavos / q), mov: crypto.randomUUID(), novo: true, usoInterno, preco };
+      } else {
+        if (!validId(input.estoque.produtoId)) erro("Escolha o produto ou material do estoque.");
+        const p = await db.prepare(`SELECT p.*, COALESCE(e.saldo, 0) AS saldo, EXISTS (SELECT 1 FROM produtos_uso_interno ui WHERE ui.produto_id = p.id) AS uso_interno
+                                    FROM produtos p LEFT JOIN produto_estoque e ON e.produto_id = p.id
+                                    WHERE p.id = ? AND p.barbearia_id = ?`).bind(input.estoque.produtoId, ctx.barbeariaId).first();
+        if (!p) erro("Produto não encontrado.", 404);
+        if (!p.ativo) erro("Produto desativado. Reative antes.");
+        const usoInterno = Boolean(p.uso_interno);
+        // Preço de venda atualizado junto (só produto de venda): fica registrado no histórico de auditoria.
+        const mudaPreco = !usoInterno && Number.isInteger(precoIn) && precoIn > 0 && precoIn !== p.preco_centavos;
+        est = { p, q, c: Math.round(input.valorCentavos / q), mov: crypto.randomUUID(), usoInterno, preco: mudaPreco ? precoIn : p.preco_centavos, mudaPreco, precoAntes: p.preco_centavos };
+      }
+      if (semDescricao) descricao = `Compra: ${est.p.nome}`.slice(0, 100);
     }
     // Forma de pagamento e parcelamento (pedido de 17/11/2026): cada parcela vira uma conta, vencendo de mês em mês.
     if (!formaValida(input.forma)) erro("Forma de pagamento inválida.");
@@ -393,13 +413,26 @@ async function rotasContas(ctx, path, method) {
       estoque: est ? { produto: est.p.nome, quantidade: est.q, custoUnit: est.c } : undefined } }));
     // O material entra no estoque pelo valor TOTAL da compra, ligado à 1ª parcela.
     if (est) {
+      if (est.novo) {
+        comandos.push(
+          db.prepare(`INSERT INTO produtos (id, barbearia_id, nome, preco_centavos, estoque_minimo, mostrar_site) VALUES (?, ?, ?, ?, 0, 0)`).bind(est.p.id, ctx.barbeariaId, est.p.nome, est.preco),
+          ...(est.usoInterno ? [db.prepare("INSERT INTO produtos_uso_interno (produto_id, barbearia_id) VALUES (?, ?)").bind(est.p.id, ctx.barbeariaId)] : []),
+          auditoria(ctx, est.usoInterno ? "material_criado" : "produto_criado", est.p.id, { depois: { nome: est.p.nome, precoVenda: est.preco, origem: "despesa" } }));
+      } else if (est.mudaPreco) {
+        comandos.push(
+          db.prepare("UPDATE produtos SET preco_centavos = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND barbearia_id = ?").bind(est.preco, est.p.id, ctx.barbeariaId),
+          auditoria(ctx, "produto_preco_alterado", est.p.id, { antes: { preco: est.precoAntes }, depois: { preco: est.preco }, origem: "despesa" }));
+      }
       comandos.push(
         ...comandosEntrada(ctx, est.p, { q: est.q, c: est.c, fornecedor: textoLimpo(descricao, 2, 80) || null, id: est.mov }),
         db.prepare(`INSERT INTO contas_estoque (id, barbearia_id, conta_id, produto_id, quantidade, custo_unit_centavos, movimento_id) VALUES (?, ?, ?, ?, ?, ?, ?)`)
           .bind(crypto.randomUUID(), ctx.barbeariaId, id, est.p.id, est.q, est.c, est.mov));
     }
     await db.batch(comandos);
-    return json({ conta: contaPublica(await db.prepare(`${SELECT_CONTAS} WHERE k.id = ?`).bind(id).first(), hoje), contasCriadas: parcelas }, 201);
+    const lucroUnit = est && !est.usoInterno && est.preco > 0 ? est.preco - est.c : null;
+    return json({ conta: contaPublica(await db.prepare(`${SELECT_CONTAS} WHERE k.id = ?`).bind(id).first(), hoje), contasCriadas: parcelas,
+      ...(est ? { estoque: { produto: est.p.nome, criado: Boolean(est.novo), quantidade: est.q, custoUnitCentavos: est.c, precoVendaCentavos: est.usoInterno ? null : est.preco,
+        lucroUnitCentavos: lucroUnit, margemBp: lucroUnit === null ? null : Math.round((lucroUnit * 10000) / est.preco), lucroTotalCentavos: lucroUnit === null ? null : lucroUnit * est.q } } : {}) }, 201);
   }
   if (path === "/contas/pagar" && method === "POST") {
     const input = await readJson(request);

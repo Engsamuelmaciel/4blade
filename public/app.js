@@ -4841,12 +4841,24 @@ function formNovaDespesa(doEstoque) {
   const rotuloVenc = el("label", { for: "c-venc", text: "Vencimento" });
   const campoVenc = el("div", { class: "campo" }, rotuloVenc, el("input", { type: "date", id: "c-venc", name: "venc", required: true, value: hojeLocal() }));
   // Estoque: despesa que já lança o material/produto no estoque (custo de cada = valor total ÷ quantidade).
+  // Duas opções (pedido de 26/11/2026): produto JÁ cadastrado ou produto NOVO criado aqui mesmo (sem lançar duas vezes).
+  let modoEst = doEstoque.length ? "existente" : "novo";
+  const botaoModo = (modo, texto) => el("button", { type: "button", class: "chip-filtro", "data-modo-est": modo, text: texto,
+    onclick: () => { modoEst = modo; atualizar(); } });
+  const modos = el("div", { class: "chips-filtro", "data-teste": "est-modos" },
+    doEstoque.length ? botaoModo("existente", "Já cadastrado") : null, botaoModo("novo", "Produto novo"));
+  const quadroMargem = el("div", { class: "quadro-margem", "data-teste": "margem-produto", hidden: true });
   const blocoEst = el("div", { class: "servicos-escolha", "data-teste": "conta-estoque", hidden: true },
-    doEstoque.length
-      ? [campo("Material ou produto", { tag: "select", name: "estProd", opcoes: doEstoque.map(p => [p.id, `${p.nome}${p.usoInterno ? " (uso da barbearia)" : ""} · tem ${p.saldo}`]) }),
-        campo("Quantidade que chegou", { name: "estQtd", type: "number", min: "1", inputmode: "numeric" }),
-        el("p", { class: "suave", "data-teste": "custo-unidade", text: "" })]
-      : el("p", { class: "suave", text: "Nenhum material ou produto no estoque. Cadastre primeiro em Estoque → + Material de uso (ou em Produtos)." }));
+    modos,
+    el("div", { class: "est-existente", "data-teste": "est-existente", hidden: modoEst !== "existente" },
+      doEstoque.length ? campo("Material ou produto", { tag: "select", name: "estProd", opcoes: doEstoque.map(p => [p.id, `${p.nome}${p.usoInterno ? " (uso da barbearia)" : ""} · tem ${p.saldo}`]) }) : null),
+    el("div", { class: "est-novo", "data-teste": "est-novo", hidden: modoEst !== "novo" },
+      campo("Nome do produto", { name: "estNome", maxlength: "80", autocomplete: "off", placeholder: "Ex.: Pomada modeladora 120 g" }),
+      caixaMarcar("É material de uso da barbearia (não é vendido)", { name: "estUso" })),
+    campo("Quantidade que chegou", { name: "estQtd", type: "number", min: "1", inputmode: "numeric" }),
+    el("div", { class: "campo-preco-venda", "data-teste": "est-preco-venda" },
+      campo("Preço de venda de cada (R$)", { name: "estVenda", inputmode: "decimal", placeholder: "0,00" }, "Quanto você cobra do cliente por unidade.")),
+    quadroMargem);
   const mais = el("details", { class: "mais-opcoes" }, el("summary", { text: "Mais opções" }),
     caixaMarcar("Repete todo mês (aluguel, luz…)", { name: "rec" }),
     caixaMarcar("É compra de material/produto: lançar no estoque", { name: "lancaEst" }),
@@ -4880,11 +4892,35 @@ function formNovaDespesa(doEstoque) {
     if (linhaCaixa.hidden) form.comCaixa.checked = false;
     blocoEst.hidden = !form.lancaEst.checked;
     if (form.lancaEst.checked) form.rec.checked = false;
-    const out = blocoEst.querySelector("[data-teste=custo-unidade]");
-    if (out) {
-      const q = parseInt(form.estQtd?.value || "0", 10);
-      out.textContent = v && q > 0 ? `Custo de cada unidade: ${reais(Math.round(v / q))} (entra no estoque com esse custo).` : "";
+    // Opções do estoque: troca entre produto já cadastrado e produto novo; mostra preço de compra, venda, margem e lucro.
+    for (const b of modos.querySelectorAll("[data-modo-est]")) b.classList.toggle("ativo", b.dataset.modoEst === modoEst);
+    blocoEst.querySelector("[data-teste=est-existente]").hidden = modoEst !== "existente";
+    blocoEst.querySelector("[data-teste=est-novo]").hidden = modoEst !== "novo";
+    const escolhido = modoEst === "existente" ? doEstoque.find(x => x.id === form.estProd?.value) : null;
+    const uso = modoEst === "novo" ? form.estUso.checked : Boolean(escolhido?.usoInterno);
+    const campoVenda = blocoEst.querySelector("[data-teste=est-preco-venda]");
+    campoVenda.hidden = uso;
+    if (escolhido && form.estProd.dataset.visto !== escolhido.id) {   // ao trocar de produto, já vem o preço de venda cadastrado
+      form.estProd.dataset.visto = escolhido.id;
+      form.estVenda.value = escolhido.precoCentavos ? centavosParaTexto(escolhido.precoCentavos) : "";
     }
+    const q = parseInt(form.estQtd?.value || "0", 10);
+    const venda = paraCentavos(form.estVenda?.value || "");
+    const linhas = [];
+    if (v && q > 0) {
+      const custo = Math.round(v / q);
+      linhas.push(["Preço de compra (cada)", reais(custo)]);
+      if (!uso) {
+        if (venda) {
+          const lucro = venda - custo, margem = Math.round((lucro * 10000) / venda) / 100;
+          linhas.push(["Preço de venda (cada)", reais(venda)]);
+          linhas.push(["Lucro por unidade", `${reais(lucro)} · margem de ${margem.toLocaleString("pt-BR")}%`, lucro < 0 ? "ruim" : "bom"]);
+          linhas.push([`Se vender as ${q} unidades`, `lucro de ${reais(lucro * q)} (vendas de ${reais(venda * q)})`, lucro < 0 ? "ruim" : "bom"]);
+        } else linhas.push(["Preço de venda", "informe acima para ver a margem e o lucro"]);
+      } else linhas.push(["Material de uso", "não é vendido: só entra no estoque com esse custo"]);
+    }
+    quadroMargem.hidden = !linhas.length;
+    quadroMargem.replaceChildren(...linhas.map(([t, val, cls]) => el("p", { class: `margem-linha ${cls || ""}`.trim() }, el("small", { text: t }), el("strong", { text: val }))));
   };
   form.addEventListener("input", atualizar);
   form.addEventListener("change", atualizar);
@@ -4895,10 +4931,17 @@ function formNovaDespesa(doEstoque) {
       if (!v) throw new Error("Valor inválido. Exemplo: 1500,00");
       let estoque;
       if (form.lancaEst.checked) {
-        if (!doEstoque.length) throw new Error("Cadastre o material primeiro em Estoque → + Material de uso.");
         const q = parseInt(form.estQtd.value, 10);
         if (!q || q < 1) throw new Error("Informe a quantidade que chegou.");
-        estoque = { produtoId: form.estProd.value, quantidade: q };
+        const venda = paraCentavos(form.estVenda.value || "");
+        if (modoEst === "novo") {
+          const nome = form.estNome.value.trim();
+          if (nome.length < 2) throw new Error("Informe o nome do produto novo.");
+          if (!form.estUso.checked && !venda) throw new Error("Informe o preço de venda do produto novo (ou marque que é material de uso).");
+          estoque = { quantidade: q, novo: { nome, usoInterno: form.estUso.checked }, ...(venda && !form.estUso.checked ? { precoVendaCentavos: venda } : {}) };
+        } else {
+          estoque = { produtoId: form.estProd.value, quantidade: q, ...(venda ? { precoVendaCentavos: venda } : {}) };
+        }
       }
       const n = parcelas();
       const r = await api("/contas", { metodo: "POST", corpo: {
@@ -4906,7 +4949,10 @@ function formNovaDespesa(doEstoque) {
         ...(form.forma.value ? { forma: form.forma.value } : {}), ...(n > 1 ? { parcelas: n } : {}),
         ...(form.paga.checked ? { jaPaga: true, comCaixa: form.comCaixa.checked } : {}), ...(estoque ? { estoque } : {}) } });
       estadoDespesas.filtro = form.paga.checked && n === 1 ? "pagas" : "abertas";
-      avisar([r.contasCriadas > 1 ? `Despesa lançada em ${r.contasCriadas} parcelas.` : "Despesa lançada.", estoque ? "Material lançado no estoque." : null].filter(Boolean).join(" "));
+      const e = r.estoque;
+      avisar([r.contasCriadas > 1 ? `Despesa lançada em ${r.contasCriadas} parcelas.` : "Despesa lançada.",
+        e ? `${e.criado ? "Produto criado e lançado" : "Lançado"} no estoque.` : null,
+        e?.margemBp !== null && e?.margemBp !== undefined ? `Lucro de ${reais(e.lucroUnitCentavos)} por unidade (margem de ${(e.margemBp / 100).toLocaleString("pt-BR")}%).` : null].filter(Boolean).join(" "));
       telaContas();
     });
   });

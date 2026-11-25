@@ -218,7 +218,8 @@ async function rodar(tela) {
     const opCreme = await page.locator("#c-estProd option", { hasText: "Creme para progressiva" }).getAttribute("value");
     await page.selectOption("#c-estProd", opCreme);
     await page.fill("#c-estQtd", "10");
-    await page.waitForSelector("[data-teste=custo-unidade]:has-text('15,00')");
+    await page.waitForSelector("[data-teste=margem-produto]:has-text('15,00')");   // material de uso: só preço de compra, sem margem
+    assert.equal(await page.locator("[data-teste=est-preco-venda]").isHidden(), true);
     await page.locator("[data-teste=conta-estoque]").scrollIntoViewIfNeeded();
     await print("conta-lanca-no-estoque", false);
     await page.click("button:has-text('Salvar despesa')");
@@ -233,6 +234,30 @@ async function rodar(tela) {
     await ok();
     await page.waitForSelector('[data-estoque="Creme para progressiva"] [data-teste=saldo]:has-text("9 un.")');
     await print("estoque-com-material");
+
+    // Produto NOVO criado na própria despesa, com preço de compra, preço de venda, margem e lucro (26/11/2026)
+    await ir(page, "Despesas");
+    await abrirCadastro(page);
+    await page.selectOption("#c-cat", "fornecedor");
+    await page.fill("#c-valor", "240,00");
+    await page.click(".mais-opcoes summary");
+    await page.check("#c-lancaEst");
+    await page.click("[data-modo-est=novo]");
+    await page.fill("#c-estNome", "Pomada nova fictícia");
+    await page.fill("#c-estQtd", "12");
+    await page.fill("#c-estVenda", "45,00");
+    await page.waitForSelector("[data-teste=margem-produto]:has-text('20,00')");
+    const quadro = await texto("[data-teste=margem-produto]");
+    assert.match(quadro, /Preço de venda \(cada\)\s*R\$\s?45,00/);
+    assert.match(quadro, /Lucro por unidade\s*R\$\s?25,00/);
+    assert.match(quadro, /55,56%/);
+    assert.match(quadro, /lucro de R\$\s?300,00/);
+    await page.locator("[data-teste=conta-estoque]").scrollIntoViewIfNeeded();
+    await print("despesa-produto-novo-margem", false);
+    await page.click("button:has-text('Salvar despesa')");
+    await page.waitForSelector("text=/Produto criado e lançado no estoque/");
+    await ir(page, "Produtos e estoque");
+    assert.match(await texto('[data-estoque="Pomada nova fictícia"] [data-teste=saldo]'), /12 un\./);
 
     // ---------- CONTADOR ----------
     passo("gerente envia ao contador (PDF + planilha) e vê o aviso de alteração");
