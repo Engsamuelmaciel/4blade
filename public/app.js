@@ -2679,11 +2679,15 @@ function janelaBloquear(ag) {
 }
 
 // Finalizar: serviços com valor de tabela (alterável), até 2 formas de pagamento com soma conferida.
-function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaAgenda, titulo = "Finalizar atendimento", correcao = null } = {}) {
+async function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaAgenda, titulo = "Finalizar atendimento", correcao = null } = {}) {
   // Começa só com o(s) serviço(s) do horário; "Adicionar outro serviço" abre a lista dos demais (sem repetir:
   // serviço repetido = quantidade). Pedido de 17/11/2026.
+  // Correção de 26/11/2026: abrindo direto pelo Início (sem passar pela Agenda/Caixa) a lista de preços ainda não tinha sido
+  // carregada e o valor vinha zerado. Agora a janela carrega os serviços antes; e, se o serviço não estiver na lista (ex.:
+  // foi desativado depois), usa o preço que veio junto com o atendimento.
+  if (!servicosCache) { try { await carregarServicos(); } catch { /* segue com o preço do atendimento */ } }
   const catalogo = [...(servicosCache || [])];
-  for (const s of a.servicos) if (!catalogo.some(x => x.id === s.id)) catalogo.push({ id: s.id, nome: s.nome, precoCentavos: 0, duracaoMin: s.duracaoMin });
+  for (const s of a.servicos) if (!catalogo.some(x => x.id === s.id)) catalogo.push({ id: s.id, nome: s.nome, precoCentavos: s.precoCentavos ?? 0, duracaoMin: s.duracaoMin });
   const totalEl = el("p", { class: "total-final", "data-teste": "total" });
   const caixaLinhas = el("div", { class: "lista-servicos" });
   const linhas = [];

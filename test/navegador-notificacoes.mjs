@@ -205,6 +205,9 @@ async function rodar(tela) {
     await print("gerente-sem-fechar", { inteira: false, alvo: "[data-secao=nao-fechados]" });
     await sec.locator('[data-nao-fechado="Cliente Ontem 1"] button').click();
     await page.waitForSelector("dialog[open] h3:has-text('Concluir atendimento de Cliente Ontem 1')");
+    // Regressão (26/11/2026): abrindo direto pelo Início, o valor do serviço vinha zerado (lista de preços não carregada)
+    const totalAberto = (await page.locator("dialog[open] [data-teste=total]").innerText()).replace(/\s/g, "");
+    assert.doesNotMatch(totalAberto, /R\$0,00/, `o total não pode abrir zerado: ${totalAberto}`);
     await page.click("dialog[open] button:has-text('Cancelar')");
     await sair();
 
