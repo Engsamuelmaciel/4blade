@@ -156,4 +156,25 @@ describe("material de uso e despesa com estoque", () => {
       estoque: { produtoId: prod.id, quantidade: 1, precoVendaCentavos: 1 } })).status, 404);
     assert.equal((await get("/api/estoque", ger.token)).dados.produtos.find(x => x.id === prod.id).precoCentavos, 3500);
   });
+
+  test("categoria Produtos: só aceita com estoque; fica ligada ao estoque (26/11/2026)", async () => {
+    const amb = await cenario("catprod");
+    const { post, get, ger } = amb;
+    // sem estoque → recusa (para não ficar despesa de produto solta)
+    const sem = await post("/api/contas", ger.token, { categoria: "produtos", valorCentavos: 5000, vencimento: HOJE });
+    assert.equal(sem.status, 400);
+    assert.match(sem.dados.erro, /estoque/i);
+    const c = await post("/api/contas", ger.token, { categoria: "produtos", valorCentavos: 5000, vencimento: HOJE,
+      estoque: { quantidade: 5, novo: { nome: "Gel fixador" }, precoVendaCentavos: 2500 } });
+    assert.equal(c.status, 201, JSON.stringify(c.dados));
+    assert.ok(c.dados.conta.estoque, "a conta aparece ligada ao estoque");
+    const p = (await get("/api/estoque", ger.token)).dados.produtos.find(x => x.nome === "Gel fixador");
+    assert.equal(p.saldo, 5);
+    assert.equal(p.precoCentavos, 2500);
+    // o produto já está disponível para vender
+    assert.ok((await get("/api/produtos", ger.token)).dados.produtos.some(x => x.nome === "Gel fixador" && x.ativo));
+    // recorrente com produtos continua recusado
+    assert.equal((await post("/api/contas", ger.token, { categoria: "produtos", valorCentavos: 1000, vencimento: HOJE, recorrente: true,
+      estoque: { quantidade: 1, novo: { nome: "Outro gel" }, precoVendaCentavos: 100 } })).status, 400);
+  });
 });

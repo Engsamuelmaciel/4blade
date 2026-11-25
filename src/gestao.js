@@ -329,8 +329,14 @@ async function rotasContas(ctx, path, method) {
     return json({ contas: r.results.map(c => contaPublica(c, hoje)), categorias: CATEGORIAS, formas: FORMAS_CONTA });
   }
   if (path === "/contas" && method === "POST") {
-    const input = await readJson(request);
-    if (!Object.hasOwn(CATEGORIAS, input.categoria)) erro("Categoria inválida (aluguel, luz, água, fornecedor ou outros).");
+    let input = await readJson(request);
+    // "Produtos" (26/11/2026): compra de mercadoria que SEMPRE entra no estoque. A conta fica guardada como Fornecedor (a tabela só aceita
+    // as 5 categorias antigas), mas só é aceita com o produto e a quantidade — para nunca ficar despesa de produto sem ligar ao estoque.
+    if (input.categoria === "produtos") {
+      if (!input.estoque) erro("Despesa de produtos precisa entrar no estoque: escolha o produto (ou crie um novo) e informe a quantidade.");
+      input = { ...input, categoria: "fornecedor" };
+    }
+    if (!Object.hasOwn(CATEGORIAS, input.categoria)) erro("Categoria inválida (aluguel, luz, água, fornecedor, produtos ou outros).");
     // Descrição opcional (pedido de 17/11/2026): em branco vira o nome da categoria (ou "Compra: <produto>").
     const semDescricao = input.descricao === undefined || input.descricao === null || String(input.descricao).trim() === "";
     let descricao = semDescricao ? CATEGORIAS[input.categoria] : textoLimpo(input.descricao, 2, 100);

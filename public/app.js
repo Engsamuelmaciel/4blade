@@ -4867,7 +4867,7 @@ function formNovaDespesa(doEstoque) {
     campo("Descrição (opcional)", { name: "desc", maxlength: "100", placeholder: "Em branco: usa o nome da categoria" }),
     el("div", { class: "lado-a-lado" },
       campo("Valor total (R$)", { name: "valor", inputmode: "decimal", required: true, placeholder: "0,00" }),
-      campo("Categoria", { tag: "select", name: "cat", opcoes: Object.entries(NOME_CATEGORIA) })),
+      campo("Categoria", { tag: "select", name: "cat", opcoes: [...Object.entries(NOME_CATEGORIA), ["produtos", "Produtos (entra no estoque)"]] })),
     el("div", { class: "lado-a-lado" },
       campo("Forma de pagamento", { tag: "select", name: "forma", opcoes: opcoesForma() }),
       blocoParcelas),
@@ -4890,6 +4890,10 @@ function formNovaDespesa(doEstoque) {
     linhaPaga.querySelector("label").textContent = n > 1 ? "A 1ª parcela já está paga" : "Já está paga (paguei hoje)";
     linhaCaixa.hidden = !(form.paga.checked && (forma === "dinheiro" || !forma));
     if (linhaCaixa.hidden) form.comCaixa.checked = false;
+    // Categoria "Produtos": a compra SEMPRE entra no estoque (abre e trava a opção, para nunca ficar só como despesa).
+    const categoriaProdutos = form.cat.value === "produtos";
+    if (categoriaProdutos) { form.lancaEst.checked = true; mais.open = true; }
+    form.lancaEst.disabled = categoriaProdutos;
     blocoEst.hidden = !form.lancaEst.checked;
     if (form.lancaEst.checked) form.rec.checked = false;
     // Opções do estoque: troca entre produto já cadastrado e produto novo; mostra preço de compra, venda, margem e lucro.
@@ -4922,6 +4926,8 @@ function formNovaDespesa(doEstoque) {
     quadroMargem.hidden = !linhas.length;
     quadroMargem.replaceChildren(...linhas.map(([t, val, cls]) => el("p", { class: `margem-linha ${cls || ""}`.trim() }, el("small", { text: t }), el("strong", { text: val }))));
   };
+  // Marcou "É compra de material/produto": a categoria já vira "Produtos" (a menos que já seja Fornecedor).
+  form.lancaEst.addEventListener("change", () => { if (form.lancaEst.checked && !["produtos", "fornecedor"].includes(form.cat.value)) form.cat.value = "produtos"; });
   form.addEventListener("input", atualizar);
   form.addEventListener("change", atualizar);
   form.addEventListener("submit", ev => {
@@ -4994,7 +5000,7 @@ async function telaContas() {
         direita: [el("span", { class: "preco", text: reais(c.valorCentavos) }), el("span", { class: `etiqueta ${stCor}`, text: stTxt })],
         detalhes: () => [
           el("dl", { class: "dados-item" },
-            el("dt", { text: "Categoria" }), el("dd", { text: NOME_CATEGORIA[c.categoria] }),
+            el("dt", { text: "Categoria" }), el("dd", { text: c.estoque ? "Produtos (estoque)" : NOME_CATEGORIA[c.categoria] }),
             el("dt", { text: "Vencimento" }), el("dd", { text: dataBR(c.vencimento) }),
             el("dt", { text: "Forma" }), el("dd", { text: c.forma ? NOME_FORMA_DESPESA[c.forma] : "Não informada" }),
             c.parcelas > 1 ? [el("dt", { text: "Parcela" }), el("dd", { text: `${c.parcela} de ${c.parcelas}` })] : null,

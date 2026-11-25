@@ -238,10 +238,11 @@ async function rodar(tela) {
     // Produto NOVO criado na própria despesa, com preço de compra, preço de venda, margem e lucro (26/11/2026)
     await ir(page, "Despesas");
     await abrirCadastro(page);
-    await page.selectOption("#c-cat", "fornecedor");
+    await page.selectOption("#c-cat", "produtos");   // categoria Produtos: já abre e trava o "lançar no estoque"
     await page.fill("#c-valor", "240,00");
-    await page.click(".mais-opcoes summary");
-    await page.check("#c-lancaEst");
+    await page.waitForSelector("[data-teste=conta-estoque]:visible");
+    assert.equal(await page.locator("#c-lancaEst").isChecked(), true);
+    assert.equal(await page.locator("#c-lancaEst").isDisabled(), true);
     await page.click("[data-modo-est=novo]");
     await page.fill("#c-estNome", "Pomada nova fictícia");
     await page.fill("#c-estQtd", "12");
@@ -256,6 +257,8 @@ async function rodar(tela) {
     await print("despesa-produto-novo-margem", false);
     await page.click("button:has-text('Salvar despesa')");
     await page.waitForSelector("text=/Produto criado e lançado no estoque/");
+    await abrirItem(page, "[data-conta^='Compra: Pomada nova fictícia']");
+    assert.match(await texto("[data-conta^='Compra: Pomada nova fictícia']"), /Produtos \(estoque\)/);
     await ir(page, "Produtos e estoque");
     assert.match(await texto('[data-estoque="Pomada nova fictícia"] [data-teste=saldo]'), /12 un\./);
 
