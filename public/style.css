@@ -2478,5 +2478,5 @@ main:has(.fc) { padding-top: 12px; }
 .etiqueta.largo { display: block; margin: 6px 0 0; }
 /* No celular as etiquetas do Mês somem; a de abertura especial fica (só um ponto dourado, para não apertar a célula) */
 @media (max-width: 700px) {
-  .mes-tag.especial { display: inline-block; width: 8px; height: 8px; padding: 0; border-radius: 50%; background: var(--dourado); color: transparent; font-size: 0; overflow: hidden; }
+  .mes-tag.especial { display: block; flex: none; min-width: 8px; width: 8px; height: 8px; padding: 0; border-radius: 50%; background: var(--dourado); color: transparent; font-size: 0; overflow: hidden; }
 }
