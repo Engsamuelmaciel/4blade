@@ -372,3 +372,12 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - **Novidades (25/11/2026):** em Minha página há a chave "Mostrar Novidades e promoções na página" (desligada, a seção some; os flyers continuam guardados e os links compartilhados funcionam). Ao criar o flyer, a caixa "Mostrar nas Novidades da minha página" decide se ele entra no carrossel. Na lista "Seus flyers", cada um tem à vista: Compartilhar, Ocultar/Mostrar na página, Usar de novo e Excluir.
 - **Flyers duram 24 horas (25/11/2026):** como os stories do Instagram e do WhatsApp. Depois de 24 h o flyer some da página e do link e a imagem é apagada sozinha (limpeza de hora em hora), para não ocupar espaço. Na lista, cada flyer mostra quanto falta ("Some em 23 h"). Não existe mais o campo "Válido até".
 
+
+## 30. Início do barbeiro (25/11/2026, pedido do responsável)
+- Ao entrar, o barbeiro cai no **Início** (primeira aba do menu de cima), um painel só dele:
+  - topo com a **foto dele** (a mesma colocada pelo gerente em Minha página → equipe; sem foto, as iniciais), saudação, nome da barbearia, data e quantos clientes tem hoje, e atalhos (Agenda, Produção, Serviços, Produtos);
+  - **Bruto hoje** (o que entrou dos atendimentos e vendas dele hoje) e **Líquido hoje** (a parte dele = comissões gravadas hoje); **Bruto no mês** (com dias trabalhados) e **Líquido no mês** (comissão do mês; embaixo, quanto falta receber ou "já coberto pelos vales");
+  - **Meus clientes de hoje**: hora, cliente, serviços e situação (Atendido, Faltou, Cancelado; o próximo em destaque). Tocar abre a ficha do horário;
+  - **Avisos**: próximo cliente, cliente com nota vencida, vale pego no mês (quanto será descontado), faltas de hoje e do mês, agenda livre, falta de foto;
+  - **Meu mês**: dias trabalhados, clientes atendidos, ticket médio e vales.
+- Servidor: `GET /equipe/minha-producao` devolve também `hoje`, `foto` e `marca` (sempre do próprio usuário da sessão).

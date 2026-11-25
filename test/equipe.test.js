@@ -152,6 +152,15 @@ describe("minha produção (barbeiro vê só a própria)", () => {
     // pedir de outra pessoa não funciona: a rota ignora id e sempre devolve o próprio
     const b = await get(`/api/equipe/minha-producao?mes=${mes}&id=${A.id}`, B.token);
     assert.equal(b.dados.pessoa.id, B.id);
+    // Início do barbeiro: "hoje" e foto são do próprio; hoje = último dia da semana simulada
+    for (const r of [a, b]) {
+      assert.equal(r.dados.hoje.data, SEMANA[6]);
+      const dia = r.dados.porDia.find(x => x.data === SEMANA[6]);
+      assert.equal(r.dados.hoje.brutoCentavos, dia ? dia.servicosCentavos + dia.produtosCentavos : 0);
+      assert.ok(r.dados.hoje.comissaoCentavos >= 0 && r.dados.hoje.comissaoCentavos <= r.dados.hoje.brutoCentavos);
+      assert.equal(r.dados.foto, null);
+      assert.ok("marca" in r.dados);
+    }
     assert.notEqual(b.dados.pessoa.producao.totalCentavos, a.dados.pessoa.producao.totalCentavos);
     assert.equal((await get(`/api/equipe/minha-producao?mes=${mes}`, cx.token)).status, 403);
     assert.equal((await get(`/api/equipe/pessoa?id=${A.id}&mes=${mes}`, A.token)).status, 403, "panorama de outros é só da gestão");

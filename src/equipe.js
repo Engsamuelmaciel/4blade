@@ -217,7 +217,27 @@ export async function rotasEquipe(ctx, path, method) {
     const r = await panoramaPessoa(ctx, ctx.user.id, lerMes(new URL(ctx.request.url).searchParams.get("mes")));
     const { custoCentavos, ...pessoa } = r.pessoa;   // custo para a barbearia é assunto da gestão
     void custoCentavos;
-    return json({ ...r, pessoa });
+    // Início do barbeiro (25/11/2026): números de hoje, foto dele (da Minha página) e marca da barbearia
+    const { db } = ctx, b = ctx.barbeariaId, eu = ctx.user.id, hoje = hojeBrasil();
+    const [cs, cp, foto, marca] = await Promise.all([
+      db.prepare(`SELECT COALESCE(SUM(c.valor_centavos), 0) AS v, COALESCE(SUM(c.base_centavos), 0) AS base FROM comissoes c
+                  JOIN finalizacoes f ON f.id = c.finalizacao_id JOIN caixas x ON x.id = f.caixa_id
+                  WHERE c.barbearia_id = ? AND c.barbeiro_id = ? AND c.estornada = 0 AND x.data = ?`).bind(b, eu, hoje).first(),
+      db.prepare(`SELECT COALESCE(SUM(c.valor_centavos), 0) AS v, COALESCE(SUM(c.base_centavos), 0) AS base FROM comissoes_produto c
+                  JOIN vendas v ON v.id = c.venda_id JOIN caixas x ON x.id = v.caixa_id
+                  WHERE c.barbearia_id = ? AND c.barbeiro_id = ? AND c.estornada = 0 AND x.data = ?`).bind(b, eu, hoje).first(),
+      db.prepare(`SELECT id FROM paginas_fotos WHERE barbearia_id = ? AND tipo = 'equipe' AND usuario_id = ? AND removida_em IS NULL
+                  ORDER BY criado_em DESC LIMIT 1`).bind(b, eu).first(),
+      db.prepare(`SELECT b.nome, (SELECT nome_exibicao FROM paginas WHERE barbearia_id = b.id) AS nome_pagina,
+                  (SELECT id FROM paginas_fotos WHERE barbearia_id = b.id AND tipo = 'logo' AND removida_em IS NULL ORDER BY criado_em DESC LIMIT 1) AS logo
+                  FROM barbearias b WHERE b.id = ?`).bind(b).first()
+    ]);
+    const dia = r.porDia.find(x => x.data === hoje);
+    return json({ ...r, pessoa,
+      hoje: { data: hoje, brutoCentavos: dia ? dia.servicosCentavos + dia.produtosCentavos : 0, atendimentos: dia ? dia.atendimentos : 0,
+        comissaoCentavos: Number(cs?.v || 0) + Number(cp?.v || 0) },
+      foto: foto?.id || null,
+      marca: { nome: marca?.nome_pagina || marca?.nome || null, logo: marca?.logo || null } });
   }
   exigirGestao(ctx);
   if (path === "/equipe/pagamento" && method === "GET") {

@@ -2021,3 +2021,22 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--suav
 .fl-item-acoes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .fl-item-acoes .botao { width: auto; margin: 0; }
 .fl-expira { font-weight: 700; color: var(--destaque); }
+
+/* ---------- INÍCIO DO BARBEIRO (25/11/2026) ---------- */
+.inicio-barbeiro .foto-barbeiro { object-fit: cover; object-position: center 25%; }
+.lista-hoje-barbeiro { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.linha-hoje { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--linha, var(--borda)); border-radius: 12px;
+  background: var(--cartao); color: var(--texto); text-align: left; cursor: pointer; font: inherit; min-height: 52px; }
+.linha-hoje:hover { border-color: var(--dourado); }
+.linha-hoje.proximo { border-color: var(--dourado); box-shadow: inset 3px 0 0 var(--dourado); }
+.linha-hoje-hora { font-size: 17px; font-variant-numeric: tabular-nums; min-width: 48px; }
+.linha-hoje-txt { flex: 1; min-width: 0; display: grid; }
+.linha-hoje-txt b, .linha-hoje-txt small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.linha-hoje-txt small { color: var(--suave); }
+.avisos-barbeiro { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.avisos-barbeiro li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--neutro); line-height: 1.35; }
+.avisos-barbeiro li .icone, .avisos-barbeiro li svg { flex: none; width: 20px; height: 20px; color: var(--dourado-texto, var(--dourado)); }
+.avisos-barbeiro li[data-aviso=vale], .avisos-barbeiro li[data-aviso=nota] { background: var(--amarelo-fundo); }
+/* A tela recebe o foco ao trocar (leitor de tela); sem moldura em volta dela. */
+#app:focus, #app:focus-visible { outline: none; }
+.grade-barbeiro-cartao .mini-grade { margin: 0; }

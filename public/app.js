@@ -4198,6 +4198,77 @@ async function telaMinhaProducao() {
       el("ul", { class: "lista-simples" }, r.servicos.map(x => el("li", { class: "linha-servico-top" }, el("span", { text: `${x.nome} · ${x.qtd}x` }), el("strong", { text: reais(x.totalCentavos) }))))) : null);
 }
 
+// ---------- INÍCIO DO BARBEIRO (25/11/2026) ----------
+// Recepção do barbeiro: foto dele (a mesma da Minha página), clientes de hoje, ganhos de hoje e do mês, vales e avisos.
+async function telaInicioBarbeiro() {
+  const hojeD = hojeLocal();
+  const [r, ag] = await Promise.all([api(`/equipe/minha-producao?mes=${hojeD.slice(0, 7)}`), api(`/agenda?data=${hojeD}`)]);
+  const p = r.pessoa, pr = p.producao, co = p.comissao, h = r.hoje;
+  const meus = ag.agendamentos.filter(a => a.barbeiroId === usuario.id && a.data === hojeD).sort((a, b) => a.inicio.localeCompare(b.inicio));
+  const ativos = meus.filter(a => a.situacao === "agendado" || a.situacao === "finalizado");
+  const agora = new Date().toTimeString().slice(0, 5);
+  const proximo = meus.find(a => a.situacao === "agendado" && a.fim > agora);
+  const faltam = meus.filter(a => a.situacao === "agendado").length;
+  const d = new Date(`${hojeD}T12:00:00`);
+  const hora = new Date().getHours();
+  const saudacao = hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite";
+  const nomeB = r.marca?.nome || usuario.barbearia?.nome || "";
+  const primeiro = usuario.nome.split(" ")[0];
+  const hero = el("section", { class: "inicio-hero inicio-barbeiro", "data-teste": "boas-vindas-barbeiro" },
+    el("div", { class: "inicio-marca" },
+      r.foto ? el("img", { class: "inicio-logo foto-barbeiro", src: fotoUrl(r.foto), alt: `Foto de ${primeiro}`, "data-teste": "foto-barbeiro" })
+        : el("span", { class: "inicio-logo inicial", "aria-hidden": "true", "data-teste": "foto-barbeiro-iniciais", text: iniciais(usuario.nome) }),
+      el("div", { class: "inicio-texto" },
+        el("small", { text: nomeB }),
+        el("h2", { text: `${saudacao}, ${primeiro}!` }),
+        el("p", { text: `${["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][d.getDay()]}, ${dataBR(hojeD)} · ${ativos.length ? `${ativos.length} cliente(s) hoje` : "nenhum cliente marcado hoje"}` }))),
+    el("nav", { class: "inicio-atalhos", "aria-label": "Atalhos" }, [
+      ["#/agenda", "Agenda", "agenda"], ["#/minha-producao", "Produção", "grafico"], ["#/servicos", "Serviços", "servicos"], ["#/produtos", "Produtos", "produtos"]
+    ].map(([hr, t, ic]) => el("a", { href: hr, class: "inicio-atalho", "data-atalho": t }, icone(ic), el("span", { text: t })))));
+
+  // Ganhos: bruto = o que entrou dos meus atendimentos e vendas; líquido = a minha parte (comissão)
+  const ganhos = el("div", { class: "resumo-despesas quatro", "data-teste": "ganhos-barbeiro" },
+    el("div", { class: "resumo-item" }, el("small", { text: "Bruto hoje" }), el("strong", { "data-teste": "bruto-hoje", text: reais(h.brutoCentavos) }), el("span", { text: `${h.atendimentos} atendimento(s)` })),
+    el("div", { class: "resumo-item ok" }, el("small", { text: "Líquido hoje (sua parte)" }), el("strong", { "data-teste": "liquido-hoje", text: reais(h.comissaoCentavos) }), el("span", { text: "comissão até agora" })),
+    el("div", { class: "resumo-item" }, el("small", { text: "Bruto no mês" }), el("strong", { "data-teste": "bruto-mes", text: reais(pr.totalCentavos) }), el("span", { text: `${pr.diasTrabalhados} dia(s) trabalhado(s)` })),
+    el("div", { class: "resumo-item ok" }, el("small", { text: "Líquido no mês" }), el("strong", { "data-teste": "liquido-mes", text: reais(co.totalCentavos) }), el("span", { text: p.aPagar.totalCentavos > 0 ? `a receber ${reais(p.aPagar.totalCentavos)}` : p.vales.aDescontarCentavos ? "já coberto pelos vales" : "nada a receber agora" })));
+
+  const ind = r.indicadores || {};
+  const grade = el("section", { class: "cartao grade-barbeiro-cartao" }, el("h3", { text: "Meu mês" }), el("div", { class: "mini-grade", "data-teste": "grade-barbeiro" },
+    mini("Dias trabalhados", String(pr.diasTrabalhados)),
+    mini("Clientes no mês", String(ind.clientesAtendidos ?? pr.atendimentosQtd)),
+    mini("Ticket médio", reais(pr.ticketMedioCentavos)),
+    mini("Vales no mês", p.vales.totalCentavos ? reais(p.vales.totalCentavos) : "Nenhum", null, "vales")));
+
+  // Clientes de hoje
+  const COR_SIT = { agendado: "neutra", finalizado: "verde", faltou: "vermelha", cancelado: "amarela" };
+  const etiqueta = a => el("span", { class: `etiqueta ${COR_SIT[a.situacao] || ""}`, text: a.situacao === "finalizado" ? "Atendido" : NOME_SITUACAO[a.situacao] });
+  const clientes = el("section", { class: "cartao", "data-teste": "clientes-hoje" },
+    el("div", { class: "secao-titulo" }, el("h3", { text: "Meus clientes de hoje" }), el("small", { class: "suave", text: faltam ? `${faltam} a atender` : "" })),
+    meus.length ? el("ul", { class: "lista-hoje-barbeiro" }, meus.map(a => el("li", {},
+      el("button", { type: "button", class: `linha-hoje ${a === proximo ? "proximo" : ""}`, "data-hoje": a.id, onclick: () => janelaAtendimento(a, true) },
+        el("strong", { class: "linha-hoje-hora", text: a.inicio }),
+        el("span", { class: "linha-hoje-txt" }, el("b", { text: a.cliente.nome }), el("small", { text: a.servicos.map(s => s.nome).join(" + ") || "—" })),
+        a === proximo ? el("span", { class: "etiqueta laranja", text: "Próximo" }) : etiqueta(a)))))
+      : el("p", { class: "vazio", text: "Nenhum cliente marcado para você hoje." }));
+
+  // Avisos pertinentes
+  const avisos = [];
+  if (proximo) avisos.push(["relogio", `Próximo cliente: ${proximo.cliente.nome} às ${proximo.inicio}.`, "proximo"]);
+  if (proximo?.cliente?.notaVencida) avisos.push(["sino", `${proximo.cliente.nome} tem nota vencida. Combine com o caixa antes de atender.`, "nota"]);
+  if (p.vales.aDescontarCentavos) avisos.push(["dinheiro", `Você pegou ${reais(p.vales.totalCentavos)} em vale este mês. ${reais(p.vales.aDescontarCentavos)} será descontado da sua comissão.`, "vale"]);
+  const faltasHoje = meus.filter(a => a.situacao === "faltou").length;
+  if (faltasHoje) avisos.push(["sino", `${faltasHoje} cliente(s) faltaram hoje.`, "faltas-hoje"]);
+  if (ind.faltas) avisos.push(["sino", `${ind.faltas} falta(s) no mês. Vale mandar um lembrete pelo WhatsApp na véspera.`, "faltas-mes"]);
+  if (!ativos.length) avisos.push(["agenda", "Agenda de hoje livre. Que tal divulgar seus horários para os clientes?", "livre"]);
+  if (!r.foto) avisos.push(["usuario", "Peça ao gerente para colocar a sua foto na página da barbearia: ela aparece aqui também.", "sem-foto"]);
+  const blocoAvisos = avisos.length ? el("section", { class: "cartao", "data-teste": "avisos-barbeiro" }, el("h3", { text: "Avisos" }),
+    el("ul", { class: "avisos-barbeiro" }, avisos.map(([ic, t, k]) => el("li", { "data-aviso": k }, icone(ic), el("span", { text: t }))))) : null;
+
+  mostrar(hero, ganhos,
+    el("div", { class: "duas-colunas visao-colunas" }, el("div", {}, clientes), el("div", {}, blocoAvisos, grade)));
+}
+
 // ---------- PAGAMENTO DA EQUIPE (17/11/2026) ----------
 // Por mês: o que cada pessoa produziu, comissão, salário fixo, vales e quanto falta pagar. "Pagar" registra tudo de uma vez.
 const estadoEquipePag = { mes: null, aba: "mes" };
@@ -6933,7 +7004,7 @@ function navPrincipal() {
   if (p === "plataforma") return [["plataforma", "Barbearias", "loja"], ["pedidos", "Pedidos", "clientes"], ["chamados", "Chamados", "suporte"]];
   if (usuario.assinatura?.bloqueada) return [["assinatura", "Assinatura", "dinheiro"], ["suporte", "Suporte", "suporte"]];
   if (p === "caixa") return [["visao-dia", "Hoje", "painel"], ["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["clientes", "Clientes", "clientes"], ["notas", "Notas", "contas"]];
-  if (p === "barbeiro") return [["agenda", "Agenda", "agenda"], ["minha-producao", "Produção", "grafico"], ["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]];
+  if (p === "barbeiro") return [["inicio", "Início", "casa"], ["agenda", "Agenda", "agenda"], ["minha-producao", "Produção", "grafico"], ["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]];
   return [["inicio", "Início", "painel"], ["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"],
     ["contas", "Despesas", "contas"], ["financeiro", "Relatórios", "grafico"]];
 }
@@ -6943,7 +7014,7 @@ function rotaAtual() {
   if (r === "contador" || r === "painel") return "financeiro";
   if (r === "pagamento-equipe") return "contas";
   if (r === "flyers") return "divulgacao";
-  return r === "inicio" ? "agenda" : r === "caixa-historico" || r === "caixa-dia" ? "caixa" : r === "estoque" ? "produtos" : r === "agenda-lote" ? (voltarLote === "#/agenda" ? "agenda" : "clientes") : r;
+  return r === "inicio" && !gestao() && usuario.perfil !== "barbeiro" ? "agenda" : r === "caixa-historico" || r === "caixa-dia" ? "caixa" : r === "estoque" ? "produtos" : r === "agenda-lote" ? (voltarLote === "#/agenda" ? "agenda" : "clientes") : r;
 }
 // 19/11/2026 (2ª revisão, pedido do responsável): menu no topo só para caixa, barbeiro e plataforma;
 // gerente e dono continuam com o menu lateral de antes (fixo no computador, ☰ no celular).
@@ -7063,7 +7134,7 @@ const ROTAS = {
   uso: { perfis: ["plataforma"], tela: telaUsoApp },
   "clientes-lote": { perfis: ["plataforma"], tela: telaClientesLoteSuporte },
   "horarios-lote": { perfis: ["plataforma"], tela: telaHorariosLoteSuporte },
-  inicio: { perfis: ["proprietario", "gerente", "barbeiro"], tela: () => (gestao() ? telaVisaoDia() : telaAgenda()) },
+  inicio: { perfis: ["proprietario", "gerente", "barbeiro"], tela: () => (gestao() ? telaVisaoDia() : telaInicioBarbeiro()) },
   caixa: { perfis: ["caixa", "proprietario", "gerente"], tela: telaCaixa },
   funcionamento: { perfis: ["proprietario", "gerente"], tela: telaFuncionamento },
   estoque: { perfis: ["proprietario", "gerente"], tela: telaEstoque },
