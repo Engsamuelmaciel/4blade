@@ -1,5 +1,5 @@
-/* Página da Barbearia (forblade.com.br/<endereço>). Primeiro para o celular; 4 temas prontos (o barbeiro escolhe).
-   Sem estilo inline (CSP): cores só por classe/variáveis. Contraste AA conferido para os 4 temas. */
+/* Página da Barbearia (forblade.com.br/<endereço>). Primeiro para o celular; aparência = cor (10) × modo (claro, escuro, preto e branco).
+   Sem estilo inline (CSP): cores só por classe/variáveis. */
 :root { color-scheme: light dark; }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
@@ -10,15 +10,43 @@ body {
 img { max-width: 100%; display: block; }
 a { color: inherit; }
 
-/* ---------- Temas ---------- */
-.tema-classico { color-scheme: dark; --fundo: #121417; --cartao: #1c1f24; --borda: #2c3138; --texto: #ece8df; --suave: #a9adb5;
-  --destaque: #e0a330; --sobre-destaque: #1a1408; --realce: #e0a330; --capa-fundo: linear-gradient(135deg, #24272c, #121417); }
-.tema-claro { color-scheme: light; --fundo: #f4f4f2; --cartao: #ffffff; --borda: #e3e3df; --texto: #1f2328; --suave: #5f6670;
-  --destaque: #24272c; --sobre-destaque: #ffffff; --realce: #a16207; --capa-fundo: linear-gradient(135deg, #3a3e45, #1f2328); }
-.tema-vintage { color-scheme: light; --fundo: #efe6d6; --cartao: #faf6ee; --borda: #e0d3bd; --texto: #3b2a1e; --suave: #6e5a48;
-  --destaque: #8b3a1e; --sobre-destaque: #ffffff; --realce: #8b3a1e; --capa-fundo: linear-gradient(135deg, #5b3a24, #2f1e13); }
-.tema-moderno { color-scheme: dark; --fundo: #140f2c; --cartao: #1f1842; --borda: #352c66; --texto: #f2efff; --suave: #b9b2dd;
-  --destaque: #00d2ff; --sobre-destaque: #0b0820; --realce: #00d2ff; --capa-fundo: linear-gradient(135deg, #3b2a8f, #140f2c); }
+/* ---------- Aparência (25/11/2026): modo (claro | escuro | pb) × cor de destaque ----------
+   Cada cor tem --c (viva, para fundo escuro), --c-escura (texto/botão em fundo claro, contraste AA com branco) e --c-sobre (texto sobre --c). */
+.cor-navalha   { --c: #e0a330; --c-escura: #8a5a06; --c-sobre: #1a1408; }
+.cor-ferrugem  { --c: #e07a4b; --c-escura: #8b3a1e; --c-sobre: #1c0d06; }
+.cor-indigo    { --c: #00d2ff; --c-escura: #00708f; --c-sobre: #0b0820; }
+.cor-ganache   { --c: #1fd15a; --c-escura: #0a6a2c; --c-sobre: #062012; }
+.cor-berinjela { --c: #ff7a3d; --c-escura: #c2410c; --c-sobre: #1f0a02; }
+.cor-violeta   { --c: #a58bff; --c-escura: #5a2be0; --c-sobre: #120a2e; }
+.cor-cereja    { --c: #ff5c77; --c-escura: #c8102e; --c-sobre: #23050b; }
+.cor-oceano    { --c: #38bdf8; --c-escura: #0369a1; --c-sobre: #04131d; }
+.cor-esmeralda { --c: #34d399; --c-escura: #047857; --c-sobre: #03170f; }
+.cor-bordo     { --c: #f07a98; --c-escura: #8a1c3c; --c-sobre: #22060f; }
+
+.modo-escuro { color-scheme: dark; --fundo: #121417; --cartao: #1c1f24; --borda: #2c3138; --texto: #ece8df; --suave: #a9adb5;
+  --destaque: var(--c); --sobre-destaque: var(--c-sobre); --realce: var(--c); --capa-fundo: linear-gradient(135deg, #24272c, #121417); }
+.modo-claro { color-scheme: light; --fundo: #f4f4f2; --cartao: #ffffff; --borda: #e3e3df; --texto: #1f2328; --suave: #5f6670;
+  --destaque: var(--c-escura); --sobre-destaque: #ffffff; --realce: var(--c-escura); --capa-fundo: linear-gradient(135deg, #3a3e45, #1f2328); }
+/* Preto e branco: sem cor de destaque; contraste máximo e fotos em tons de cinza */
+.modo-pb { color-scheme: light; --fundo: #ffffff; --cartao: #ffffff; --borda: #d4d4d4; --texto: #0a0a0a; --suave: #4b4b4b;
+  --destaque: #0a0a0a; --sobre-destaque: #ffffff; --realce: #0a0a0a; --capa-fundo: linear-gradient(135deg, #2a2a2a, #000000); }
+.modo-pb .pg-capa-img, .modo-pb .pg-galeria img, .modo-pb .pg-equipe img { filter: grayscale(1) contrast(1.05); }
+.modo-pb .pg-secao { box-shadow: none; }
+
+/* Toques de cada cor no fundo (mantém o jeito dos temas antigos: vintage creme, moderno índigo etc.) */
+.modo-claro.cor-ferrugem, .modo-claro.cor-ganache { --fundo: #efe6d6; --cartao: #faf6ee; --borda: #e0d3bd; --texto: #3b2a1e; --suave: #6e5a48;
+  --capa-fundo: linear-gradient(135deg, #5b3a24, #2f1e13); }
+.modo-claro.cor-berinjela, .modo-claro.cor-bordo { --fundo: #f3eeea; --cartao: #fffbf8; --borda: #e6dcd4; }
+.modo-claro.cor-violeta, .modo-claro.cor-indigo { --fundo: #f2f1f8; --cartao: #ffffff; --borda: #e2e0ee; }
+.modo-claro.cor-oceano { --fundo: #eef4f8; --borda: #dbe6ee; }
+.modo-claro.cor-esmeralda { --fundo: #eef5f1; --borda: #d8e7df; }
+.modo-escuro.cor-indigo, .modo-escuro.cor-violeta { --fundo: #140f2c; --cartao: #1f1842; --borda: #352c66; --texto: #f2efff; --suave: #b9b2dd;
+  --capa-fundo: linear-gradient(135deg, #3b2a8f, #140f2c); }
+.modo-escuro.cor-ferrugem, .modo-escuro.cor-ganache { --fundo: #16110e; --cartao: #211a16; --borda: #3a2e27; --capa-fundo: linear-gradient(135deg, #4a2c21, #16110e); }
+.modo-escuro.cor-berinjela, .modo-escuro.cor-bordo { --fundo: #141017; --cartao: #1f1923; --borda: #372e3d; --capa-fundo: linear-gradient(135deg, #3d2147, #141017); }
+.modo-escuro.cor-cereja { --fundo: #1a1e27; --cartao: #232835; --borda: #353c4c; }
+.modo-escuro.cor-oceano { --fundo: #0e1720; --cartao: #16222e; --borda: #263646; }
+.modo-escuro.cor-esmeralda { --fundo: #0f1714; --cartao: #17221d; --borda: #26362e; }
 
 /* ---------- Capa ---------- */
 .pg-capa { position: relative; min-height: 340px; display: flex; align-items: flex-end; background: var(--capa-fundo); color: #fff; overflow: hidden; }
@@ -164,16 +192,17 @@ html { background: var(--fundo); }
 .pg-mapa iframe { display: block; width: 100%; height: 100%; border: 0; }
 @media (min-width: 720px) { .pg-mapa { aspect-ratio: 21 / 8; } }
 
-/* Promoções (flyers): carrossel deslizante; o do link (?promo=) vem destacado */
-.pg-promos { list-style: none; margin: 0; padding: 8px 8px 12px; display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; }
-.pg-promo { flex: 0 0 auto; width: 62%; max-width: 260px; scroll-snap-align: center; display: grid; gap: 8px; align-content: start; }
-.pg-promo.quadrado, .pg-promo.retrato { width: 78%; max-width: 320px; }
-.pg-promo .pg-foto { aspect-ratio: 9 / 16; border-radius: 14px; box-shadow: 0 6px 18px rgba(0, 0, 0, .18); }
+/* Promoções (flyers): todos com a MESMA altura, lado a lado, alinhados; a largura segue o formato (sem cortar a arte).
+   O pedido de horário fica só no botão fixo "Solicitar meu horário" (25/11/2026: sem botão repetido em cada flyer). */
+.pg-promos { --altura-promo: 330px; list-style: none; margin: 0 -4px; padding: 6px 4px 14px; display: flex; gap: 12px; overflow-x: auto;
+  scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; align-items: flex-start; }
+.pg-promos::-webkit-scrollbar { display: none; }
+.pg-promo { flex: none; scroll-snap-align: start; }
+.pg-promo .pg-foto { height: var(--altura-promo); width: auto; aspect-ratio: 9 / 16; border-radius: 14px; box-shadow: 0 6px 18px rgba(0, 0, 0, .18); background: var(--borda); }
 .pg-promo.quadrado .pg-foto { aspect-ratio: 1; }
 .pg-promo.retrato .pg-foto { aspect-ratio: 4 / 5; }
+.pg-promo .pg-foto img { width: 100%; height: 100%; object-fit: cover; }
 .pg-promo.destaque .pg-foto { outline: 3px solid var(--realce); outline-offset: 3px; }
-.pg-promo-whats { text-align: center; font-size: 14px; padding: 10px 12px; }
-@media (min-width: 720px) {
-  .pg-promo { width: 230px; }
-  .pg-promo.quadrado, .pg-promo.retrato { width: 290px; }
-}
+.pg-promos-dica { margin: -4px 0 0; font-size: 13px; color: var(--suave); }
+@media (min-width: 720px) { .pg-promos { --altura-promo: 380px; } }
+

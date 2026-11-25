@@ -6131,6 +6131,10 @@ function icone(nome) {
 // Dono e gerente editam: endereço, fotos, textos, tema, contato, endereço físico, serviços, equipe e horários livres.
 // "Solicitar meu horário" na página abre o WhatsApp da barbearia (sem agendamento pelo site).
 const NOME_TEMA_PAGINA = { classico: ["Clássico", "grafite e dourado"], claro: ["Claro", "minimalista"], vintage: ["Vintage", "creme e ferrugem"], moderno: ["Moderno", "índigo e ciano"] };
+// Aparência da página (25/11/2026): modo × cor
+const NOME_MODO_PAGINA = { claro: "Clara", escuro: "Escura", pb: "Preto e branco" };
+const NOME_COR_PAGINA = { navalha: "Navalha", ferrugem: "Ferrugem", indigo: "Índigo", ganache: "Ganache", berinjela: "Berinjela", violeta: "Violeta",
+  cereja: "Cereja", oceano: "Oceano", esmeralda: "Esmeralda", bordo: "Bordô" };
 const linkPagina = slug => `${location.origin}/${slug}`;
 const fotoUrl = id => `/f/${id}`;
 
@@ -6283,20 +6287,31 @@ async function telaMinhaPagina() {
     el("p", { class: "suave", text: `As fotos são reduzidas no celular antes de enviar. Usado: ${(f.usoBytes / 1048576).toFixed(1).replace(".", ",")} MB de ${Math.round(f.limiteBytes / 1048576)} MB.` })
   ];
 
-  // ---- Textos e tema ----
-  let temaEscolhido = p.tema;
-  const temas = el("div", { class: "paletas mp-temas", role: "group", "aria-label": "Tema da página" }, d.temas.map(t =>
-    el("button", { type: "button", class: `paleta-opcao ${t === p.tema ? "ativa" : ""}`, "data-tema-pagina": t, "aria-pressed": t === p.tema ? "true" : "false",
-      onclick: ev => { temaEscolhido = t; temas.querySelectorAll("button").forEach(b => { const on = b.dataset.temaPagina === t; b.classList.toggle("ativa", on); b.setAttribute("aria-pressed", String(on)); }); ev.preventDefault(); } },
-      el("span", { class: `amostra amostra-pg-${t}`, "aria-hidden": "true" }, el("span"), el("span")),
-      el("strong", { text: NOME_TEMA_PAGINA[t][0] }), el("small", { text: NOME_TEMA_PAGINA[t][1] }))));
+  // ---- Textos e aparência (cor × clara/escura/preto e branco) ----
+  const ap = { ...p.aparencia };
+  const previa = el("div", { class: "mp-previa", "data-teste": "mp-previa", "aria-hidden": "true" },
+    el("span", { class: "mpv-capa" }), el("span", { class: "mpv-cartao" }, el("span", { class: "mpv-linha" }), el("span", { class: "mpv-linha curta" })), el("span", { class: "mpv-botao" }));
+  const pintarPrevia = () => { previa.className = `mp-previa mpv-${ap.modo} mpv-cor-${ap.cor}`; };
+  const modos = el("div", { class: "alterna largo mp-modos", role: "radiogroup", "aria-label": "Aparência da página" }, d.modos.map(m =>
+    el("button", { type: "button", class: `botao ${m === ap.modo ? "ativo" : ""}`, role: "radio", "aria-checked": String(m === ap.modo), "data-modo-pagina": m,
+      onclick: () => { ap.modo = m; modos.querySelectorAll("button").forEach(b => { const on = b.dataset.modoPagina === m; b.classList.toggle("ativo", on); b.setAttribute("aria-checked", String(on)); });
+        cores.classList.toggle("desligado", m === "pb"); pintarPrevia(); } }, NOME_MODO_PAGINA[m])));
+  const cores = el("div", { class: `mp-cores ${ap.modo === "pb" ? "desligado" : ""}`, role: "radiogroup", "aria-label": "Cor de destaque" }, d.cores.map(c =>
+    el("button", { type: "button", class: `mp-cor ${c === ap.cor ? "ativa" : ""}`, role: "radio", "aria-checked": String(c === ap.cor), "data-cor-pagina": c,
+      onclick: () => { ap.cor = c; cores.querySelectorAll("button").forEach(b => { const on = b.dataset.corPagina === c; b.classList.toggle("ativa", on); b.setAttribute("aria-checked", String(on)); }); pintarPrevia(); } },
+      el("span", { class: `mp-cor-bola mpv-cor-${c}`, "aria-hidden": "true" }), el("small", { text: NOME_COR_PAGINA[c] }))));
+  pintarPrevia();
   const fTextos = el("form", { class: "mp-form" },
     campo("Nome na página", { name: "nomeExibicao", value: p.nomeExibicao || "", maxlength: "80", placeholder: d.barbearia.nome, autocomplete: "off" }, "Vazio = nome da barbearia no sistema."),
     campo("Frase de efeito", { name: "frase", value: p.frase || "", maxlength: "120", placeholder: "Ex.: Corte de respeito desde 2012.", autocomplete: "off" }),
     campo("Sobre a barbearia", { tag: "textarea", name: "sobre", value: p.sobre || "", maxlength: "600", rows: "5", placeholder: "Conte a história, o estilo e o que a barbearia oferece." }, "Até 600 caracteres."),
-    el("h4", { text: "Tema" }), temas,
-    el("button", { type: "submit", class: "botao principal pequeno", text: "Salvar textos e tema" }));
-  fTextos.addEventListener("submit", ev => { ev.preventDefault(); salvar({ nomeExibicao: fTextos.nomeExibicao.value, frase: fTextos.frase.value, sobre: fTextos.sobre.value, tema: temaEscolhido }); });
+    el("h4", { text: "Aparência" }),
+    el("div", { class: "mp-aparencia" },
+      el("div", {}, modos, el("p", { class: "ajuda", text: "Clara, escura ou preto e branco (sem cor e com as fotos em tons de cinza)." }),
+        el("p", { class: "rotulo-secao mp-rotulo-cor", text: "Cor de destaque" }), cores),
+      previa),
+    el("button", { type: "submit", class: "botao principal pequeno", text: "Salvar textos e aparência" }));
+  fTextos.addEventListener("submit", ev => { ev.preventDefault(); salvar({ nomeExibicao: fTextos.nomeExibicao.value, frase: fTextos.frase.value, sobre: fTextos.sobre.value, cor: ap.cor, modo: ap.modo }); });
 
   // ---- Contato e endereço ----
   const fContato = el("form", { class: "mp-form" },
@@ -6373,7 +6388,7 @@ async function telaMinhaPagina() {
     numeros,
     el("div", { class: "mp-secoes" },
       secao("fotos", "Fotos", `${f.logo ? "Logo ✓" : "Sem logo"} · ${f.capa ? "capa ✓" : "sem capa"} · ${f.galeria.length} na galeria`, blocoFotos),
-      secao("textos", "Textos e tema", NOME_TEMA_PAGINA[p.tema][0], fTextos),
+      secao("textos", "Textos e aparência", `${NOME_MODO_PAGINA[p.aparencia.modo]}${p.aparencia.modo === "pb" ? "" : ` · ${NOME_COR_PAGINA[p.aparencia.cor]}`}`, fTextos),
       secao("contato", "Contato e endereço", [p.whatsapp || d.barbearia.telefone ? "WhatsApp ✓" : "sem WhatsApp", p.endRua ? "endereço ✓" : "sem endereço"].join(" · "), fContato),
       secao("servicos", "Serviços na página", `${servicos.filter(s => s.visivel).length} de ${servicos.length}`, blocoServ),
       secao("equipe", "Equipe na página", `${equipe.filter(u => u.visivel).length} aparecendo`, blocoEq),

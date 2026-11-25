@@ -241,8 +241,8 @@ async function rodar(tela) {
     await pub.waitForFunction(() => { const i = document.querySelector(".pg-promo.destaque img"); return i.complete && i.naturalWidth > 0; });
     const carregou = await pub.evaluate(() => document.querySelector(".pg-promo.destaque img").naturalWidth);
     assert.equal(carregou, 1080);
-    const queroHref = await pub.getAttribute(".pg-promo.destaque .pg-promo-whats", "href");
-    assert.match(decodeURIComponent(queroHref), /Vi "Corte \+ barba" na sua página/);
+    assert.equal(await pub.locator(".pg-promo-whats").count(), 0, "sem botão repetido em cada flyer");
+    assert.ok(await pub.locator("#pg-solicitar").isVisible(), "o pedido fica no botão fixo");
     await pub.waitForTimeout(400);
     await pub.screenshot({ path: join(PRINTS, `${tela.nome}-${String(++n).padStart(2, "0")}-pagina-promocao.png`), fullPage: false });
     console.log(`  print: docs/prints/flyers/${tela.nome}-${String(n).padStart(2, "0")}-pagina-promocao.png`);

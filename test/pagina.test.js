@@ -100,7 +100,20 @@ describe("página da barbearia", () => {
     assert.match(pg.texto, /Barba completa[\s\S]*Corte masculino/, "ordem escolhida");
     assert.match(pg.texto, /Toalha quente/);
     assert.match(pg.texto, /R\$ 40,00/);
-    assert.match(pg.texto, /class="tema-vintage"/);
+    assert.match(pg.texto, /<body class="modo-claro cor-ferrugem"/, "tema antigo vintage = ferrugem em fundo claro");
+    // Aparência (25/11/2026): cor × modo; inválidos recusados; auditado
+    assert.equal((await post("/api/pagina/salvar", ger.token, { cor: "roxo" })).status, 400);
+    assert.equal((await post("/api/pagina/salvar", ger.token, { modo: "neon" })).status, 400);
+    assert.equal((await post("/api/pagina/salvar", ger.token, { cor: "oceano", modo: "escuro" })).status, 200);
+    assert.match((await abrir(amb, "/navalhaeco")).texto, /<html lang="pt-BR" class="modo-escuro cor-oceano">/);
+    assert.equal((await post("/api/pagina/salvar", ger.token, { modo: "pb" })).status, 200);
+    assert.match((await abrir(amb, "/navalhaeco")).texto, /<body class="modo-pb cor-oceano"/);
+    const edAp = (await get("/api/pagina", ger.token)).dados;
+    assert.deepEqual(edAp.pagina.aparencia, { cor: "oceano", modo: "pb" });
+    assert.equal(edAp.cores.length, 10);
+    assert.deepEqual(edAp.modos, ["claro", "escuro", "pb"]);
+    const audAp = env.DB.raw.prepare("SELECT detalhes FROM auditoria WHERE acao = 'pagina_editada' ORDER BY rowid DESC LIMIT 1").get();
+    assert.match(audAp.detalhes, /"aparencia":\{"antes":\{"cor":"oceano","modo":"escuro"\},"depois":\{"cor":"oceano","modo":"pb"\}\}/);
     assert.match(pg.texto, /"@type":"HairSalon"/);
     assert.match(pg.texto, /rel="canonical" href="https:\/\/forblade\.teste\/navalhaeco"/);
     assert.match(pg.texto, /Rua Exemplo, 123/);

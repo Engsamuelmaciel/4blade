@@ -125,8 +125,9 @@ async function rodar(tela) {
     sec = await abrirSecao("textos");
     await sec.locator("[name=frase]").fill("Corte de respeito desde 2012.");
     await sec.locator("[name=sobre]").fill("Barbearia de bairro, com atendimento sem pressa, café passado na hora e profissionais que entendem de degradê, barba e pigmentação.");
-    await sec.locator('[data-tema-pagina="classico"]').click();
-    await sec.locator('button:has-text("Salvar textos e tema")').click();
+    await sec.locator("[data-modo-pagina=escuro]").click();
+    await sec.locator("[data-cor-pagina=navalha]").click();
+    await sec.locator('button:has-text("Salvar textos e aparência")').click();
     await page.waitForSelector("text=Salvo.");
     await pronto();
 
@@ -249,6 +250,38 @@ async function rodar(tela) {
     await pub.waitForSelector("#pg-ampliar[open]");
     await print("pagina-publica-foto-ampliada", { inteira: false, pg: pub });
     await pub.click("#pg-ampliar .pg-fechar");
+
+    passo("aparência: clara + violeta, escura + oceano e preto e branco (escolhidas na Minha página)");
+    const quadros = [];
+    for (const [modo, cor] of [["claro", "violeta"], ["escuro", "oceano"], ["pb", "oceano"]]) {
+      const sec = page.locator("[data-secao-pagina=textos]");
+      if (await sec.getAttribute("open") === null) await sec.locator(":scope > summary").click();
+      await sec.locator(`[data-modo-pagina=${modo}]`).click();
+      if (modo !== "pb") await sec.locator(`[data-cor-pagina=${cor}]`).click();
+      else assert.match(await sec.locator(".mp-cores").getAttribute("class"), /desligado/, "no preto e branco a cor fica apagada");
+      assert.match(await sec.locator("[data-teste=mp-previa]").getAttribute("class"), new RegExp(`mpv-${modo}`));
+      if (modo === "claro") await print("aparencia-editor", { inteira: false });
+      await sec.locator('button:has-text("Salvar textos e aparência")').click();
+      await page.waitForSelector("text=Salvo.");
+      await pronto();
+      await pub.goto(`${base}/semana-ficticia`);
+      await pub.waitForSelector(`body.modo-${modo}.cor-${cor}`);
+      await pub.waitForTimeout(300);
+      const arq = join(PRINTS, `${tela.nome}-aparencia-${modo}.png`);
+      await pub.screenshot({ path: arq });
+      quadros.push(arq);
+    }
+    if (!tela.movel) {
+      const imgs = await Promise.all(quadros.map(a => sharp(a).resize(683).toBuffer()));
+      const alt = (await sharp(imgs[0]).metadata()).height;
+      await sharp({ create: { width: 683 * 3 + 40, height: alt + 20, channels: 3, background: "#d9d9d9" } })
+        .composite(imgs.map((b, i) => ({ input: b, left: 10 + i * 693, top: 10 }))).png().toFile(join(PRINTS, "aparencias-clara-escura-pb.png"));
+    } else {
+      const imgs = await Promise.all(quadros.map(a => sharp(a).resize(390).toBuffer()));
+      const alt = (await sharp(imgs[0]).metadata()).height;
+      await sharp({ create: { width: 390 * 3 + 40, height: alt + 20, channels: 3, background: "#d9d9d9" } })
+        .composite(imgs.map((b, i) => ({ input: b, left: 10 + i * 400, top: 10 }))).png().toFile(join(PRINTS, "celular-aparencias-clara-escura-pb.png"));
+    }
 
     passo("tira do ar: o link mostra a página neutra");
     await page.click("[data-teste=mp-topo] button:has-text('Tirar do ar')");

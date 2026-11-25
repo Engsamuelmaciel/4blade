@@ -366,3 +366,7 @@ Cada entrega: testes automáticos + teste no navegador (computador 1366 px e cel
 - Subtítulos das telas reescritos: dizem para que serve a tela (em vez de "toque aqui para…").
 - Equipe: primeiro as vagas e a lista; o cadastro de pessoa fica no fim (no computador, em duas colunas).
 
+## 29. Página da barbearia: promoções e aparência (25/11/2026, pedido do responsável)
+- Novidades e promoções: os flyers ficam lado a lado, todos com a mesma altura (a largura segue o formato, sem cortar a arte); sem botão em cada flyer — o pedido de horário fica só no botão fixo "Solicitar meu horário". Tocar no flyer amplia.
+- Aparência da página = **aparência** (Clara, Escura ou Preto e branco) × **cor de destaque** (Navalha, Ferrugem, Índigo, Ganache, Berinjela, Violeta, Cereja, Oceano, Esmeralda, Bordô). No preto e branco a cor não aparece e as fotos ficam em tons de cinza. Páginas já criadas continuam com o tema que tinham.
+

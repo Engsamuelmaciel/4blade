@@ -53,7 +53,7 @@ describe("flyers", () => {
     // catálogo público: seção Promoções + link com prévia (og:image = flyer)
     let pg = await abrir(amb, `/${amb.slug}`);
     assert.match(pg.texto, /<h2 id="t-promo">Novidades e promoções<\/h2>/);
-    assert.match(pg.texto, /class="pg-botao pg-promo-whats"[^>]*>Quero agendar</);
+    assert.doesNotMatch(pg.texto, /pg-promo-whats/, "sem botão repetido em cada flyer: o pedido fica no botão fixo");
     assert.match(pg.texto, new RegExp(`id="promo-${f.id}"`));
     pg = await abrir(amb, `/${amb.slug}?promo=${f.id}`);
     assert.match(pg.texto, new RegExp(`<meta property="og:image" content="https://forblade.teste/f/${f.id}">`));

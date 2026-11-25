@@ -14,6 +14,15 @@ const erro = (msg, status = 400, extra) => { throw new HttpError(msg, status, ex
 
 // ---------- REGRAS ----------
 export const TEMAS = ["classico", "claro", "vintage", "moderno"];
+// Aparência (25/11/2026): cor de destaque × aparência. Sem linha em paginas_aparencia, vale o tema antigo.
+export const CORES_PAGINA = ["navalha", "ferrugem", "indigo", "ganache", "berinjela", "violeta", "cereja", "oceano", "esmeralda", "bordo"];
+export const MODOS_PAGINA = ["claro", "escuro", "pb"];
+const TEMA_ANTIGO = { classico: ["navalha", "escuro"], claro: ["navalha", "claro"], vintage: ["ferrugem", "claro"], moderno: ["indigo", "escuro"] };
+const aparenciaDe = p => (CORES_PAGINA.includes(p.ap_cor) && MODOS_PAGINA.includes(p.ap_modo)
+  ? { cor: p.ap_cor, modo: p.ap_modo }
+  : (([cor, modo]) => ({ cor, modo }))(TEMA_ANTIGO[p.tema] || TEMA_ANTIGO.classico));
+const classeAparencia = p => { const a = aparenciaDe(p); return `modo-${a.modo} cor-${a.cor}`; };
+const SQL_PAGINA = "SELECT p.*, a.cor AS ap_cor, a.modo AS ap_modo FROM paginas p LEFT JOIN paginas_aparencia a ON a.barbearia_id = p.barbearia_id";
 export const FORMAS_PAGINA = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro" };
 export const MAX_GALERIA = 12;
 export const MAX_FOTO_BYTES = 700 * 1024;              // o celular já reduz para ~500 KB; folga para PNG pequeno
@@ -105,7 +114,7 @@ const agoraMinBrasil = () => { const d = new Date(Date.now() - 3 * 3600 * 1000);
 const urlFoto = (origem, id) => `${origem}/f/${id}`;
 
 async function lerPagina(db, barbeariaId) {
-  return db.prepare("SELECT * FROM paginas WHERE barbearia_id = ?").bind(barbeariaId).first();
+  return db.prepare(`${SQL_PAGINA} WHERE p.barbearia_id = ?`).bind(barbeariaId).first();
 }
 
 // Cria a página (não publicada) na primeira vez que o gerente abre "Minha página", com um endereço livre sugerido.
@@ -230,7 +239,7 @@ export async function rotaPublicaPagina(request, env) {
   const m = url.pathname.match(/^\/([a-z0-9-]{1,60})\/?$/);
   if (!m || RESERVADOS.has(m[1])) return null;
   const slug = m[1];
-  const p = await db.prepare("SELECT * FROM paginas WHERE slug = ?").bind(slug).first();
+  const p = await db.prepare(`${SQL_PAGINA} WHERE p.slug = ?`).bind(slug).first();
   if (!p) {
     const antigo = await db.prepare(`SELECT p.slug FROM paginas_slugs_antigos a JOIN paginas p ON p.barbearia_id = a.barbearia_id
                                      WHERE a.slug = ? AND a.valido_ate >= ?`).bind(slug, hojeBrasil()).first();
@@ -267,7 +276,7 @@ async function barbeariaNoAr(db, env, barbeariaId) {
 function paginaIndisponivel() {
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex"><title>Página indisponível</title><link rel="stylesheet" href="/pagina.css"></head>
-<body class="tema-classico indisponivel"><main class="pg-indisponivel"><img src="/icons/logo.png" alt="4blade" width="120" height="49">
+<body class="modo-escuro cor-navalha indisponivel"><main class="pg-indisponivel"><img src="/icons/logo.png" alt="4blade" width="120" height="49">
 <h1>Esta página não está disponível no momento.</h1><p>Confira o endereço ou fale direto com a barbearia.</p>
 <a class="pg-botao" href="/">Conhecer o 4Blade</a></main></body></html>`;
   return new Response(html, { status: 404, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex", ...CABECALHOS } });
@@ -333,7 +342,7 @@ function montarHtml({ p, c, aberto, horarios, origem, previa, promo = null, supo
   const ogUrl = promo ? `${url}?promo=${promo.id}` : url;
   const promosHtml = c.flyers.map(f => `<li id="promo-${e(f.id)}" class="pg-promo ${e(f.formato)}${promo && promo.id === f.id ? " destaque" : ""}">
       <button type="button" class="pg-foto" aria-label="Ampliar: ${e(f.titulo)}"><img src="/f/${e(f.id)}" alt="${e(f.titulo)}${f.texto ? ` — ${e(f.texto)}` : ""}" loading="lazy"></button>
-      ${c.whatsapp ? `<a class="pg-botao pg-promo-whats" data-evento="whatsapp" href="${e(linkWhats(c.whatsapp, `Olá, ${nome}! Vi "${f.titulo}" na sua página e quero agendar.`))}" target="_blank" rel="noopener">Quero agendar</a>` : ""}</li>`).join("");
+      </li>`).join("");
   const msgPadrao = mensagemWhats(nome, null, p.mensagem_padrao);
   const whats = c.whatsapp ? linkWhats(c.whatsapp, msgPadrao) : null;
   const mapa = p.maps_url && /^https:\/\//.test(p.maps_url) ? p.maps_url
@@ -400,7 +409,7 @@ function montarHtml({ p, c, aberto, horarios, origem, previa, promo = null, supo
   }).join("") : "";
 
   return `<!doctype html>
-<html lang="pt-BR" class="tema-${e(TEMAS.includes(p.tema) ? p.tema : "classico")}">
+<html lang="pt-BR" class="${e(classeAparencia(p))}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -419,7 +428,7 @@ ${previa ? '<meta name="robots" content="noindex">' : `<link rel="canonical" hre
 <script src="/pagina.js" defer></script>
 <script type="application/ld+json">${ldJson}</script>
 </head>
-<body class="tema-${e(TEMAS.includes(p.tema) ? p.tema : "classico")}" data-slug="${e(p.slug)}" data-nome="${e(nome)}"
+<body class="${e(classeAparencia(p))}" data-slug="${e(p.slug)}" data-nome="${e(nome)}"
   ${c.whatsapp ? `data-whats="${e(c.whatsapp)}" data-msg-padrao="${e(msgPadrao)}"` : ""}>
 ${previa ? '<div class="pg-faixa-previa" role="status">Prévia: só você está vendo. Publique em "Minha página" para todos verem.</div>' : ""}
 <header class="pg-capa${c.capa ? "" : " sem-foto"}">
@@ -435,7 +444,7 @@ ${previa ? '<div class="pg-faixa-previa" role="status">Prévia: só você está 
 <main class="pg-corpo">
   ${whats ? `<div class="pg-cta"><a class="pg-botao grande" id="pg-solicitar" data-evento="whatsapp" href="${e(whats)}" target="_blank" rel="noopener">Solicitar meu horário</a>
     <p class="pg-cta-ajuda" id="pg-escolhidos" hidden></p></div>` : ""}
-  ${promosHtml ? `<section class="pg-secao" aria-labelledby="t-promo"><h2 id="t-promo">Novidades e promoções</h2><ul class="pg-promos">${promosHtml}</ul></section>` : ""}
+  ${promosHtml ? `<section class="pg-secao" aria-labelledby="t-promo"><h2 id="t-promo">Novidades e promoções</h2><ul class="pg-promos">${promosHtml}</ul>${c.flyers.length > 1 ? '<p class="pg-promos-dica">Deslize para ver mais · toque para ampliar</p>' : ""}</section>` : ""}
   ${c.servicos.length ? `<section class="pg-secao" aria-labelledby="t-serv"><h2 id="t-serv">Serviços</h2>
     ${c.whatsapp ? '<p class="pg-dica">Toque nos serviços que você quer e depois em <b>Solicitar meu horário</b>.</p>' : ""}
     ${servicosHtml}</section>` : ""}
@@ -552,7 +561,7 @@ async function dadosEditor(ctx, p) {
   try { formas = JSON.parse(p.formas || "[]"); } catch { /* vazio */ }
   return {
     pagina: {
-      slug: p.slug, publicada: Boolean(p.publicada), publicadaEm: p.publicada_em, tema: p.tema, mostrarHorarios: Boolean(p.mostrar_horarios),
+      slug: p.slug, publicada: Boolean(p.publicada), publicadaEm: p.publicada_em, tema: p.tema, aparencia: aparenciaDe(p), mostrarHorarios: Boolean(p.mostrar_horarios),
       nomeExibicao: p.nome_exibicao, frase: p.frase, sobre: p.sobre, whatsapp: p.whatsapp, mensagemPadrao: p.mensagem_padrao,
       instagram: p.instagram, telefone: p.telefone, endRua: p.end_rua, endNumero: p.end_numero, endBairro: p.end_bairro,
       endCidade: p.end_cidade, endUf: p.end_uf, endCep: p.end_cep, mapsUrl: p.maps_url, formas
@@ -571,7 +580,7 @@ async function dadosEditor(ctx, p) {
       armazenamento: Boolean(armazenamento(ctx.env))
     },
     numeros7: { visita: numeros7.visita || 0, whatsapp: numeros7.whatsapp || 0, rota: numeros7.rota || 0, instagram: numeros7.instagram || 0 },
-    temas: TEMAS, formasDisponiveis: FORMAS_PAGINA,
+    temas: TEMAS, cores: CORES_PAGINA, modos: MODOS_PAGINA, formasDisponiveis: FORMAS_PAGINA,
     flyersNoAr: Number(flyersNoAr?.n || 0)
   };
 }
@@ -646,7 +655,20 @@ async function salvarPagina(ctx, p) {
     cmds.push(db.prepare(`UPDATE paginas SET ${cols.map(c => `${c} = ?`).join(", ")}, atualizado_em = CURRENT_TIMESTAMP WHERE barbearia_id = ?`)
       .bind(...cols.map(c => dif.depois[c]), ctx.barbeariaId));
   }
-  let mudouServicos = false, mudouEquipe = false;
+  let mudouServicos = false, mudouEquipe = false, mudouAparencia = null;
+  if (input.cor !== undefined || input.modo !== undefined || input.tema !== undefined) {
+    const atual = aparenciaDe(p);
+    const base = input.tema !== undefined && TEMA_ANTIGO[input.tema] ? { cor: TEMA_ANTIGO[input.tema][0], modo: TEMA_ANTIGO[input.tema][1] } : atual;
+    const nova = { cor: input.cor ?? base.cor, modo: input.modo ?? base.modo };
+    if (!CORES_PAGINA.includes(nova.cor)) erro("Cor inválida.");
+    if (!MODOS_PAGINA.includes(nova.modo)) erro("Aparência inválida.");
+    if (nova.cor !== atual.cor || nova.modo !== atual.modo || !p.ap_cor) {
+      cmds.push(db.prepare(`INSERT INTO paginas_aparencia (barbearia_id, cor, modo, atualizado_por) VALUES (?, ?, ?, ?)
+                            ON CONFLICT(barbearia_id) DO UPDATE SET cor = excluded.cor, modo = excluded.modo, atualizado_por = excluded.atualizado_por, atualizado_em = CURRENT_TIMESTAMP`)
+        .bind(ctx.barbeariaId, nova.cor, nova.modo, ctx.user.id));
+      if (nova.cor !== atual.cor || nova.modo !== atual.modo) mudouAparencia = { antes: atual, depois: nova };
+    }
+  }
   if (input.servicos !== undefined) {
     if (!Array.isArray(input.servicos) || input.servicos.length > 200) erro("Lista de serviços inválida.");
     const meus = new Set((await db.prepare("SELECT id FROM servicos WHERE barbearia_id = ?").bind(ctx.barbeariaId).all()).results.map(s => s.id));
@@ -677,7 +699,8 @@ async function salvarPagina(ctx, p) {
   cmds.push(auditoria(ctx, "pagina_editada", ctx.barbeariaId, {
     ...(dif.mudou ? { antes: dif.antes, depois: dif.depois } : {}),
     ...(mudouServicos ? { servicos: input.servicos.map(s => `${s.visivel === false ? "-" : "+"}${s.id.slice(0, 8)}`) } : {}),
-    ...(mudouEquipe ? { equipe: input.equipe.map(u => `${u.visivel ? "+" : "-"}${u.id.slice(0, 8)}`) } : {})
+    ...(mudouEquipe ? { equipe: input.equipe.map(u => `${u.visivel ? "+" : "-"}${u.id.slice(0, 8)}`) } : {}),
+    ...(mudouAparencia ? { aparencia: mudouAparencia } : {})
   }));
   await db.batch(cmds);
   return json({ mensagem: "Página salva." });

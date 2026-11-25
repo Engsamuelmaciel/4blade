@@ -1989,3 +1989,29 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--suav
   .resumo-despesas:not(.duas):not(.quatro) .resumo-item strong { font-size: clamp(13.5px, 3.8vw, 17px); letter-spacing: -.02em; }
   .resumo-despesas:not(.duas):not(.quatro) .resumo-item small { font-size: 10px; letter-spacing: .04em; }
 }
+
+/* ---- Minha página: aparência (cor × clara/escura/preto e branco) ---- */
+.mp-aparencia { display: grid; gap: 14px; align-items: start; }
+@media (min-width: 700px) { .mp-aparencia { grid-template-columns: 1fr 180px; } }
+.mp-rotulo-cor { margin-top: 14px; }
+.mp-cores { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; transition: opacity var(--transicao); }
+.mp-cores.desligado { opacity: .35; pointer-events: none; }
+.mp-cor { font: inherit; border: 1.5px solid var(--linha); background: var(--cartao); border-radius: 12px; padding: 8px 2px 6px; display: grid; justify-items: center; gap: 4px; cursor: pointer; color: var(--texto); }
+.mp-cor small { font-size: 11px; font-weight: 600; }
+.mp-cor.ativa { border-color: var(--texto); box-shadow: 0 0 0 2px var(--dourado); }
+.mp-cor-bola { width: 26px; height: 26px; border-radius: 50%; background: var(--mpv-c); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .08); }
+/* cores das páginas (iguais às de public/pagina.css; só para a amostra) */
+.mpv-cor-navalha { --mpv-c: #e0a330; --mpv-e: #8a5a06; }   .mpv-cor-ferrugem { --mpv-c: #e07a4b; --mpv-e: #8b3a1e; }
+.mpv-cor-indigo { --mpv-c: #00d2ff; --mpv-e: #00708f; }    .mpv-cor-ganache { --mpv-c: #1fd15a; --mpv-e: #0a6a2c; }
+.mpv-cor-berinjela { --mpv-c: #ff7a3d; --mpv-e: #c2410c; } .mpv-cor-violeta { --mpv-c: #a58bff; --mpv-e: #5a2be0; }
+.mpv-cor-cereja { --mpv-c: #ff5c77; --mpv-e: #c8102e; }    .mpv-cor-oceano { --mpv-c: #38bdf8; --mpv-e: #0369a1; }
+.mpv-cor-esmeralda { --mpv-c: #34d399; --mpv-e: #047857; } .mpv-cor-bordo { --mpv-c: #f07a98; --mpv-e: #8a1c3c; }
+.mp-previa { --pf: #f4f4f2; --pc: #ffffff; --pl: #d9d9d4; --pb: var(--mpv-e); display: grid; gap: 8px; padding: 10px; border-radius: 16px; background: var(--pf);
+  border: 1px solid var(--linha); aspect-ratio: 9 / 13; align-content: start; }
+.mp-previa.mpv-escuro { --pf: #121417; --pc: #1c1f24; --pl: #3a3f47; --pb: var(--mpv-c); }
+.mp-previa.mpv-pb { --pf: #ffffff; --pc: #ffffff; --pl: #cfcfcf; --pb: #0a0a0a; }
+.mpv-capa { display: block; height: 70px; border-radius: 10px; background: linear-gradient(135deg, #3a3e45, #111); }
+.mpv-cartao { display: grid; gap: 6px; padding: 10px; border-radius: 10px; background: var(--pc); border: 1px solid var(--pl); }
+.mpv-linha { display: block; height: 8px; border-radius: 4px; background: var(--pl); }
+.mpv-linha.curta { width: 60%; background: var(--pb); opacity: .85; }
+.mpv-botao { display: block; height: 26px; border-radius: 999px; background: var(--pb); margin-top: auto; }
