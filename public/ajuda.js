@@ -65,7 +65,7 @@ window.AJUDA = {
       dica: "Cada pessoa tem o próprio usuário. Não empreste a sua senha: tudo o que é feito fica registrado no nome de quem fez." },
     { id: "funcionamento", titulo: "Cadastrar dias e horários de funcionamento", perfis: ["proprietario", "gerente"], rotas: ["funcionamento"],
       onde: "Menu → Equipe e ajustes → Funcionamento.",
-      passos: ["Marque os dias em que a barbearia abre.", "Em cada dia, informe abertura e fechamento (ex.: 09:00 até 19:00). O intervalo (almoço) é opcional.", "Toque em \"Salvar funcionamento\".", "Feriado ou reforma? Em \"Datas fechadas\", escolha a data, escreva o motivo e toque em \"Fechar agenda\"."],
+      passos: ["Marque os dias em que a barbearia abre.", "Em cada dia, informe abertura e fechamento (ex.: 09:00 até 19:00). O intervalo (almoço) é opcional.", "Toque em \"Salvar funcionamento\".", "Feriado ou reforma? Toque na aba \"Fechar dia\", escolha a data, escreva o motivo e toque em \"Fechar agenda\".", "Vai abrir num dia em que normalmente não abre (ex.: domingo antes do Natal)? Toque na aba \"Dia especial\", escolha o dia, o motivo e o horário e toque em \"Abrir esse dia\". Ele aparece na agenda e na página da barbearia."],
       exemplo: "Segunda a sexta 09:00–19:00 (intervalo 12:00–13:00); sábado 08:00–14:00; domingo fechado.",
       dica: "Sem funcionamento salvo a agenda não aceita horário. Ao fechar uma data que já tem clientes, o sistema mostra a lista para remarcar." },
     { id: "servicos", titulo: "Cadastrar serviços e preços", perfis: ["proprietario", "gerente"], rotas: ["servicos"],

@@ -612,12 +612,17 @@ async function rodar(tela) {
     // Abertura em caráter especial (26/11/2026): lança o dia, aparece na lista, no Mês da agenda e pode ser cancelada
     passo("gerente abre um dia em caráter especial e vê na lista e no Mês da agenda");
     await ir(page, "Funcionamento");
+    // 3 abas no alto (sem rolar a página): Semana | Dia especial | Fechar dia
+    assert.deepEqual(await page.locator("[data-teste=abas-funcionamento] [data-aba-func]").evaluateAll(b => b.map(x => x.dataset.abaFunc)), ["semana", "especial", "fechar"]);
+    assert.equal(await page.locator("[data-teste=form-especial]").count(), 0, "o formulário especial só aparece na aba dele");
+    await page.click("[data-aba-func=especial]");
     await page.waitForSelector("[data-teste=form-especial]");
     await page.fill("#c-eData", HOJE);
     await page.fill("#c-eMotivo", "Abertura especial fictícia");
     await page.fill("#c-eAbre", "07:00"); await page.fill("#c-eFecha", "08:00");
     await page.click("button:has-text('Abrir esse dia')");
     await page.waitForSelector(`[data-teste=aberturas-especiais] [data-especial="${HOJE}"]`);
+    assert.equal((await page.locator("[data-aba-func=especial] .aba-num").innerText()).trim(), "1", "contador na aba");
     await print("gerente-funcionamento-abertura-especial");
     await ir(page, "Agenda");
     await page.waitForSelector(".barra-agenda");
@@ -625,6 +630,7 @@ async function rodar(tela) {
     await page.waitForSelector(".calendario [data-teste=dia-especial]");
     await print("gerente-agenda-mes-dia-especial");
     await ir(page, "Funcionamento");
+    await page.click("[data-aba-func=especial]");
     await page.click(`[data-especial="${HOJE}"] button:has-text('Cancelar abertura')`);
     await page.fill("dialog[open] [name=motivo]", "Teste encerrado");
     await page.click("dialog[open] button[type=submit]");

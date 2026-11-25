@@ -2828,6 +2828,8 @@ function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaA
 }
 
 // ---------- FUNCIONAMENTO (gestão) ----------
+// Aba aberta na tela Funcionamento (fica a mesma depois de salvar/cancelar).
+const estadoFuncionamento = { aba: "semana" };
 async function telaFuncionamento() {
   const f = await api("/funcionamento");
   const linhas = f.dias.map(d => {
@@ -2940,8 +2942,22 @@ async function telaFuncionamento() {
           }, "Cancelar abertura"), "pequeno perigo")))))
       : el("p", { class: "suave", text: "Nenhum dia especial daqui para frente." }));
 
-  mostrar(cabecalho("Funcionamento", "Dias e horários em que a barbearia atende. O horário de cada profissional fica em Equipe."),
-    el("div", { class: "duas-colunas" }, el("section", {}, form), el("section", {}, formEspecial, especiais, formFechar, fechadas)));
+  // Três abas (26/11/2026), em vez de uma página comprida: o que o usuário procura fica a um toque, sem rolar.
+  const nEsp = f.aberturasEspeciais?.length || 0, nFech = f.datasFechadas.length;
+  const aba = estadoFuncionamento.aba;
+  const abas = el("div", { class: "alterna largo abas-func", role: "tablist", "aria-label": "Funcionamento", "data-teste": "abas-funcionamento" },
+    [["semana", "Semana"], ["especial", "Dia especial", nEsp], ["fechar", "Fechar dia", nFech]].map(([k, t, n]) =>
+      el("button", { type: "button", role: "tab", "aria-selected": String(aba === k), class: `botao ${aba === k ? "ativo" : ""}`, "data-aba-func": k,
+        onclick: () => { estadoFuncionamento.aba = k; telaFuncionamento(); } },
+        t, n ? el("span", { class: "aba-num", "data-teste": `num-${k}`, text: String(n) }) : null)));
+  const conteudo = aba === "especial"
+    ? el("div", { class: "duas-colunas" }, el("section", {}, formEspecial), el("section", {}, especiais))
+    : aba === "fechar"
+      ? el("div", { class: "duas-colunas" }, el("section", {}, formFechar), el("section", {}, fechadas))
+      : el("div", { class: "func-semana" }, form);
+  const dica = { semana: "Dias e horários em que a barbearia atende. O horário de cada profissional fica em Equipe.",
+    especial: "Abrir num dia que normalmente não abre (ex.: domingo antes do Natal).", fechar: "Fechar a agenda num feriado, folga coletiva ou reforma." }[aba];
+  mostrar(cabecalho("Funcionamento", dica), abas, conteudo);
 }
 
 function mostrarAfetados(afetados) {

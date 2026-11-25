@@ -360,6 +360,7 @@ async function rodar(tela) {
 
     passo("gerente fecha amanhã e recebe a lista para remarcar");
     await ir(page, "Funcionamento");
+    await page.click("[data-aba-func=fechar]");   // abas (26/11/2026): Semana | Dia especial | Fechar dia
     await page.fill("#c-fIni", AMANHA);
     await page.fill("#c-fMotivo", "Feriado municipal (fictício)");
     await page.click("button:has-text('Fechar agenda')");
