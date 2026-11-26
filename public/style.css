@@ -2520,3 +2520,9 @@ main:has(.fc) { padding-top: 12px; }
 /* ATENDIMENTOS SOBREPOSTOS (27/11/2026): dividem a largura da coluna do profissional */
 .grade-evento.sobreposto { box-shadow: 0 0 0 2px var(--cartao); }
 .grade-evento.sobreposto .ev-servico { display: none; }
+
+/* DURAÇÃO PERSONALIZADA: campo sempre aberto */
+.duracao-linha { margin-top: 10px; }
+.duracao-campo { display: flex; align-items: center; gap: 8px; }
+.duracao-campo input { width: 96px; text-align: center; font-weight: 700; flex: none; }
+.duracao-linha small { display: block; margin-top: 4px; }

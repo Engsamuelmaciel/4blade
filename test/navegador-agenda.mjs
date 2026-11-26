@@ -184,10 +184,16 @@ async function rodar(tela) {
       await page.locator("dialog[open] #c-data").dispatchEvent("change");
       await page.fill("dialog[open] [name=hora]", "18:00");
       await page.check("dialog[open] input[name=serv] >> nth=0");
-      assert.match(await page.textContent("dialog[open] [data-teste=duracao-texto]"), /\(tabela\)/, "começa com a duração da tabela");
-      await page.click("dialog[open] [data-teste=duracao-alterar]");
+      // o campo já está aberto, com a duração da tabela
+      assert.match(await page.textContent("dialog[open] [data-teste=duracao-texto]"), /^Tabela: /, "começa com a duração da tabela");
+      const tabelaMin = await page.inputValue("dialog[open] #c-duracao");
+      assert.match(tabelaMin, /^\d+$/);
+      assert.equal(await page.locator("dialog[open] [data-teste=duracao-tabela]").isVisible(), false, "sem personalizar não há botão de voltar à tabela");
+      await page.fill("dialog[open] #c-duracao", "50");   // digitando: dá para reduzir ou aumentar
+      assert.match(await page.textContent("dialog[open] [data-teste=duracao-texto]"), /^Personalizada para este cliente \(tabela: /);
+      await page.click("dialog[open] [data-teste=duracao-tabela]");
+      assert.equal(await page.inputValue("dialog[open] #c-duracao"), tabelaMin, "Usar a da tabela volta ao valor tabelado");
       await page.fill("dialog[open] #c-duracao", "50");
-      assert.match(await page.textContent("dialog[open] [data-teste=duracao-texto]"), /50 min \(personalizada · tabela: /);
       await print("novo-horario-duracao-personalizada");
       await page.fill("dialog[open] #cli-busca", "Duração Personalizada Fictício");
       await page.click("dialog[open] button[type=submit]");

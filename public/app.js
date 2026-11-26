@@ -2531,34 +2531,41 @@ function painelDisponibilidade() {
   return { el: painel, atualizar };
 }
 
-// Duração do atendimento (27/11/2026): a da tabela vem sempre primeiro; quem marca pode personalizar para este cliente.
-// tabela(): soma da tabela dos serviços marcados. inicial: duração personalizada já existente (ao editar).
+// Duração do atendimento (27/11/2026): o campo fica SEMPRE aberto, já com a duração da tabela; o barbeiro pode digitar
+// qualquer valor (menos ou mais) para este cliente. tabela(): soma da tabela dos serviços marcados. inicial: duração
+// personalizada já existente (ao editar). Igual à tabela = segue a tabela (nada fica gravado como "personalizado").
 const textoDuracao = m => (m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? String(m % 60).padStart(2, "0") : ""}` : `${m} min`);
 function campoDuracao({ tabela, inicial = null, aoMudar = () => {} }) {
   let manual = inicial;
-  const texto = el("span", { "data-teste": "duracao-texto" });
-  const entrada = el("input", { type: "number", id: "c-duracao", name: "duracao", min: "5", max: "720", step: "5", inputmode: "numeric", "aria-label": "Duração em minutos" });
   const efetiva = () => manual ?? tabela();
-  const editor = el("div", { class: "duracao-editor", hidden: true, "data-teste": "duracao-editor" },
-    el("label", { for: "c-duracao", text: "Duração (minutos)" }), entrada,
-    botao("Usar a da tabela", () => { manual = null; entrada.value = String(tabela()); desenhar(); aoMudar(); }, "pequeno"));
-  const abrir = botao("Alterar duração", () => { editor.hidden = !editor.hidden; if (!editor.hidden) { entrada.value = String(efetiva()); entrada.focus(); } }, "pequeno");
-  abrir.dataset.teste = "duracao-alterar";
+  const entrada = el("input", { type: "text", id: "c-duracao", name: "duracao", inputmode: "numeric", pattern: "[0-9]*", autocomplete: "off", maxlength: "3", "aria-label": "Duração em minutos" });
+  const dica = el("small", { "data-teste": "duracao-texto" });
+  const usarTabela = botao("Usar a da tabela", () => { manual = null; entrada.value = String(tabela()); desenhar(); aoMudar(); }, "pequeno");
+  usarTabela.dataset.teste = "duracao-tabela";
+  const raiz = el("div", { class: "duracao-linha campo", "data-teste": "duracao" },
+    el("label", { for: "c-duracao", text: "Duração (minutos)" }),
+    el("div", { class: "duracao-campo" }, entrada, el("span", { class: "suave", text: "min" }), usarTabela), dica);
   const desenhar = () => {
     const t = tabela();
     raiz.hidden = t === 0;
-    texto.textContent = manual ? `Duração: ${textoDuracao(manual)} (personalizada · tabela: ${textoDuracao(t)})` : `Duração: ${textoDuracao(t)} (tabela)`;
-    texto.className = manual ? "destaque-texto" : "suave";
+    usarTabela.hidden = !manual;
+    dica.textContent = manual ? `Personalizada para este cliente (tabela: ${textoDuracao(t)}). Pode digitar outro valor.` : `Tabela: ${textoDuracao(t)}. Para este cliente, é só digitar outro valor.`;
+    dica.className = manual ? "destaque-texto" : "suave";
+    if (document.activeElement !== entrada) entrada.value = t ? String(efetiva()) : "";
   };
   entrada.addEventListener("input", () => {
+    entrada.value = entrada.value.replace(/\D/g, "");
     const v = Number(entrada.value);
-    if (!Number.isInteger(v) || v < 5 || v > 720) return;
+    if (!entrada.value || v < 5 || v > 720) return;   // digitando (ex.: "4" a caminho de "45"): só vale quando estiver entre 5 e 720
     manual = v === tabela() ? null : v;
-    desenhar(); aoMudar();
+    usarTabela.hidden = !manual;
+    dica.textContent = manual ? `Personalizada para este cliente (tabela: ${textoDuracao(tabela())}). Pode digitar outro valor.` : `Tabela: ${textoDuracao(tabela())}. Para este cliente, é só digitar outro valor.`;
+    dica.className = manual ? "destaque-texto" : "suave";
+    aoMudar();
   });
-  const raiz = el("div", { class: "duracao-linha", "data-teste": "duracao" }, el("p", {}, texto), abrir, editor);
+  entrada.addEventListener("blur", () => { entrada.value = String(efetiva()); });   // vazio ou fora de 5–720: volta ao valor em uso
   desenhar();
-  return { el: raiz, valor: () => manual, efetiva, atualizar: desenhar, servicosMudaram: () => { manual = null; editor.hidden = true; desenhar(); } };
+  return { el: raiz, valor: () => manual, efetiva, atualizar: desenhar, servicosMudaram: () => { manual = null; desenhar(); } };
 }
 
 function janelaMarcar(ag, pre = {}) {
