@@ -164,6 +164,16 @@ async function rodar(tela) {
     await lancamentos(page);
     await page.waitForSelector('[data-lancamento="Elias Cliente Fictício"]');
 
+    // Vender | Lançamentos do dia em destaque no alto do Caixa (26/11/2026)
+    await page.click("[data-aba-caixa=venda]");
+    await page.waitForSelector(".fc-busca");
+    assert.equal(await page.locator("[data-lancamento]").count(), 0, "Vender não mostra os lançamentos");
+    assert.ok(Number((await page.locator("[data-aba-caixa=lancamentos] .aba-num").innerText()).trim()) >= 1, "contador de lançamentos na aba");
+    await page.click("[data-aba-caixa=lancamentos]");
+    await page.waitForSelector('[data-lancamento="Elias Cliente Fictício"]');
+    assert.equal(await page.locator("[data-aba-caixa=lancamentos]").getAttribute("aria-selected"), "true");
+    await print("caixa-abas-vender-lancamentos");
+
     // PDV: produtos em botões + carrinho
     await voltarVenda(page);
     await vitrine(page, "produtos");

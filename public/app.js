@@ -3401,6 +3401,12 @@ async function telaCaixa(dataHistorico = null) {
         el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("suprimento", recarregar) }, icone("setaCima"), el("span", { text: "Suprimento" })),
         aberto ? el("button", { type: "button", class: "botao ferramenta perigo", onclick: () => janelaFechar(c, recarregar, dataHistorico) }, icone("cadeado"), el("span", { text: "Fechar caixa" })) : null,
         gestao() ? el("a", { class: "botao ferramenta", href: "#/caixa-historico" }, icone("lista"), el("span", { text: "Outros dias" })) : null)),
+    // Dois botões grandes no alto (26/11/2026): "Vender" e "Lançamentos do dia" (antes ficava só num botão pequeno embaixo da comanda).
+    el("div", { class: "alterna largo abas-caixa", role: "tablist", "aria-label": "Caixa", "data-teste": "abas-caixa" },
+      [["venda", "Vender", "recibo", null], ["lancamentos", "Lançamentos do dia", "lista", c.lancamentos.length]].map(([k, t, ic, n]) =>
+        el("button", { type: "button", role: "tab", "aria-selected": String(estadoCaixa.visao === k), class: `botao ${estadoCaixa.visao === k ? "ativo" : ""}`, "data-aba-caixa": k,
+          onclick: () => { if (estadoCaixa.visao !== k) { estadoCaixa.visao = k; recarregar(); } } },
+          icone(ic), el("span", { text: t }), n ? el("span", { class: "aba-num", "data-teste": "num-lancamentos", text: String(n) }) : null))),
     el("div", { class: "fc-resumo" }, ...topo),
     c.reaberturas?.length ? el("p", { class: "suave", text: `Reaberto ${c.reaberturas.length}x (último motivo: ${c.reaberturas[0].motivo})` }) : null,
     frente.el);
