@@ -100,7 +100,7 @@ window.AJUDA = {
       dica: "No alto do caixa aparece um cartão por forma de pagamento (Pix, dinheiro, cartões, notas) com o total do dia." },
     { id: "cobrar", titulo: "Cobrar um atendimento no caixa", perfis: ["proprietario", "gerente", "caixa"], rotas: ["caixa"],
       onde: "Menu → Caixa: Vitrine (esquerda) → Fila · Comanda (centro) · Total e pagamento (direita).",
-      passos: ["Na Vitrine → Fila aparecem os atendimentos de hoje aguardando pagamento.", "Toque no atendimento: ele vai para a Comanda, no centro. Dá para mudar o valor, a quantidade e juntar produtos.", "À direita, confira o total, escolha a forma de pagamento (Dinheiro, Pix, Débito, Crédito ou Nota) e toque em \"Finalizar venda\".", "Cliente sem horário marcado? Toque em \"+ Atendimento sem horário\" e escolha os serviços na Vitrine → Serviços; em \"Cliente\" você escolhe ou cadastra quem foi."],
+      passos: ["Na Vitrine → Fila aparecem os atendimentos de hoje aguardando pagamento.", "Toque no atendimento: ele vai para a Comanda, no centro. Dá para mudar o valor, a quantidade e juntar produtos.", "À direita, confira o total, escolha a forma de pagamento (Dinheiro, Pix, Débito, Crédito ou Nota) e toque em \"Finalizar venda\".", "Cliente sem horário marcado? Toque em \"+ Lançar atendimento\" e escolha os serviços na Vitrine → Serviços; em \"Cliente\" você escolhe ou cadastra quem foi."],
       exemplo: "Carlos — Corte + barba com o Bruno — R$ 65,00 — Pix.",
       dica: "Se o cliente vai pagar depois, escolha \"Promissória (paga depois)\": a nota vai para Notas em aberto." },
     { id: "vender", titulo: "Vender produto (com desconto)", perfis: ["proprietario", "gerente", "caixa", "barbeiro"], rotas: ["caixa"],

@@ -3717,15 +3717,15 @@ const estadoCaixa = { vitrine: "fila", visao: "venda", busca: "", comanda: novaC
 const reiniciarCaixa = () => Object.assign(estadoCaixa, { vitrine: "fila", visao: "venda", busca: "", comanda: novaComanda(), lanc: { tipo: "dia", data: null, busca: "" } });
 
 // Escolher o cliente da comanda: da base (busca) ou um cliente novo/avulso (nome e telefone opcionais).
-function janelaClienteComanda(cm, aoMudar) {
+function janelaClienteComanda(cm, aoMudar, opcoes = {}) {
   const avulso = el("div", { class: "cliente-avulso" },
-    el("p", { class: "separador-ou", text: "ou cadastre um cliente novo" }),
-    campo("WhatsApp do cliente (opcional)", { name: "aTel", inputmode: "tel", autocomplete: "off" }),
+    el("p", { class: "separador-ou", text: opcoes.lancar ? "ou digite o nome de um cliente novo" : "ou cadastre um cliente novo" }),
     campo("Nome do cliente (opcional)", { name: "aNome", autocomplete: "off" }, "Sem nome e sem número, fica como \"Cliente não identificado\"."),
+    campo(opcoes.lancar ? "WhatsApp (preencha para cadastrar o cliente na base)" : "WhatsApp do cliente (opcional)", { name: "aTel", inputmode: "tel", autocomplete: "off" }),
     Object.assign(caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "aLgpd" }), { hidden: true }));
   const seletor = seletorCliente({ id: "fc-cli", preSelecionado: cm.cliente?.id ? cm.cliente : null, aoMudar: c => { avulso.hidden = Boolean(c); } });
-  const promessa = abrirJanela("Cliente da comanda", [seletor.el, avulso], {
-    ok: "Usar este cliente",
+  const promessa = abrirJanela(opcoes.titulo || "Cliente da comanda", [seletor.el, avulso], {
+    ok: opcoes.ok || "Usar este cliente",
     aoConfirmar: f => {
       const c = seletor.escolhido();
       if (c) cm.cliente = { id: c.id, nome: c.nome, telefone: c.telefone || null };
@@ -3941,7 +3941,13 @@ async function frenteCaixa(c, recarregar) {
       const vis = filtradosFila();
       corpo = el("div", { class: "fc-lista" },
         ...(vis.length ? vis.map(ticket) : [el("p", { class: "vazio", text: aCobrar.length ? "Ninguém com esse nome na fila." : "Ninguém aguardando pagamento. Quando o barbeiro terminar, o atendimento aparece aqui." })]),
-        botao("+ Atendimento sem horário", () => { estadoCaixa.vitrine = "servicos"; if (cm.ag) { cm.ag = null; cm.servicos = []; cm.cliente = null; desenharComanda(); } desenharVitrine(); buscaEl.focus(); }, "dourado"),
+        botao("Lançar atendimento", async () => {
+          // 1º o cliente (nome, ou escolher/cadastrar na base); depois os serviços e produtos.
+          const feito = await janelaClienteComanda(cm, () => { desenharCabeca(); atualizarTotais(); }, { lancar: true, titulo: "Lançar atendimento", ok: "Continuar" });
+          if (!feito) return;
+          if (cm.ag) { cm.ag = null; cm.servicos = []; }
+          estadoCaixa.vitrine = "servicos"; desenharComanda(); desenharVitrine(); buscaEl.focus();
+        }, "dourado"),
         pagos.length ? el("details", { class: "pagos-hoje", "data-teste": "pagos-hoje", open: pagosAbertos || null, ontoggle: ev => { pagosAbertos = ev.target.open; } }, el("summary", { class: "titulo-pagos", text: `Pagos hoje (${pagos.length}) · ${reais(pagos.reduce((x, a) => x + (a.totalCentavos || 0), 0))}` }),
           el("div", { class: "fc-lista" }, pagos.map(ticket))) : null);
     } else if (v === "servicos") {

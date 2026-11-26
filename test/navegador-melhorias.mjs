@@ -323,7 +323,10 @@ async function rodar(tela) {
     assert.notEqual(await page.textContent("[data-teste=entradas]"), entradas0);
 
     // atendimento sem horário: serviço na vitrine + cliente novo pelo botão "Cliente"
-    await page.click("button:has-text('+ Atendimento sem horário')");
+    await page.click("button:has-text('Lançar atendimento')");
+    await page.waitForSelector("dialog[open] >> text=Lançar atendimento");
+    await print("caixa-lancar-atendimento-cliente");
+    await page.click("dialog[open] button:has-text('Continuar')");
     await page.click('[data-servico-pdv="Corte"]');
     await page.click("[data-teste=fc-cliente]");
     await page.waitForSelector("dialog[open] >> text=Cliente da comanda");
@@ -340,8 +343,21 @@ async function rodar(tela) {
     await page.waitForSelector('[data-cobrar="Hugo Avulso Fictício"] >> text=Pago');
     await print("caixa-pdv-pagos");
 
+    passo("Lançar atendimento: pede o nome do cliente ANTES de escolher o serviço");
+    await voltarVenda(page);
+    await vitrine(page, "fila");
+    await page.click("button:has-text('Lançar atendimento')");
+    await page.waitForSelector("dialog[open] >> text=Lançar atendimento");
+    await page.fill("dialog[open] #c-aNome", "Lara Lançada Fictícia");
+    await page.click("dialog[open] button:has-text('Continuar')");
+    await page.waitForSelector('[data-servico-pdv="Corte"]');
+    assert.match(await page.textContent("[data-teste=fc-cliente]"), /Lara Lançada Fictícia/);
+    await page.click("button:has-text('Limpar comanda')");
+
     passo("caixa cobra atendimento sem telefone e sem nome");
-    await page.click("button:has-text('+ Atendimento sem horário')");
+    await vitrine(page, "fila");
+    await page.click("button:has-text('Lançar atendimento')");
+    await page.click("dialog[open] button:has-text('Continuar')");
     await page.click('[data-servico-pdv="Corte"]');
     assert.match(await page.textContent("[data-teste=fc-cliente]"), /Cliente não identificado/);
     await page.click("[data-teste=carrinho] button:has-text('Finalizar venda')");
@@ -403,7 +419,8 @@ async function rodar(tela) {
     passo("caixa lança atendimento na promissória para cliente da base e depois dá baixa na nota");
     await voltarVenda(page);
     await vitrine(page, "fila");
-    await page.click("button:has-text('+ Atendimento sem horário')");
+    await page.click("button:has-text('Lançar atendimento')");
+    await page.click("dialog[open] button:has-text('Continuar')");
     await page.click('[data-servico-pdv="Corte"]');
     // cliente avulso (digitado na hora) não pode ficar na promissória: aviso na tela e recusa
     await page.click("[data-teste=fc-cliente]");
