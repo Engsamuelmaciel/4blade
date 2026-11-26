@@ -200,6 +200,19 @@ async function rodar(tela) {
     await page.click("[data-aba-caixa=lancamentos]");
     await page.waitForSelector('[data-lancamento="Elias Cliente Fictício"]');
     assert.equal(await page.locator("[data-aba-caixa=lancamentos]").getAttribute("aria-selected"), "true");
+    await page.click("[data-aba-caixa=venda]");
+    {
+      const bt = page.locator("[data-teste=carrinho] [data-teste=finalizar]");
+      assert.ok(await bt.isDisabled(), "sem itens, Finalizar venda fica desativado");
+      {
+        const antes = await bt.evaluate(e => getComputedStyle(e).backgroundColor);
+        await bt.hover({ force: true });
+        await page.waitForTimeout(500);
+        const depois = await bt.evaluate(e => getComputedStyle(e).backgroundColor);
+        assert.equal(depois, antes, "Finalizar venda desativado não muda de cor com o mouse");
+      }
+    }
+    await page.click("[data-aba-caixa=lancamentos]");
     await print("caixa-abas-vender-lancamentos");
 
     // PDV: produtos em botões + carrinho

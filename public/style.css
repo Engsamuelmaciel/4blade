@@ -2663,3 +2663,8 @@ dialog .mov-cartao[data-caixa-acao] { width: 100%; }
   .fc-topo .abas-topo .botao { font-size: 15px; padding: 0 4px; gap: 5px; }
   .fc-topo .abas-topo .botao .aba-num { min-width: 22px; height: 22px; font-size: 12px; margin-left: 0; }
 }
+
+/* Botão desativado não muda de cor com o mouse (ex.: Finalizar venda sem itens) */
+.botao.principal:disabled:hover { background: var(--botao-principal); filter: none; }
+.fc-finalizar:disabled:hover { background: var(--dourado); color: var(--sobre-dourado, #111317); filter: none; border-color: transparent; }
+.botao:disabled:hover { cursor: not-allowed; }
