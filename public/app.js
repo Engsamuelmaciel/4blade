@@ -2448,11 +2448,11 @@ function campoProfissional(ag, escolhido = null) {
 
 // Escolher cliente: da base (busca por nome ou telefone) ou digitar um cliente novo/avulso.
 // nomes = nomes dos campos do cliente novo (a agenda usa cli*, o caixa a*). Devolve { el, ler(), escolhido() }.
-function seletorCliente({ id, preSelecionado = null, aoMudar = () => {} }) {
+function seletorCliente({ id, preSelecionado = null, aoMudar = () => {}, aoDigitar = null, rotulo = "Buscar cliente cadastrado", placeholder = "Nome ou telefone", semResultado = "Nenhum cliente com esse nome ou telefone. Preencha abaixo como cliente novo." }) {
   let escolhido = preSelecionado;
   const resultados = el("ul", { class: "resultados-cliente", "data-teste": `${id}-resultados` });
-  const busca = el("input", { type: "search", id: `${id}-busca`, autocomplete: "off", placeholder: "Nome ou telefone", "aria-label": "Buscar cliente cadastrado" });
-  const blocoBusca = el("div", { class: "campo" }, el("label", { for: `${id}-busca`, text: "Buscar cliente cadastrado" }), busca, resultados);
+  const busca = el("input", { type: "search", id: `${id}-busca`, autocomplete: "off", placeholder, "aria-label": rotulo });
+  const blocoBusca = el("div", { class: "campo" }, el("label", { for: `${id}-busca`, text: rotulo }), busca, resultados);
   const escolhidoEl = el("div", { class: "cliente-escolhido", "data-teste": `${id}-escolhido` });
   let temporizador;
   const desenhar = () => {
@@ -2469,6 +2469,7 @@ function seletorCliente({ id, preSelecionado = null, aoMudar = () => {} }) {
   busca.addEventListener("input", () => {
     clearTimeout(temporizador);
     const termo = busca.value.trim();
+    aoDigitar?.(termo);
     if (termo.length < 2) { resultados.replaceChildren(); return; }
     temporizador = setTimeout(async () => {
       try {
@@ -2476,7 +2477,7 @@ function seletorCliente({ id, preSelecionado = null, aoMudar = () => {} }) {
         resultados.replaceChildren(...(clientes.length ? clientes.map(c => el("li", {},
           el("button", { type: "button", class: "resultado-cliente", "data-cliente-opcao": c.nome, onclick: () => { escolhido = c; desenhar(); } },
             el("strong", { text: c.nome }), el("span", { class: "suave", text: c.telefone ? fone(c.telefone) : "sem telefone" }), seloCliente(c))))
-          : [el("li", { class: "suave sem-resultado", text: "Nenhum cliente com esse nome ou telefone. Preencha abaixo como cliente novo." })]));
+          : semResultado ? [el("li", { class: "suave sem-resultado", text: semResultado })] : []));
       } catch (e) { resultados.replaceChildren(el("li", { class: "erro", text: e.message })); }
     }, 250);
   });
@@ -2525,27 +2526,36 @@ function janelaMarcar(ag, pre = {}) {
   // Sem profissional ou sem serviço não há como marcar: explica o que falta em vez de um formulário vazio.
   if (veTodas() && !ag.profissionais.length) return abrirJanela("Novo horário", el("p", { text: "Nenhum profissional com agenda. Cadastre um gerente ou barbeiro em Equipe e ajustes → Equipe." }), { ok: "Entendi", semCancelar: true, aoConfirmar: () => true });
   if (!servicos.length) return abrirJanela("Novo horário", el("p", { text: "Nenhum serviço cadastrado. Cadastre em Catálogo e estoque → Serviços (nome, preço e duração)." }), { ok: "Entendi", semCancelar: true, aoConfirmar: () => true });
-  // Cliente: da base (busca) ou novo/avulso. Telefone é opcional: sem ele, o cliente fica só com o nome (sem WhatsApp).
-  const nomeCampo = campo("Nome do cliente", { name: "cliNome", autocomplete: "off" });
+  // Cliente em UM campo só (27/11/2026): digita o nome (ou telefone); se aparecer na lista, toca para escolher; se não aparecer,
+  // é um cliente novo (avulso) e o WhatsApp é opcional (aparece só se quiser adicionar).
   const lgpd = caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "cliLgpd" });
-  const blocoNovo = el("div", { class: "cliente-novo" }, nomeCampo, lgpd);
   lgpd.hidden = true;
-  const achado = el("p", { class: "cliente-achado", role: "status" });
   const tel = campo("WhatsApp do cliente (opcional)", { name: "cliTel", inputmode: "tel", autocomplete: "off", placeholder: "(11) 91234-5678" },
     "Sem número, o cliente fica só com o nome e a mensagem abre o WhatsApp para você escolher o contato.");
-  const blocoAvulso = el("div", { class: "cliente-avulso" }, el("p", { class: "separador-ou", text: "ou cadastre um cliente novo" }), tel, achado, blocoNovo);
-  const seletor = seletorCliente({ id: "cli", preSelecionado: pre.cliente || null, aoMudar: c => { blocoAvulso.hidden = Boolean(c); } });
-  const buscar = async () => {
-    const v = tel.querySelector("input").value.replace(/\D/g, "");
-    if (v.length < 10) { achado.textContent = ""; blocoNovo.hidden = false; lgpd.hidden = true; return; }
-    try {
-      const r = await api(`/agenda/cliente?telefone=${encodeURIComponent(v)}`);
-      if (r.cliente) { achado.textContent = `Cliente: ${r.cliente.nome}`; achado.className = "cliente-achado ok"; blocoNovo.hidden = true; }
-      else { achado.textContent = "Cliente novo: informe o nome."; achado.className = "cliente-achado novo"; blocoNovo.hidden = false; lgpd.hidden = false; }
-    } catch (e) { achado.textContent = e.message; }
+  const blocoTel = el("div", { class: "cliente-novo-extra", hidden: true }, tel, lgpd);
+  const aviso = el("p", { class: "cliente-achado novo", role: "status", "data-teste": "cliente-novo-aviso" });
+  const maisTel = botao("+ Adicionar WhatsApp (opcional)", () => { blocoTel.hidden = !blocoTel.hidden; }, "pequeno");
+  maisTel.dataset.teste = "cli-add-whats";
+  const blocoNovo = el("div", { class: "cliente-avulso" }, aviso, maisTel, blocoTel);
+  blocoNovo.hidden = true;
+  let digitado = "";
+  let seletor;
+  const atualizarNovo = () => {
+    const novo = !seletor?.escolhido() && digitado.length >= 2;
+    blocoNovo.hidden = !novo;
+    if (!novo) return;
+    const soNumeros = /^[\d\s()+-]{10,}$/.test(digitado);
+    aviso.textContent = soNumeros ? "Telefone novo (sem nome): o cliente fica só com o número." : `Cliente novo (avulso): “${digitado}”. Ninguém com esse nome na lista; ele é cadastrado ao marcar.`;
+    if (soNumeros) {   // só números: vira o WhatsApp do cliente novo (precisa do aceite LGPD)
+      const campoTel = tel.querySelector("input");
+      if (!campoTel.value) { campoTel.value = digitado; campoTel.dispatchEvent(new Event("input")); }
+      blocoTel.hidden = false;
+    }
   };
-  tel.querySelector("input").addEventListener("change", buscar);
-  tel.querySelector("input").addEventListener("input", buscar);
+  seletor = seletorCliente({ id: "cli", preSelecionado: pre.cliente || null, rotulo: "Cliente", placeholder: "Digite o nome ou o telefone",
+    semResultado: null,   // sem ninguém na lista: o aviso "Cliente novo" abaixo já explica
+    aoDigitar: t => { digitado = t; atualizarNovo(); }, aoMudar: () => { digitado = seletor?.escolhido() ? "" : digitado; atualizarNovo(); } });
+  tel.querySelector("input").addEventListener("input", () => { lgpd.hidden = tel.querySelector("input").value.replace(/\D/g, "").length < 10; });
   const disp = painelDisponibilidade();
 
   setTimeout(() => {
@@ -2586,7 +2596,7 @@ function janelaMarcar(ag, pre = {}) {
       disp.el),
     el("fieldset", { class: "servicos-escolha form-secao" }, el("legend", { class: "form-secao-titulo", text: "Serviços" }),
       servicos.map(linhaServico)),
-    el("fieldset", { class: "servicos-escolha bloco-cliente form-secao" }, el("legend", { class: "form-secao-titulo", text: "Cliente" }), seletor.el, blocoAvulso),
+    el("fieldset", { class: "servicos-escolha bloco-cliente form-secao" }, el("legend", { class: "form-secao-titulo", text: "Cliente" }), seletor.el, blocoNovo),
     el("section", { class: "form-secao" }, el("h4", { class: "form-secao-titulo", text: "Detalhes" }),
       campo("Observação", { name: "obs", maxlength: "300", autocomplete: "off", placeholder: "Opcional" }),
       el("div", { class: "lado-a-lado" },
@@ -2598,12 +2608,20 @@ function janelaMarcar(ag, pre = {}) {
       const servicoIds = [...f.querySelectorAll("input[name=serv]:checked")].map(i => i.value);
       if (!servicoIds.length) throw new Error("Escolha pelo menos um serviço.");
       const daBase = seletor.escolhido();
+      // Sem escolher ninguém da lista: o que foi digitado vira o nome do cliente novo (ou o telefone, se só tem números).
+      const novoCliente = ff => {
+        const soNumeros = /^[\d\s()+-]{10,}$/.test(digitado);
+        const telefone = ff.cliTel.value || (soNumeros ? digitado : "");
+        const nome = soNumeros ? undefined : (digitado || undefined);
+        if (!nome && !telefone) throw new Error("Digite o nome ou o telefone do cliente.");
+        return { telefone, nome, aceiteLgpd: ff.cliLgpd.checked };
+      };
       const r = await comAceiteNota(extra => api("/agenda", {
         metodo: "POST",
         corpo: { ...extra,
           barbeiroId: f.prof?.value, data: f.data.value, hora: f.hora.value, servicoIds,
           observacao: f.obs.value || null,
-          cliente: daBase ? { id: daBase.id } : { telefone: f.cliTel.value, nome: f.cliNome.value || undefined, aceiteLgpd: f.cliLgpd.checked },
+          cliente: daBase ? { id: daBase.id } : novoCliente(f),
           ...(f.repetir.value ? { repetir: { intervaloSemanas: Number(f.repetir.value), ate: f.repAte.value } } : {})
         }
       }));

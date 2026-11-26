@@ -165,9 +165,10 @@ async function rodar(tela) {
     await page.fill("dialog[open] [name=hora]", "10:00");
     await page.check("dialog[open] label:has-text('Corte masculino')");
     await page.check("dialog[open] label:has-text('Barba completa')");
+    await page.fill("#cli-busca", "Diego Cliente Fictício");   // um campo só: nome que não está na lista = cliente novo (avulso)
+    await page.waitForSelector("[data-teste=cliente-novo-aviso]:visible");
+    await page.click("[data-teste=cli-add-whats]");
     await page.fill("#c-cliTel", "(11) 90000-1234");
-    await page.waitForSelector("text=Cliente novo: informe o nome.");
-    await page.fill("#c-cliNome", "Diego Cliente Fictício");
     await page.check("#c-cliLgpd");
     await print("barbeiro-novo-horario");
     await ok();
@@ -190,11 +191,14 @@ async function rodar(tela) {
     await page.click("text=+ Novo horário");
     await page.fill("dialog[open] [name=hora]", "10:30");
     await page.check("dialog[open] label:has-text('Corte masculino')");
-    await page.fill("#c-cliTel", "(11) 90000-1234");
-    await page.waitForSelector("text=Cliente: Diego Cliente Fictício");
+    await page.fill("#cli-busca", "(11) 90000-1234");   // telefone de quem já está cadastrado: aparece na lista para escolher
+    await page.click('[data-cliente-opcao="Diego Cliente Fictício"]');
     await ok();
-    await page.waitForSelector("dialog[open] .erro:has-text('outro atendimento')");
-    await print("barbeiro-horario-sobreposto-recusado");
+    // 27/11/2026: cruzar com outro atendimento não é mais um erro seco: pergunta se quer marcar por cima (o barbeiro decide)
+    await page.waitForSelector("[data-teste=alerta-aceite][open]");
+    assert.match(await page.textContent("[data-teste=alerta-aceite]"), /já tem .*Diego Cliente Fictício/);
+    await print("barbeiro-horario-sobreposto-pergunta");
+    await page.click("[data-teste=alerta-aceite] button:has-text('Não marcar')");
     await page.click("dialog[open] button:has-text('Cancelar')");
 
     passo("barbeiro bloqueia um horário");

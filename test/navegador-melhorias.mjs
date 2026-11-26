@@ -159,10 +159,12 @@ async function rodar(tela) {
     await page.locator("dialog[open] #c-hora").pressSequentially("1000");
     assert.equal(await page.inputValue("dialog[open] #c-hora"), "10:00");
     await page.check("dialog[open] input[name=serv] >> nth=0");
+    await page.fill("dialog[open] #cli-busca", "Fábio Fixo Fictício");
+    await page.waitForSelector("dialog[open] >> text=Cliente novo");
+    assert.equal(await page.locator("dialog[open] #c-cliTel").isVisible(), false, "WhatsApp só aparece se pedir (um campo de cliente só)");
+    await page.click("dialog[open] [data-teste=cli-add-whats]");
     await page.locator("dialog[open] #c-cliTel").pressSequentially("11977776666");
     assert.equal(await page.inputValue("dialog[open] #c-cliTel"), "(11) 97777-6666");
-    await page.waitForSelector("dialog[open] >> text=Cliente novo");
-    await page.fill("dialog[open] #c-cliNome", "Fábio Fixo Fictício");
     await page.check("dialog[open] #c-cliLgpd");
     await page.selectOption("dialog[open] #c-repetir", "1");
     assert.equal(await page.inputValue("dialog[open] #c-repAte"), somarDias(AMANHA, 365));
@@ -195,8 +197,8 @@ async function rodar(tela) {
     await page.fill("dialog[open] #c-hora", "15:00");
     await page.check("dialog[open] input[name=serv] >> nth=0");
     assert.equal(await page.locator("dialog[open] #c-cliTel").getAttribute("required"), null, "telefone não é obrigatório");
-    assert.ok(await page.locator("dialog[open] #c-cliNome").isVisible(), "nome aparece mesmo sem telefone");
-    await page.fill("dialog[open] #c-cliNome", "Seu Zé Fictício");
+    assert.ok(await page.locator("dialog[open] #cli-busca").isVisible(), "um campo só para o cliente (nome ou telefone)");
+    await page.fill("dialog[open] #cli-busca", "Seu Zé Fictício");
     await ok();
     // sem telefone: a confirmação também sai pelo WhatsApp, escolhendo o contato (17/11/2026)
     await page.waitForSelector("dialog[open] >> text=Horário marcado");
@@ -227,7 +229,7 @@ async function rodar(tela) {
     await page.fill("dialog[open] #c-data", AMANHA);
     await page.fill("dialog[open] #c-hora", "17:00");
     await page.check("dialog[open] input[name=serv] >> nth=0");
-    await page.fill("dialog[open] #c-cliNome", "Lançado Errado Fictício");
+    await page.fill("dialog[open] #cli-busca", "Lançado Errado Fictício");
     await ok();
     await page.waitForSelector("dialog[open] >> text=Horário marcado");   // sem telefone: confirmação pelo WhatsApp (escolher contato)
     await page.click("dialog[open] button[type=submit]");
@@ -435,7 +437,7 @@ async function rodar(tela) {
     await page.click('dialog[open] [data-hora-livre="17:00"]');
     assert.equal(await page.inputValue("dialog[open] #c-hora"), "17:00", "tocar no horário livre preenche a hora");
     await page.check("dialog[open] input[name=serv] >> nth=0");
-    await page.fill("dialog[open] #c-cliNome", "Ivo Recepção Fictício");
+    await page.fill("dialog[open] #cli-busca", "Ivo Recepção Fictício");
     await ok();
     await page.waitForSelector("dialog[open] >> text=Horário marcado");   // sem telefone: confirmação pelo WhatsApp (escolher contato)
     await page.click("dialog[open] button[type=submit]");

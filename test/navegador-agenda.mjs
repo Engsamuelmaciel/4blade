@@ -151,7 +151,8 @@ async function rodar(tela) {
       await page.locator("dialog[open] #c-data").dispatchEvent("change");
       await page.fill("dialog[open] [name=hora]", "16:15");
       await page.check("dialog[open] input[name=serv] >> nth=0");
-      await page.fill("dialog[open] [name=cliNome]", "Atende Por Cima Fictício");
+      await page.fill("dialog[open] #cli-busca", "Atende Por Cima Fictício");
+      await page.click("dialog[open] [data-teste=cli-add-whats]");
       await page.fill("dialog[open] [name=cliTel]", "11 98877-6655");
       await page.check("dialog[open] [name=cliLgpd]");
       await page.click("dialog[open] button[type=submit]");
