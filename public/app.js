@@ -3210,7 +3210,7 @@ function janelaCorrigirLancamento(l, recarregar) {
     }
   });
   const valor = async () => {
-    const [{ atendimentos, profissionais }] = await Promise.all([api("/caixa/atendimentos"), carregarServicos()]);
+    const [{ atendimentos, profissionais }] = await Promise.all([api(`/caixa/atendimentos?id=${encodeURIComponent(l.agendamentoId || "")}`), carregarServicos()]);
     const a = atendimentos.find(x => x.id === l.agendamentoId);
     if (!a) { avisar("Não achei esse atendimento para corrigir. Peça ao gerente para reabrir pela agenda.", "erro"); return; }
     janelaFinalizar(a, { endpoint: "/caixa/corrigir-atendimento", aoTerminar: recarregar, titulo: `Corrigir atendimento de ${a.cliente.nome}`,

@@ -222,16 +222,19 @@ export async function rotasCaixa(ctx, path, method) {
 
   // PDV: atendimentos de hoje para cobrar (sem comissão) + profissionais e serviços para o atendimento sem horário.
   if (path === "/caixa/atendimentos" && method === "GET") {
+    // ?id=: um atendimento específico (para corrigir um lançamento de hoje cujo horário era de outro dia) — sempre só da barbearia da sessão
+    const idExtra = new URL(request.url).searchParams.get("id") || "";
     const [ags, servs, profs] = await Promise.all([
       db.prepare(`SELECT a.id, a.inicio, a.fim, a.situacao, a.barbeiro_id, a.cliente_id, u.nome AS barbeiro, c.nome AS cliente, c.telefone,
                     f.total_centavos
                   FROM agendamentos a JOIN usuarios u ON u.id = a.barbeiro_id JOIN clientes c ON c.id = a.cliente_id
                   LEFT JOIN finalizacoes f ON f.agendamento_id = a.id AND f.estornada = 0
                   WHERE a.barbearia_id = ? AND ((a.data = ? AND a.situacao IN ('agendado','finalizado'))
-                    OR (a.data BETWEEN ? AND ? AND a.situacao = 'agendado'))   -- atendimentos dos últimos 30 dias que ficaram sem cobrar
-                  ORDER BY a.inicio`).bind(ctx.barbeariaId, hoje, somarDias(hoje, -30), somarDias(hoje, -1)).all(),
+                    OR (a.data BETWEEN ? AND ? AND a.situacao = 'agendado')   -- atendimentos dos últimos 30 dias que ficaram sem cobrar
+                    OR a.id = ?)
+                  ORDER BY a.inicio`).bind(ctx.barbeariaId, hoje, somarDias(hoje, -30), somarDias(hoje, -1), idExtra).all(),
       db.prepare(`SELECT s.agendamento_id, s.servico_id, s.nome, sv.preco_centavos FROM agendamento_servicos s JOIN agendamentos a ON a.id = s.agendamento_id
-                  LEFT JOIN servicos sv ON sv.id = s.servico_id WHERE a.barbearia_id = ? AND a.data BETWEEN ? AND ? AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = s.id) ORDER BY s.rowid`).bind(ctx.barbeariaId, somarDias(hoje, -30), hoje).all(),
+                  LEFT JOIN servicos sv ON sv.id = s.servico_id WHERE a.barbearia_id = ? AND (a.data BETWEEN ? AND ? OR a.id = ?) AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = s.id) ORDER BY s.rowid`).bind(ctx.barbeariaId, somarDias(hoje, -30), hoje, idExtra).all(),
       db.prepare(`SELECT id, nome FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('proprietario','gerente','barbeiro') ORDER BY nome`).bind(ctx.barbeariaId).all()
     ]);
     return json({

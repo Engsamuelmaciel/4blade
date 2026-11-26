@@ -121,4 +121,20 @@ describe("corrigir atendimento já cobrado no caixa", () => {
     const aud = await env.DB.prepare("SELECT detalhes FROM auditoria WHERE acao = 'atendimento_cliente_corrigido' AND alvo = ?").bind(m.id).first();
     assert.ok(aud && JSON.parse(aud.detalhes).depois.cliente === novo.id);
   });
+
+  test("corrigir lançamento de hoje cujo horário era de outro dia: /caixa/atendimentos?id= traz o atendimento (só da própria barbearia)", async () => {
+    const amb = await cenario("corr7");
+    const { post, get, cx, barb, corte } = amb;
+    const ontem = new Date(Date.now() - 36 * 3600e3).toISOString().slice(0, 10);
+    const m = (await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: ontem, hora: "09:00", servicoIds: [corte.id], cliente: { nome: "Cliente Ontem" }, aceiteForaHorario: true })).dados.agendamento;
+    assert.ok(m, "marcou ontem");
+    const r = await post("/api/caixa/cobrar", cx.token, { id: m.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], pagamentos: [{ forma: "pix", valorCentavos: 4000 }] });
+    assert.equal(r.status, 201, JSON.stringify(r.dados));
+    const sem = (await get("/api/caixa/atendimentos", cx.token)).dados.atendimentos;
+    assert.ok(!sem.some(a => a.id === m.id), "sem ?id= o finalizado de outro dia não aparece");
+    const com = (await get(`/api/caixa/atendimentos?id=${m.id}`, cx.token)).dados.atendimentos.find(a => a.id === m.id);
+    assert.ok(com && com.servicos.length === 1 && com.servicos[0].precoCentavos === 4000, "com ?id= aparece, com os serviços");
+    const outra = await cenario("corr8", amb, amb.p);
+    assert.ok(!(await get(`/api/caixa/atendimentos?id=${m.id}`, outra.cx.token)).dados.atendimentos.some(a => a.id === m.id), "outra barbearia não enxerga");
+  });
 });
