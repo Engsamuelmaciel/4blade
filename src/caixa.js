@@ -12,40 +12,44 @@ const erro = (msg, status = 400) => { throw new HttpError(msg, status); };
 const NOME_FORMA = { dinheiro: "dinheiro", pix: "Pix", debito: "débito", credito: "crédito" };
 
 // Lista e totais de um caixa. Totais por forma = atendimentos + vendas (já com estornos e correções).
-export async function resumoCaixa(db, barbeariaId, caixa) {
+export async function resumoCaixa(db, barbeariaId, caixa, periodo = null) {
+  // periodo {ini, fim}: vários caixas de uma vez (dia, semana, mês) em poucas consultas; senão, só o caixa informado.
+  const cond = al => periodo ? [`${al}.caixa_id IN (SELECT id FROM caixas WHERE barbearia_id = ? AND data BETWEEN ? AND ?)`, [barbeariaId, periodo.ini, periodo.fim]] : [`${al}.caixa_id = ?`, [caixa.id]];
+  const [cL, cM, cV, cP, cR] = ["l", "m", "v", "p", "pp"].map(cond);
   const [lanc, movs, vendas, notas, receb] = await Promise.all([
     db.prepare(`
       SELECT l.id, l.tipo, l.forma, l.valor_centavos, l.criado_em, l.finalizacao_id, f.estornada,
         ${formaEfetiva("l.id", "l.forma")} AS forma_atual,
         EXISTS (SELECT 1 FROM finalizacoes f3 WHERE f3.agendamento_id = a.id AND f3.estornada = 0) AS tem_ativa,
         (SELECT f2.motivo_estorno FROM finalizacoes f2 WHERE f2.agendamento_id = a.id AND f2.estornada = 1 ORDER BY f2.estornada_em DESC LIMIT 1) AS motivo_corr,
+        cx.data AS dia, cx.situacao AS cx_sit,
         a.inicio, a.id AS agendamento_id, c.nome AS cliente, u.nome AS barbeiro,
         (SELECT group_concat(nome, ' + ') FROM (SELECT i.nome FROM finalizacao_itens i WHERE i.finalizacao_id = l.finalizacao_id ORDER BY i.rowid)) AS descricao
-      FROM caixa_lancamentos l
+      FROM caixa_lancamentos l JOIN caixas cx ON cx.id = l.caixa_id
       LEFT JOIN finalizacoes f ON f.id = l.finalizacao_id
       LEFT JOIN agendamentos a ON a.id = f.agendamento_id
       LEFT JOIN clientes c ON c.id = a.cliente_id
       LEFT JOIN usuarios u ON u.id = f.barbeiro_id
-      WHERE l.caixa_id = ? AND l.barbearia_id = ?`).bind(caixa.id, barbeariaId).all(),
+      WHERE ${cL[0]} AND l.barbearia_id = ?`).bind(...cL[1], barbeariaId).all(),
     db.prepare(`
-      SELECT m.*, ${formaEfetiva("m.id", "m.forma")} AS forma_atual, u.nome AS usuario
-      FROM caixa_movimentos m JOIN usuarios u ON u.id = m.criado_por
-      WHERE m.caixa_id = ? AND m.barbearia_id = ?`).bind(caixa.id, barbeariaId).all(),
+      SELECT m.*, ${formaEfetiva("m.id", "m.forma")} AS forma_atual, u.nome AS usuario, cx.data AS dia, cx.situacao AS cx_sit
+      FROM caixa_movimentos m JOIN usuarios u ON u.id = m.criado_por JOIN caixas cx ON cx.id = m.caixa_id
+      WHERE ${cM[0]} AND m.barbearia_id = ?`).bind(...cM[1], barbeariaId).all(),
     db.prepare(`
       SELECT v.id, v.situacao, v.total_centavos, v.motivo_cancelamento, uv.nome AS vendedor, c.nome AS cliente,
         d.percentual_bp AS desconto_bp, d.valor_centavos AS desconto_centavos, d.bruto_centavos,
         (SELECT group_concat(nome, ', ') FROM (SELECT i.quantidade || 'x ' || i.nome AS nome FROM venda_itens i WHERE i.venda_id = v.id ORDER BY i.rowid)) AS itens
       FROM vendas v JOIN usuarios uv ON uv.id = v.vendedor_id LEFT JOIN clientes c ON c.id = v.cliente_id
       LEFT JOIN venda_descontos d ON d.venda_id = v.id
-      WHERE v.caixa_id = ? AND v.barbearia_id = ?`).bind(caixa.id, barbeariaId).all(),
+      WHERE ${cV[0]} AND v.barbearia_id = ?`).bind(...cV[1], barbeariaId).all(),
     // Notas (promissórias) lançadas neste caixa: não são dinheiro do dia.
-    db.prepare(`SELECT p.id, p.origem, p.valor_centavos, p.descricao, p.situacao, p.criado_em, c.nome AS cliente
-                FROM promissorias p JOIN clientes c ON c.id = p.cliente_id WHERE p.caixa_id = ? AND p.barbearia_id = ?`).bind(caixa.id, barbeariaId).all(),
+    db.prepare(`SELECT p.id, p.origem, p.valor_centavos, p.descricao, p.situacao, p.criado_em, c.nome AS cliente, cx.data AS dia
+                FROM promissorias p JOIN clientes c ON c.id = p.cliente_id JOIN caixas cx ON cx.id = p.caixa_id WHERE ${cP[0]} AND p.barbearia_id = ?`).bind(...cP[1], barbeariaId).all(),
     // Notas recebidas (quitadas) neste caixa: entram nas formas de pagamento.
-    db.prepare(`SELECT pp.id, pp.forma, pp.valor_centavos, r.id AS recebimento_id, r.situacao, r.criado_em, c.nome AS cliente,
+    db.prepare(`SELECT pp.id, pp.forma, pp.valor_centavos, r.id AS recebimento_id, r.situacao, r.criado_em, c.nome AS cliente, cx.data AS dia,
                   (SELECT COUNT(*) FROM promissorias x WHERE x.recebimento_id = r.id) AS notas
-                FROM promissoria_pagamentos pp JOIN promissoria_recebimentos r ON r.id = pp.recebimento_id JOIN clientes c ON c.id = r.cliente_id
-                WHERE pp.caixa_id = ? AND pp.barbearia_id = ?`).bind(caixa.id, barbeariaId).all()
+                FROM promissoria_pagamentos pp JOIN promissoria_recebimentos r ON r.id = pp.recebimento_id JOIN clientes c ON c.id = r.cliente_id JOIN caixas cx ON cx.id = pp.caixa_id
+                WHERE ${cR[0]} AND pp.barbearia_id = ?`).bind(...cR[1], barbeariaId).all()
   ]);
   const vendaPor = Object.fromEntries(vendas.results.map(v => [v.id, v]));
   const porForma = Object.fromEntries(FORMAS.map(f => [f, 0]));
@@ -56,7 +60,7 @@ export async function resumoCaixa(db, barbeariaId, caixa) {
     if (n.situacao !== "estornada") notasLancadas += n.valor_centavos;
     itens.push({
       id: n.id, tipo: "promissoria", em: n.criado_em, forma: "promissoria", formaAtual: "promissoria", valorCentavos: n.valor_centavos,
-      hora: null, cliente: n.cliente, barbeiro: null, descricao: n.descricao, notaSituacao: n.situacao, corrigido: false, podeCorrigir: false
+      dia: n.dia, hora: null, cliente: n.cliente, barbeiro: null, descricao: n.descricao, notaSituacao: n.situacao, corrigido: false, podeCorrigir: false
     });
   }
   for (const r of receb.results) {
@@ -64,7 +68,7 @@ export async function resumoCaixa(db, barbeariaId, caixa) {
     if (ativo) { porForma[r.forma] += r.valor_centavos; notasRecebidas += r.valor_centavos; }
     itens.push({
       id: r.id, tipo: "recebimento_promissoria", em: r.criado_em, forma: r.forma, formaAtual: r.forma, valorCentavos: r.valor_centavos,
-      hora: null, cliente: r.cliente, barbeiro: null, descricao: `Pagamento de ${r.notas} nota(s)${ativo ? "" : " — estornado"}`,
+      dia: r.dia, hora: null, cliente: r.cliente, barbeiro: null, descricao: `Pagamento de ${r.notas} nota(s)${ativo ? "" : " — estornado"}`,
       recebimentoEstornado: !ativo, corrigido: false, podeCorrigir: false
     });
   }
@@ -75,11 +79,11 @@ export async function resumoCaixa(db, barbeariaId, caixa) {
     if (l.estornada && l.tem_ativa) continue;
     itens.push({
       id: l.id, tipo: l.tipo, em: l.criado_em, forma: l.forma, formaAtual: l.forma_atual, valorCentavos: l.valor_centavos,
-      hora: l.inicio ? l.inicio.slice(11) : null, cliente: l.cliente, barbeiro: l.barbeiro, descricao: l.descricao,
+      dia: l.dia, hora: l.inicio ? l.inicio.slice(11) : null, cliente: l.cliente, barbeiro: l.barbeiro, descricao: l.descricao,
       corrigido: l.forma_atual !== l.forma, corrigidoNoCaixa: Boolean(l.motivo_corr && l.tipo === "atendimento"),
       motivoCorrecao: l.tipo === "atendimento" && l.motivo_corr ? l.motivo_corr.replace(/^Correção no caixa:\s*/, "") : null,
       agendamentoId: l.tipo === "atendimento" && !l.estornada ? l.agendamento_id : null,
-      podeCorrigir: l.tipo === "atendimento" && !l.estornada && caixa.situacao === "aberto"
+      podeCorrigir: l.tipo === "atendimento" && !l.estornada && (l.cx_sit ?? caixa.situacao) === "aberto"
     });
   }
   for (const m of movs.results) {
@@ -93,13 +97,13 @@ export async function resumoCaixa(db, barbeariaId, caixa) {
     if (m.tipo === "correcao_saida" || m.tipo === "correcao_entrada") continue;   // aparecem como "corrigido" no lançamento original
     itens.push({
       id: m.id, tipo: m.tipo, em: m.criado_em, forma: m.forma, formaAtual: m.forma_atual, valorCentavos: m.valor_centavos,
-      hora: null, cliente: v?.cliente || null, barbeiro: v?.vendedor || null,
+      dia: m.dia, hora: null, cliente: v?.cliente || null, barbeiro: v?.vendedor || null,
       descricao: m.tipo === "sangria" || m.tipo === "suprimento" ? `${m.motivo} (${m.usuario})` : v?.itens || null,
       vendaId: m.venda_id || null, vendaCancelada: v?.situacao === "cancelada",
       desconto: m.tipo === "venda" && v?.desconto_bp ? { percentualBp: v.desconto_bp, valorCentavos: v.desconto_centavos, brutoCentavos: v.bruto_centavos } : null,
       corrigido: m.forma_atual !== m.forma,
-      podeCorrigir: m.tipo === "venda" && v?.situacao === "ativa" && caixa.situacao === "aberto",
-      podeCancelarVenda: m.tipo === "venda" && v?.situacao === "ativa" && caixa.situacao === "aberto"
+      podeCorrigir: m.tipo === "venda" && v?.situacao === "ativa" && (m.cx_sit ?? caixa.situacao) === "aberto",
+      podeCancelarVenda: m.tipo === "venda" && v?.situacao === "ativa" && (m.cx_sit ?? caixa.situacao) === "aberto"
     });
   }
   itens.sort((a, b) => a.em.localeCompare(b.em));
@@ -220,6 +224,25 @@ export async function rotasCaixa(ctx, path, method) {
 
   if (path === "/caixa/hoje" && method === "GET") return json(await respostaCaixa(ctx, hoje));
 
+  // Lançamentos de vários dias (dia, semana de segunda a domingo ou mês): gestão e caixa. Mesma lista do caixa do dia, juntando os caixas do período.
+  if (path === "/caixa/lancamentos" && method === "GET") {
+    if (!veTodasAgendas(ctx.user)) return fail("Sem permissão", 403);
+    const q = new URL(request.url).searchParams;
+    const tipo = q.get("tipo") || "dia";
+    const data = q.get("data") || hoje;
+    if (!validDate(data)) return fail("Data inválida.");
+    let ini = data, fim = data;
+    if (tipo === "semana") { ini = somarDias(data, -((new Date(`${data}T12:00:00Z`).getUTCDay() + 6) % 7)); fim = somarDias(ini, 6); }
+    else if (tipo === "mes") { ini = `${data.slice(0, 7)}-01`; const d = new Date(`${ini}T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + 1); fim = somarDias(d.toISOString().slice(0, 10), -1); }
+    else if (tipo !== "dia") return fail("Período inválido: dia, semana ou mês.");
+    const r = await resumoCaixa(db, ctx.barbeariaId, { id: null, situacao: null, troco_centavos: 0 }, { ini, fim });
+    const LIMITE = 1000;
+    const itens = r.lancamentos.sort((a, b) => b.em.localeCompare(a.em));
+    return json({ periodo: { tipo, data, ini, fim, hoje }, lancamentos: itens.slice(0, LIMITE), total: itens.length,
+      totais: { porForma: r.totais.porForma, atendimentosCentavos: r.totais.atendimentosCentavos, vendasCentavos: r.totais.vendasCentavos,
+        entradasCentavos: r.totais.entradasCentavos, sangriasCentavos: r.totais.sangriasCentavos, suprimentosCentavos: r.totais.suprimentosCentavos,
+        notasLancadasCentavos: r.totais.notasLancadasCentavos } });
+  }
   // PDV: atendimentos de hoje para cobrar (sem comissão) + profissionais e serviços para o atendimento sem horário.
   if (path === "/caixa/atendimentos" && method === "GET") {
     // ?id=: um atendimento específico (para corrigir um lançamento de hoje cujo horário era de outro dia) — sempre só da barbearia da sessão
@@ -282,8 +305,33 @@ export async function rotasCaixa(ctx, path, method) {
         novoCliente = { id: c.id, antes: ag.cliente_id, agId: ag.id, nv };
       }
     }
+    // Dia e hora (opcionais, juntos): a duração do atendimento continua a mesma; não pode ser de um dia que ainda não chegou.
+    let novoHorario = null;
+    if (input.data || input.hora) {
+      if (!veTodasAgendas(ctx.user)) return fail("Só o gerente ou o caixa corrigem o dia e a hora.", 403);
+      if (!validDate(input.data) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(input.hora || ""))) return fail("Informe o dia e a hora certos (ex.: 14:30).");
+      if (input.data > hoje) return fail("O dia não pode ser futuro: o atendimento já foi cobrado.");
+      const ag = await db.prepare("SELECT id, data, inicio, fim FROM agendamentos WHERE id = ? AND barbearia_id = ?").bind(String(input.id || ""), ctx.barbeariaId).first();
+      if (!ag) return fail("Horário não encontrado.", 404);
+      const minutos = t => Number(t.slice(11, 13)) * 60 + Number(t.slice(14, 16));
+      const dur = minutos(ag.fim) - minutos(ag.inicio);
+      const ini = Number(input.hora.slice(0, 2)) * 60 + Number(input.hora.slice(3));
+      if (ini + dur > 24 * 60) return fail("Com essa hora o atendimento passaria da meia-noite.");
+      const hm = m => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+      const inicio = `${input.data}T${input.hora}`, fimNovo = `${input.data}T${hm(ini + dur)}`;
+      if (inicio !== ag.inicio) novoHorario = { agId: ag.id, data: input.data, inicio, fim: fimNovo, antes: { data: ag.data, inicio: ag.inicio, fim: ag.fim } };
+    }
     await reabrirDados(ctx, { id: input.id, motivo: `Correção no caixa: ${motivo}` });
     try {
+      if (novoHorario) {
+        const r = await db.batch([
+          db.prepare("UPDATE agendamentos SET data = ?, inicio = ?, fim = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND barbearia_id = ? AND situacao = 'agendado'")
+            .bind(novoHorario.data, novoHorario.inicio, novoHorario.fim, novoHorario.agId, ctx.barbeariaId),
+          auditoriaSe(ctx, "EXISTS (SELECT 1 FROM agendamentos WHERE id = ? AND inicio = ?)", [novoHorario.agId, novoHorario.inicio],
+            "atendimento_horario_corrigido", novoHorario.agId, { motivo, antes: novoHorario.antes, depois: { data: novoHorario.data, inicio: novoHorario.inicio, fim: novoHorario.fim } })
+        ]);
+        if (!r[0].meta?.changes) throw new HttpError("Não foi possível trocar o dia e a hora.", 409);
+      }
       if (novoCliente) {
         const r = await db.batch([
           db.prepare("UPDATE agendamentos SET cliente_id = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND barbearia_id = ? AND situacao = 'agendado'").bind(novoCliente.id, novoCliente.agId, ctx.barbeariaId),

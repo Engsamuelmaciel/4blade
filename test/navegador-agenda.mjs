@@ -240,6 +240,9 @@ async function rodar(tela) {
     const outros = await quem.locator("option").evaluateAll((os, a) => os.map(o => o.value).filter(v => v !== a), atual);
     assert.ok(outros.length >= 1, "há outro profissional para escolher");
     await quem.selectOption(outros[outros.length - 1]);
+    // dia e hora também podem ser corrigidos (vêm com os valores atuais)
+    assert.match(await page.inputValue("dialog[open] #c-corrData"), /^\d{4}-\d{2}-\d{2}$/);
+    assert.match(await page.inputValue("dialog[open] #c-corrHora"), /^\d{2}:\d{2}$/);
     // o cliente também pode ser corrigido: o campo mostra o cliente atual com "Trocar"
     await page.waitForSelector("dialog[open] [data-teste=corrigir-cliente] [data-teste=corr-cli-escolhido]");
     assert.match(await page.textContent("dialog[open] [data-teste=corrigir-cliente]"), /Diego Cliente Fictício/);
@@ -253,6 +256,17 @@ async function rodar(tela) {
     assert.ok(/R\$\s?35,00/.test(lancs[0]) && /Dinheiro/.test(lancs[0]) && /Corrigido: Valor combinado era 35/.test(lancs[0]) && !/estorno/i.test(lancs[0]), lancs[0]);
     assert.equal(await page.locator("[data-lancamento='Diego Cliente Fictício'] button:has-text('Corrigir')").count(), 1, "dá para corrigir de novo");
     await print("caixa-lancamento-corrigido");
+    // lançamentos por período: dia, semana e mês juntam os caixas; a busca filtra
+    await page.waitForSelector("[data-teste=lancamentos-periodo] [data-teste=lanc-totais]");
+    for (const k of ["semana", "mes", "dia"]) {
+      await page.click(`[data-periodo-lanc=${k}]`);
+      await page.waitForFunction(k2 => document.querySelector(`[data-periodo-lanc=${k2}]`)?.classList.contains("ativo") && document.querySelector("[data-teste=lanc-totais]") && !/Carregando/.test(document.querySelector("[data-teste=lanc-corpo]")?.textContent || ""), k);
+      assert.ok(await page.locator("[data-lancamento]").count() >= 1, `há lançamentos em ${k}`);
+    }
+    await page.fill("[data-teste=lanc-busca]", "zzzz-nao-existe");
+    await page.waitForSelector("text=Nada encontrado com essa busca");
+    await page.fill("[data-teste=lanc-busca]", "");
+    await print("caixa-lancamentos-periodo");
 
     const reais = problemas.filter(p => !/status of 40[039]/.test(p));   // 400 esperado: linha do lote sem o aceite LGPD
     assert.deepEqual(reais, [], `erros no console: ${reais.join(" | ")}`);

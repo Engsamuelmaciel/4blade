@@ -2496,3 +2496,15 @@ main:has(.fc) { padding-top: 12px; }
   background: var(--dourado); color: var(--sobre-dourado, #111317); }
 @media (min-width: 700px) { .abas-caixa { max-width: 520px; } }
 @media (max-width: 480px) { .abas-caixa .botao { font-size: 14px; gap: 6px; padding-left: 8px; padding-right: 8px; white-space: nowrap; } }
+
+/* LANÇAMENTOS POR PERÍODO (dia, semana, mês) */
+.lanc-periodo { display: grid; gap: 10px; }
+.lanc-periodo .navega-data { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.lanc-totais { display: flex; flex-wrap: wrap; gap: 8px; }
+.lanc-totais > div { flex: 1 1 96px; display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--linha, var(--borda)); border-radius: 12px; background: var(--cartao); }
+.lanc-totais small { color: var(--suave, inherit); opacity: .75; font-size: 12px; }
+.lanc-dia h4 { margin: 14px 0 6px; font-size: 14px; text-transform: capitalize; }
+.lanc-busca { display: flex; align-items: center; gap: 10px; padding: 0 12px; min-height: 46px; border: 1px solid var(--campo-borda); border-radius: 12px; background: var(--campo); }
+.lanc-busca:focus-within { border-color: var(--dourado); box-shadow: 0 0 0 3px color-mix(in srgb, var(--dourado) 20%, transparent); }
+.lanc-busca .icone { width: 20px; height: 20px; color: var(--suave); flex: none; }
+.lanc-busca input { flex: 1; min-width: 0; }

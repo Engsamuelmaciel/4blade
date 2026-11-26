@@ -2799,6 +2799,9 @@ async function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar =
     correcao ? campo("Motivo da correção", { name: "motivoCorrecao", required: true, minlength: "3", placeholder: "Ex.: cobrei o valor errado" }) : null,
     correcao?.cliente ? (() => { seletorCorrecao = seletorCliente({ id: "corr-cli", preSelecionado: correcao.cliente });
       return el("div", { "data-teste": "corrigir-cliente" }, el("p", { class: "suave", text: "Cliente" }), seletorCorrecao.el); })() : null,
+    correcao ? el("div", { class: "lado-a-lado", "data-teste": "corrigir-quando" },
+      campo("Dia", { name: "corrData", id: "c-corrData", type: "date", value: a.data, max: hojeLocal(), required: true }),
+      campo("Hora", { name: "corrHora", id: "c-corrHora", type: "time", value: a.inicio, required: true })) : null,
     correcao?.profissionais?.length ? campo("Quem atendeu", { tag: "select", name: "quemAtendeu", "data-teste": "corrigir-quem",
       opcoes: [...(correcao.profissionais.some(p => p.id === correcao.barbeiroId) ? [] : [[correcao.barbeiroId, correcao.barbeiroNome || "Profissional atual"]]),
         ...correcao.profissionais.map(p => [p.id, p.nome])], valor: correcao.barbeiroId }) : null,
@@ -2828,6 +2831,7 @@ async function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar =
       const novoCli = correcao?.cliente && seletorCorrecao?.escolhido();
       await comAceiteNota(extra => api(endpoint, { metodo: "POST", corpo: { id: a.id, itens, pagamentos, ...(produtos.length ? { produtos } : {}), ...(correcao ? { motivo: f.motivoCorrecao.value } : {}),
         ...(novoCli && novoCli.id !== correcao.cliente.id ? { clienteId: novoCli.id } : {}), ...extra,
+        ...(correcao && (f.corrData.value !== a.data || f.corrHora.value !== a.inicio) ? { data: f.corrData.value, hora: f.corrHora.value } : {}),
         ...(correcao?.profissionais?.length && f.quemAtendeu?.value && f.quemAtendeu.value !== correcao.barbeiroId ? { barbeiroId: f.quemAtendeu.value } : {}) } }));
       avisar(correcao ? "Atendimento corrigido."
         : produtos.length ? "Atendimento e produtos cobrados. Entrada lançada no caixa." : "Atendimento finalizado. Entrada lançada no caixa.");
@@ -3159,6 +3163,57 @@ const NOME_TIPO_CAIXA = {
   promissoria: "Na promissória (não entrou dinheiro)", recebimento_promissoria: "Nota recebida"
 };
 
+// Lançamentos por período (dia, semana ou mês): junta os caixas do período; busca por cliente, profissional ou item.
+function blocoLancamentosPeriodo(recarregar) {
+  const e = estadoCaixa.lanc;
+  e.data ||= hojeLocal();
+  const corpo = el("div", { "data-teste": "lanc-corpo" }, el("p", { class: "suave", text: "Carregando…" }));
+  const passo = n => { e.data = e.tipo === "mes" ? somaDias(`${e.data.slice(0, 7)}-15`, 30 * n).slice(0, 7) + "-01" : somaDias(e.data, (e.tipo === "semana" ? 7 : 1) * n); desenhar(); };
+  const titulo = el("strong", { "data-teste": "lanc-titulo" });
+  const busca = el("input", { type: "search", class: "fc-busca-input", placeholder: "Buscar cliente, profissional ou item", "aria-label": "Buscar nos lançamentos", value: e.busca, "data-teste": "lanc-busca" });
+  let ultimo = null;
+  const montarLista = () => {
+    if (!ultimo) return;
+    const t = normalizar(e.busca);
+    const itens = ultimo.lancamentos.filter(l => !t || normalizar([l.cliente, l.barbeiro, l.descricao].filter(Boolean).join(" ")).includes(t));
+    const dias = [...new Set(itens.map(l => l.dia))].sort().reverse();
+    const f = ultimo.totais.porForma;
+    corpo.replaceChildren(...[
+      el("div", { class: "lanc-totais", "data-teste": "lanc-totais" },
+        el("div", {}, el("small", { text: "Entradas" }), el("strong", { text: reais(ultimo.totais.entradasCentavos) })),
+        ...OPCOES_FORMA.filter(([k]) => f[k]).map(([k, n]) => el("div", {}, el("small", { text: n }), el("strong", { text: reais(f[k]) })))),
+      ultimo.totais.notasLancadasCentavos ? el("p", { class: "suave", text: `Em nota (promissória): ${reais(ultimo.totais.notasLancadasCentavos)}` }) : null,
+      ultimo.total > ultimo.lancamentos.length ? el("p", { class: "suave", text: `Mostrando os ${ultimo.lancamentos.length} mais recentes de ${ultimo.total}.` }) : null,
+      itens.length ? el("div", {}, ...dias.map(d => el("section", { class: "lanc-dia", "data-dia-lanc": d },
+        el("h4", { text: `${dataBR(d)} · ${new Date(`${d}T12:00:00Z`).toLocaleDateString("pt-BR", { weekday: "long", timeZone: "UTC" })}` }),
+        listaCaixa({ lancamentos: itens.filter(l => l.dia === d) }, recarregar))))
+        : el("p", { class: "vazio", text: t ? "Nada encontrado com essa busca." : "Nenhum lançamento neste período." })
+    ].filter(Boolean));
+  };
+  const desenhar = async () => {
+    corpo.replaceChildren(el("p", { class: "suave", text: "Carregando…" }));
+    try {
+      ultimo = await api(`/caixa/lancamentos?tipo=${e.tipo}&data=${e.data}`);
+      titulo.textContent = e.tipo === "dia" ? dataBR(ultimo.periodo.ini) : `${dataBR(ultimo.periodo.ini)} a ${dataBR(ultimo.periodo.fim)}`;
+      montarLista();
+    } catch (err) { corpo.replaceChildren(el("p", { class: "erro", text: err.message })); }
+  };
+  busca.addEventListener("input", () => { e.busca = busca.value; montarLista(); });
+  const chips = el("div", { class: "alterna", role: "group", "aria-label": "Período dos lançamentos", "data-teste": "lanc-periodos" },
+    [["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"]].map(([k, txt]) =>
+      el("button", { type: "button", class: `botao pequeno ${e.tipo === k ? "ativo" : ""}`, "data-periodo-lanc": k, "aria-pressed": String(e.tipo === k),
+        onclick: () => { e.tipo = k; chips.querySelectorAll("button").forEach(b => { const on = b.dataset.periodoLanc === k; b.classList.toggle("ativo", on); b.setAttribute("aria-pressed", String(on)); }); desenhar(); } }, txt)));
+  const raiz = el("div", { class: "lanc-periodo", "data-teste": "lancamentos-periodo" },
+    chips,
+    el("div", { class: "navega-data" },
+      botao("‹", () => passo(-1), "pequeno"), titulo, botao("›", () => passo(1), "pequeno"),
+      botao("Hoje", () => { e.data = hojeLocal(); desenhar(); }, "pequeno")),
+    el("div", { class: "lanc-busca" }, icone("busca"), busca),
+    corpo);
+  desenhar();
+  return raiz;
+}
+
 function listaCaixa(c, recarregar) {
   if (!c.lancamentos.length) return el("p", { class: "vazio", text: "Nenhum lançamento ainda. Atendimentos finalizados e vendas aparecem aqui na hora." });
   return el("ul", { class: "lista" }, c.lancamentos.map(l => el("li", {
@@ -3415,7 +3470,7 @@ async function telaCaixa(dataHistorico = null) {
         gestao() ? el("a", { class: "botao ferramenta", href: "#/caixa-historico" }, icone("lista"), el("span", { text: "Outros dias" })) : null)),
     // Dois botões grandes no alto (26/11/2026): "Vender" e "Lançamentos do dia" (antes ficava só num botão pequeno embaixo da comanda).
     el("div", { class: "alterna largo abas-caixa", role: "tablist", "aria-label": "Caixa", "data-teste": "abas-caixa" },
-      [["venda", "Vender", "recibo", null], ["lancamentos", "Lançamentos do dia", "lista", c.lancamentos.length]].map(([k, t, ic, n]) =>
+      [["venda", "Vender", "recibo", null], ["lancamentos", "Lançamentos", "lista", c.lancamentos.length]].map(([k, t, ic, n]) =>
         el("button", { type: "button", role: "tab", "aria-selected": String(estadoCaixa.visao === k), class: `botao ${estadoCaixa.visao === k ? "ativo" : ""}`, "data-aba-caixa": k,
           onclick: () => { if (estadoCaixa.visao !== k) { estadoCaixa.visao = k; recarregar(); } } },
           icone(ic), el("span", { text: t }), n ? el("span", { class: "aba-num", "data-teste": "num-lancamentos", text: String(n) }) : null))),
@@ -3429,8 +3484,8 @@ async function telaCaixa(dataHistorico = null) {
 // Três zonas, como numa frente de caixa de loja: Vitrine (fila, serviços, produtos) · Comanda (busca + itens) · Total e pagamento.
 // Tudo vira uma "comanda": atendimento da fila (cobrar), atendimento sem horário (serviços) ou venda de produto.
 const novaComanda = () => ({ ag: null, barbeiroId: null, cliente: null, servicos: [], produtos: new Map(), descontoTxt: "" });
-const estadoCaixa = { vitrine: "fila", visao: "venda", busca: "", comanda: novaComanda() };
-const reiniciarCaixa = () => Object.assign(estadoCaixa, { vitrine: "fila", visao: "venda", busca: "", comanda: novaComanda() });
+const estadoCaixa = { vitrine: "fila", visao: "venda", busca: "", comanda: novaComanda(), lanc: { tipo: "dia", data: null, busca: "" } };
+const reiniciarCaixa = () => Object.assign(estadoCaixa, { vitrine: "fila", visao: "venda", busca: "", comanda: novaComanda(), lanc: { tipo: "dia", data: null, busca: "" } });
 
 // Escolher o cliente da comanda: da base (busca) ou um cliente novo/avulso (nome e telefone opcionais).
 function janelaClienteComanda(cm, aoMudar) {
@@ -3672,7 +3727,7 @@ async function frenteCaixa(c, recarregar) {
     el("button", { type: "button", class: `fc-acao ${estadoCaixa.visao === "lancamentos" ? "ativo" : ""}`, "data-teste": "ver-lancamentos",
       onclick: () => { estadoCaixa.visao = estadoCaixa.visao === "lancamentos" ? "venda" : "lancamentos"; recarregar(); } }, icone("lista"), el("span", { text: estadoCaixa.visao === "lancamentos" ? "Voltar à venda" : "Lançamentos do dia" })));
   const centro = estadoCaixa.visao === "lancamentos"
-    ? el("section", { class: "fc-comanda", id: "fc-comanda" }, el("h3", { class: "fc-titulo", text: "Lançamentos do dia" }), listaCaixa(c, recarregar), acoes)
+    ? el("section", { class: "fc-comanda", id: "fc-comanda" }, el("h3", { class: "fc-titulo", text: "Lançamentos" }), blocoLancamentosPeriodo(recarregar), acoes)
     : el("section", { class: "fc-comanda", id: "fc-comanda" },
       el("div", { class: "fc-busca" }, icone("busca"), buscaEl),
       cabecaEl, itensTabela, acoes);

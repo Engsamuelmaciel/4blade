@@ -138,4 +138,46 @@ describe("corrigir atendimento já cobrado no caixa", () => {
     const outra = await cenario("corr8", amb, amb.p);
     assert.ok(!(await get(`/api/caixa/atendimentos?id=${m.id}`, outra.cx.token)).dados.atendimentos.some(a => a.id === m.id), "outra barbearia não enxerga");
   });
+
+  test("corrigir dia e hora: o horário muda (e sai da agenda do profissional antigo ao trocar quem atendeu); futuro e hora inválida recusados; permissões e isolamento", async () => {
+    const amb = await cenario("corr9");
+    const { post, get, cx, ger, barb, corte, env } = amb;
+    const m = await cobrado(amb, "09:00");
+    const corpo = (extra = {}) => ({ id: m.id, motivo: "Hora errada", itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], pagamentos: [{ forma: "pix", valorCentavos: 4000 }], ...extra });
+    const amanha = new Date(Date.parse(`${HOJE}T12:00:00Z`) + 86400e3).toISOString().slice(0, 10);
+    assert.equal((await post("/api/caixa/corrigir-atendimento", barb.token, corpo({ data: HOJE, hora: "10:00" }))).status, 403);
+    assert.equal((await post("/api/caixa/corrigir-atendimento", cx.token, corpo({ data: amanha, hora: "10:00" }))).status, 400);
+    assert.equal((await post("/api/caixa/corrigir-atendimento", cx.token, corpo({ data: HOJE, hora: "25:99" }))).status, 400);
+    assert.equal((await post("/api/caixa/corrigir-atendimento", cx.token, corpo({ data: HOJE }))).status, 400);
+    const outra = await cenario("corr10", amb, amb.p);
+    assert.equal((await post("/api/caixa/corrigir-atendimento", outra.cx.token, corpo({ data: HOJE, hora: "10:00" }))).status, 404);
+    // muda a hora E o profissional: sai da agenda do barbeiro, entra na do gerente, com a mesma duração
+    const r = await post("/api/caixa/corrigir-atendimento", cx.token, corpo({ data: HOJE, hora: "15:30", barbeiroId: ger.id }));
+    assert.equal(r.status, 201, JSON.stringify(r.dados));
+    const ag = await env.DB.prepare("SELECT barbeiro_id, inicio, fim, situacao FROM agendamentos WHERE id = ?").bind(m.id).first();
+    assert.deepEqual([ag.barbeiro_id, ag.inicio, ag.fim, ag.situacao], [ger.id, `${HOJE}T15:30`, `${HOJE}T16:00`, "finalizado"]);
+    const agBarb = (await get(`/api/agenda?data=${HOJE}&barbeiroId=${barb.id}`, cx.token)).dados;
+    assert.ok(!JSON.stringify(agBarb.agendamentos).includes(m.id), "saiu da agenda do barbeiro antigo");
+    const agGer = (await get(`/api/agenda?data=${HOJE}&barbeiroId=${ger.id}`, cx.token)).dados;
+    assert.ok(JSON.stringify(agGer.agendamentos).includes(m.id), "está na agenda do novo profissional");
+    assert.ok(await env.DB.prepare("SELECT 1 FROM auditoria WHERE acao = 'atendimento_horario_corrigido' AND alvo = ?").bind(m.id).first());
+  });
+
+  test("lançamentos por período: dia, semana e mês juntam os caixas; só gestão e caixa; isolamento", async () => {
+    const amb = await cenario("corr11");
+    const { post, get, cx, ger, barb } = amb;
+    await cobrado(amb, "09:00"); await cobrado(amb, "10:00");
+    const dia = (await get(`/api/caixa/lancamentos?tipo=dia&data=${HOJE}`, cx.token)).dados;
+    assert.equal(dia.lancamentos.length, 2); assert.equal(dia.totais.entradasCentavos, 8000); assert.equal(dia.lancamentos[0].dia, HOJE);
+    const sem = (await get(`/api/caixa/lancamentos?tipo=semana&data=${HOJE}`, ger.token)).dados;
+    assert.equal(sem.totais.entradasCentavos, 8000); assert.ok(sem.periodo.ini <= HOJE && sem.periodo.fim >= HOJE && sem.periodo.fim > sem.periodo.ini);
+    const mes = (await get(`/api/caixa/lancamentos?tipo=mes&data=${HOJE}`, cx.token)).dados;
+    assert.equal(mes.periodo.ini, `${HOJE.slice(0, 7)}-01`); assert.equal(mes.totais.porForma.pix, 8000); assert.equal(mes.lancamentos[0].podeCorrigir, true);
+    assert.equal((await get(`/api/caixa/lancamentos?tipo=ano&data=${HOJE}`, cx.token)).status, 400);
+    assert.equal((await get(`/api/caixa/lancamentos?tipo=mes&data=${HOJE}`, barb.token)).status, 403);
+    const outra = await cenario("corr12", amb, amb.p);
+    const vazio = (await get(`/api/caixa/lancamentos?tipo=mes&data=${HOJE}`, outra.cx.token)).dados;
+    assert.equal(vazio.lancamentos.length, 0); assert.equal(vazio.totais.entradasCentavos, 0);
+    void post;
+  });
 });
