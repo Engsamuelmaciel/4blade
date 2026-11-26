@@ -2,7 +2,7 @@
 // correção de forma de pagamento, fechamento (esperado × contado) e reabertura só pelo gerente, com motivo.
 // O caixa NUNCA vê comissão, custo nem margem.
 import { json, fail, HttpError, readJson, validCentavos, validDate, textoOpcional, exigirMotivo, auditoria, auditoriaSe, hojeBrasil } from "./util.js";
-import { isGestao } from "./perfis.js";
+import { isGestao, atende, veTodasAgendas } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
 import { FORMAS, formaEfetiva, telefoneReal, somarDias } from "./agenda-util.js";
 import { finalizarDados, atendimentoAvulso, reabrirDados } from "./agenda.js";
@@ -245,8 +245,37 @@ export async function rotasCaixa(ctx, path, method) {
     const motivo = typeof input.motivo === "string" ? input.motivo.trim() : "";
     if (motivo.length < 3) return fail("Informe o motivo da correção.");
     if (!Array.isArray(input.itens) || !input.itens.length) return fail("Informe os serviços.");
+    // Quem atendeu (opcional): só gestão e caixa; o profissional novo precisa ser da barbearia, ativo e estar livre naquele horário.
+    let novoBarbeiro = null;
+    if (input.barbeiroId) {
+      if (!veTodasAgendas(ctx.user)) return fail("Só o gerente ou o caixa corrigem quem atendeu.", 403);
+      const ag = await db.prepare("SELECT id, barbeiro_id, inicio, fim FROM agendamentos WHERE id = ? AND barbearia_id = ?").bind(String(input.id || ""), ctx.barbeariaId).first();
+      if (!ag) return fail("Horário não encontrado.", 404);
+      if (input.barbeiroId !== ag.barbeiro_id) {
+        const p = await db.prepare("SELECT id, nome, perfil, ativo FROM usuarios WHERE id = ? AND barbearia_id = ?").bind(String(input.barbeiroId), ctx.barbeariaId).first();
+        if (!p) return fail("Profissional não encontrado.", 404);
+        if (!atende(p.perfil) || !p.ativo) return fail("Escolha um gerente ou barbeiro ativo.");
+        const choque = await db.prepare(`SELECT 1 FROM agendamentos WHERE barbearia_id = ? AND barbeiro_id = ? AND id <> ? AND situacao IN ('agendado','finalizado') AND inicio < ? AND fim > ?
+          UNION ALL SELECT 1 FROM bloqueios WHERE barbearia_id = ? AND barbeiro_id = ? AND ativo = 1 AND inicio < ? AND fim > ?`)
+          .bind(ctx.barbeariaId, p.id, ag.id, ag.fim, ag.inicio, ctx.barbeariaId, p.id, ag.fim, ag.inicio).first();
+        if (choque) return fail(`${p.nome} já tem outro horário ou bloqueio nesse horário. Escolha outro profissional.`, 409);
+        novoBarbeiro = { id: p.id, nome: p.nome, antes: ag.barbeiro_id, agId: ag.id };
+      }
+    }
     await reabrirDados(ctx, { id: input.id, motivo: `Correção no caixa: ${motivo}` });
     try {
+      if (novoBarbeiro) {
+        // o horário já voltou para "agendado": troca o profissional (com a mesma conferência de conflito) e registra antes/depois
+        const r = await db.batch([
+          db.prepare(`UPDATE agendamentos SET barbeiro_id = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND barbearia_id = ? AND situacao = 'agendado'
+            AND NOT EXISTS (SELECT 1 FROM agendamentos o WHERE o.barbearia_id = ? AND o.barbeiro_id = ? AND o.id <> ? AND o.situacao IN ('agendado','finalizado') AND o.inicio < agendamentos.fim AND o.fim > agendamentos.inicio)
+            AND NOT EXISTS (SELECT 1 FROM bloqueios b WHERE b.barbearia_id = ? AND b.barbeiro_id = ? AND b.ativo = 1 AND b.inicio < agendamentos.fim AND b.fim > agendamentos.inicio)`)
+            .bind(novoBarbeiro.id, novoBarbeiro.agId, ctx.barbeariaId, ctx.barbeariaId, novoBarbeiro.id, novoBarbeiro.agId, ctx.barbeariaId, novoBarbeiro.id),
+          auditoriaSe(ctx, "EXISTS (SELECT 1 FROM agendamentos WHERE id = ? AND barbeiro_id = ?)", [novoBarbeiro.agId, novoBarbeiro.id],
+            "atendimento_profissional_corrigido", novoBarbeiro.agId, { motivo, antes: { barbeiro: novoBarbeiro.antes }, depois: { barbeiro: novoBarbeiro.id } })
+        ]);
+        if (!r[0].meta?.changes) throw new HttpError("O novo profissional ficou ocupado nesse horário.", 409);
+      }
       return await finalizarDados(ctx, { id: input.id, itens: input.itens, pagamentos: input.pagamentos, produtos: input.produtos });
     } catch (e) {
       // estornou mas não cobrou de novo: o atendimento voltou para a fila "Cobrar"

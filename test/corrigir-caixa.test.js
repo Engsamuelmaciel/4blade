@@ -58,4 +58,36 @@ describe("corrigir atendimento já cobrado no caixa", () => {
     assert.equal((await post("/api/caixa/corrigir-atendimento", outra.cx.token, corpo)).status, 404);
     assert.equal((await post("/api/caixa/corrigir-atendimento", outra.ger.token, corpo)).status, 404);
   });
+
+  test("corrigir quem atendeu: troca o profissional, a comissão vai para o novo; conflito, inativo e outra barbearia recusados", async () => {
+    const amb = await cenario("corr3");
+    const { post, get, cx, ger, barb, corte, env } = amb;
+    const outro = await amb.criarUsuario(ger.token, "outro.corr3", "barbeiro", { comissaoServicoBp: 3000 });
+    const m = await cobrado(amb, "11:00");
+    const corpo = (extra = {}) => ({ id: m.id, motivo: "Quem atendeu foi outro", itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], pagamentos: [{ forma: "pix", valorCentavos: 4000 }], ...extra });
+    // barbeiro não troca; profissional de outra barbearia não existe
+    assert.equal((await post("/api/caixa/corrigir-atendimento", barb.token, corpo({ barbeiroId: outro.id }))).status, 403);
+    const outra = await cenario("corr4", amb, amb.p);
+    assert.equal((await post("/api/caixa/corrigir-atendimento", cx.token, corpo({ barbeiroId: outra.barb.id }))).status, 404);
+    // conflito: o novo já tem horário às 11:00
+    await post("/api/agenda", cx.token, { barbeiroId: outro.id, data: HOJE, hora: "11:00", servicoIds: [corte.id], cliente: { nome: "Ocupado" } });
+    assert.equal((await post("/api/caixa/corrigir-atendimento", cx.token, corpo({ barbeiroId: outro.id }))).status, 409);
+    // nada mudou: continua cobrado, com o profissional antigo
+    let ag = await env.DB.prepare("SELECT barbeiro_id, situacao FROM agendamentos WHERE id = ?").bind(m.id).first();
+    assert.equal(ag.barbeiro_id, barb.id); assert.equal(ag.situacao, "finalizado");
+    // livre: outro profissional às 11:00 já ocupado, então usa o gerente
+    const r = await post("/api/caixa/corrigir-atendimento", cx.token, corpo({ barbeiroId: ger.id }));
+    assert.equal(r.status, 201, JSON.stringify(r.dados));
+    ag = await env.DB.prepare("SELECT barbeiro_id, situacao FROM agendamentos WHERE id = ?").bind(m.id).first();
+    assert.equal(ag.barbeiro_id, ger.id); assert.equal(ag.situacao, "finalizado");
+    const ativas = await env.DB.prepare("SELECT barbeiro_id FROM comissoes WHERE estornada = 0 AND finalizacao_id IN (SELECT id FROM finalizacoes WHERE agendamento_id = ? AND estornada = 0)").bind(m.id).all();
+    assert.deepEqual(ativas.results.map(x => x.barbeiro_id), [ger.id]);
+    const aud = await env.DB.prepare("SELECT detalhes FROM auditoria WHERE acao = 'atendimento_profissional_corrigido' AND alvo = ?").bind(m.id).first();
+    assert.ok(aud && JSON.parse(aud.detalhes).antes.barbeiro === barb.id);
+    // inativo: recusado
+    assert.equal((await post("/api/usuarios/alterar", ger.token, { id: outro.id, ativo: false, motivo: "teste" })).status, 200);
+    const m2 = await cobrado(amb, "13:00");
+    assert.equal((await post("/api/caixa/corrigir-atendimento", cx.token, { ...corpo({ barbeiroId: outro.id }), id: m2.id })).status, 400);
+    void get;
+  });
 });

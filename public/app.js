@@ -2796,6 +2796,8 @@ async function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar =
     // Correção (19/11/2026): a cobrança antiga é estornada e esta entra no lugar; o motivo fica registrado.
     correcao ? el("p", { class: "info", "data-teste": "correcao-antes", text: `Cobrado antes: ${correcao.antes}. Ajuste os serviços, os valores e a forma certos — a cobrança antiga é estornada (fica registrada) e esta entra no lugar.` }) : null,
     correcao ? campo("Motivo da correção", { name: "motivoCorrecao", required: true, minlength: "3", placeholder: "Ex.: cobrei o valor errado" }) : null,
+    correcao?.profissionais?.length ? campo("Quem atendeu", { tag: "select", name: "quemAtendeu", "data-teste": "corrigir-quem",
+      opcoes: correcao.profissionais.map(p => [p.id, p.nome]), valor: correcao.barbeiroId }) : null,
     el("p", { class: "suave", text: `${a.cliente.nome} · ${a.inicio} · o valor pode ser alterado (fica registrado e aparece para o gerente).` }),
     caixaLinhas, botaoMais, painelMais,
     caixaProdutos, botaoProd, painelProd,
@@ -2819,7 +2821,8 @@ async function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar =
         if (v1 === null || v1 <= 0 || v1 >= t) throw new Error("Valor da 1ª forma inválido: precisa ser maior que zero e menor que o total.");
         pagamentos = [{ forma: f.forma1.value, valorCentavos: v1 }, { forma: f.forma2.value, valorCentavos: t - v1 }];
       }
-      await api(endpoint, { metodo: "POST", corpo: { id: a.id, itens, pagamentos, ...(produtos.length ? { produtos } : {}), ...(correcao ? { motivo: f.motivoCorrecao.value } : {}) } });
+      await api(endpoint, { metodo: "POST", corpo: { id: a.id, itens, pagamentos, ...(produtos.length ? { produtos } : {}), ...(correcao ? { motivo: f.motivoCorrecao.value } : {}),
+        ...(correcao?.profissionais?.length && f.quemAtendeu?.value ? { barbeiroId: f.quemAtendeu.value } : {}) } });
       avisar(correcao ? "Atendimento corrigido: a cobrança antiga foi estornada e a certa entrou no caixa."
         : produtos.length ? "Atendimento e produtos cobrados. Entrada lançada no caixa." : "Atendimento finalizado. Entrada lançada no caixa.");
       aoTerminar();
@@ -3201,18 +3204,20 @@ function janelaCorrigirLancamento(l, recarregar) {
     }
   });
   const valor = async () => {
-    const [{ atendimentos }] = await Promise.all([api("/caixa/atendimentos"), carregarServicos()]);
+    const [{ atendimentos, profissionais }] = await Promise.all([api("/caixa/atendimentos"), carregarServicos()]);
     const a = atendimentos.find(x => x.id === l.agendamentoId);
     if (!a) { avisar("Não achei esse atendimento para corrigir. Peça ao gerente para reabrir pela agenda.", "erro"); return; }
     janelaFinalizar(a, { endpoint: "/caixa/corrigir-atendimento", aoTerminar: recarregar, titulo: `Corrigir atendimento de ${a.cliente.nome}`,
-      correcao: { antes: `${reais(l.valorCentavos)} em ${NOME_FORMA[l.formaAtual]} (${l.descricao || "serviços"})` } });
+      correcao: { antes: `${reais(l.valorCentavos)} em ${NOME_FORMA[l.formaAtual]} (${l.descricao || "serviços"})`,
+        // quem atendeu: só gerente/caixa trocam (o servidor confere de novo)
+        profissionais: veTodas() ? profissionais : null, barbeiroId: a.barbeiroId } });
   };
   return abrirJanela(`Corrigir ${l.cliente || "atendimento"}`, [
     el("p", { text: `${[l.hora, l.cliente].filter(Boolean).join(" ")} · ${l.descricao || ""} · ${reais(l.valorCentavos)} em ${NOME_FORMA[l.formaAtual]}` }),
     el("p", { class: "suave", text: "O que está errado?" }),
     el("div", { class: "escolha-correcao" },
       el("button", { type: "button", class: "botao largo", "data-correcao": "forma", text: "Só a forma de pagamento", onclick: () => { janela.close(); setTimeout(soForma); } }),
-      el("button", { type: "button", class: "botao principal largo", "data-correcao": "valor", text: "Valor ou serviços (e forma)", onclick: () => { janela.close(); setTimeout(() => valor().catch(e => avisar(e.message, "erro"))); } }))
+      el("button", { type: "button", class: "botao principal largo", "data-correcao": "valor", text: "Quem atendeu, valor ou serviços (e forma)", onclick: () => { janela.close(); setTimeout(() => valor().catch(e => avisar(e.message, "erro"))); } }))
   ], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
 }
 

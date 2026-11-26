@@ -233,6 +233,13 @@ async function rodar(tela) {
     await valor.fill("35,00"); await valor.dispatchEvent("input");
     await page.selectOption("dialog[open] #c-forma1", "dinheiro");
     await page.fill("dialog[open] #c-motivoCorrecao", "Valor combinado era 35");
+    // quem atendeu também pode ser corrigido (gerente/caixa): troca para outro profissional livre
+    const quem = page.locator("dialog[open] [data-teste=corrigir-quem]");
+    await quem.waitFor();
+    const atual = await quem.inputValue();
+    const outros = await quem.locator("option").evaluateAll((os, a) => os.map(o => o.value).filter(v => v !== a), atual);
+    assert.ok(outros.length >= 1, "há outro profissional para escolher");
+    await quem.selectOption(outros[outros.length - 1]);
     await print("caixa-corrigir-valor");
     await page.click("dialog[open] button[type=submit]");
     await page.waitForSelector("text=Atendimento corrigido");
