@@ -9,7 +9,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir, abrirItem, abrirCadastro, vitrine, forma, lancamentos, voltarVenda } from "./navegacao.mjs";
+import { ir, abrirItem, abrirCadastro, vitrine, forma, lancamentos, voltarVenda, abrirLancamento } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -200,12 +200,15 @@ async function rodar(tela) {
     await ok();
     await page.waitForSelector('[data-lancamento="Troco extra (Camila Caixa)"]');
 
+    await abrirLancamento(page, "Elias Cliente Fictício");
     await page.click('[data-lancamento="Elias Cliente Fictício"] button:has-text("Corrigir")');
     await page.click("dialog[open] [data-correcao=forma]");   // 19/11/2026: "Corrigir" pergunta se é só a forma ou o valor
     await page.waitForSelector("dialog[open] [name=nova]");
     await page.selectOption("dialog[open] [name=nova]", "debito");
     await page.fill("dialog[open] [name=motivo]", "Cliente pagou no débito");
     await ok();
+    await page.waitForFunction(() => /corrigido/.test(document.querySelector('[data-lancamento="Elias Cliente Fictício"] > .item-x-resumo')?.textContent || ""));
+    await abrirLancamento(page, "Elias Cliente Fictício");
     await page.waitForSelector('[data-lancamento="Elias Cliente Fictício"] >> text=Forma corrigida: Pix → Débito');
     // esperado = 100 (troco) + 40 + 90 (dinheiro) + 20 (suprimento) − 50 (sangria) = 200,00
     assert.match(await texto("[data-teste=esperado]"), /R\$\s?200,00/);

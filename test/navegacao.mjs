@@ -122,3 +122,10 @@ export async function lancamentos(page) {
 export async function voltarVenda(page) {
   if (/Voltar/.test(await page.locator("[data-teste=ver-lancamentos]").innerText())) await page.click("[data-teste=ver-lancamentos]");
 }
+
+// Lançamentos do caixa: cada linha começa recolhida (toca e expande); abre a do cliente/descrição dado.
+export async function abrirLancamento(page, nome) {
+  const r = page.locator(`[data-lancamento="${nome}"] > .item-x-resumo`).first();
+  await r.waitFor();
+  if ((await r.getAttribute("aria-expanded")) !== "true") await r.click();
+}

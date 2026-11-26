@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
-import { ir, forma, lancamentos } from "./navegacao.mjs";
+import { ir, forma, lancamentos, abrirLancamento } from "./navegacao.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright");
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -225,6 +225,7 @@ async function rodar(tela) {
     await page.click("[data-teste=carrinho] button:has-text('Finalizar venda')");
     await page.waitForSelector("text=Atendimento lançado");
     await lancamentos(page);
+    await abrirLancamento(page, "Diego Cliente Fictício");
     await page.waitForSelector('[data-lancamento="Diego Cliente Fictício"] button:has-text("Corrigir")');
     await page.click('[data-lancamento="Diego Cliente Fictício"] button:has-text("Corrigir")');
     await page.click("dialog[open] [data-correcao=valor]");
@@ -250,7 +251,9 @@ async function rodar(tela) {
     await page.click("dialog[open] button[type=submit]");
     await page.waitForSelector("text=Atendimento corrigido");
     await pronto();
-    await page.waitForSelector("[data-lancamento='Diego Cliente Fictício'] [data-teste=lancamento-corrigido]");   // a lista recarrega depois do aviso
+    await page.waitForFunction(() => /corrigido/.test(document.querySelector("[data-lancamento='Diego Cliente Fictício'] > .item-x-resumo")?.textContent || ""));   // a lista recarrega depois do aviso
+    await abrirLancamento(page, "Diego Cliente Fictício");
+    await page.waitForSelector("[data-lancamento='Diego Cliente Fictício'] [data-teste=lancamento-corrigido]");
     const lancs = await page.locator("[data-lancamento='Diego Cliente Fictício']").allInnerTexts();
     assert.equal(lancs.length, 1, `só o lançamento certo aparece (sem estorno): ${lancs.join(" | ")}`);
     assert.ok(/R\$\s?35,00/.test(lancs[0]) && /Dinheiro/.test(lancs[0]) && /Corrigido: Valor combinado era 35/.test(lancs[0]) && !/estorno/i.test(lancs[0]), lancs[0]);

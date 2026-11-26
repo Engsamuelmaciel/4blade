@@ -3219,40 +3219,44 @@ function blocoLancamentosPeriodo(recarregar, { e = estadoCaixa.lanc, tipos = [["
 
 function listaCaixa(c, recarregar) {
   if (!c.lancamentos.length) return el("p", { class: "vazio", text: "Nenhum lançamento ainda. Atendimentos finalizados e vendas aparecem aqui na hora." });
-  return el("ul", { class: "lista" }, c.lancamentos.map(l => el("li", {
-    class: `item mov-${l.tipo} ${l.valorCentavos < 0 ? "estorno" : ""} ${l.vendaCancelada ? "inativo" : ""}`,
-    "data-lancamento": l.cliente || l.descricao || l.tipo
-  },
-    el("div", { class: "item-topo" },
-      el("strong", { text: [l.hora, l.cliente || NOME_TIPO_CAIXA[l.tipo]].filter(Boolean).join(" ") }),
-      el("span", { class: `preco ${l.valorCentavos < 0 ? "negativo" : ""}`, text: reais(l.valorCentavos) })),
-    el("p", { class: "suave", text: [
-      l.cliente ? NOME_TIPO_CAIXA[l.tipo] : null, l.barbeiro, l.descricao,
-      l.tipo === "sangria" || l.tipo === "suprimento" ? null : NOME_FORMA[l.formaAtual]
-    ].filter(Boolean).join(" · ") }),
-    l.corrigido ? el("p", { class: "suave destaque-texto", text: `Forma corrigida: ${NOME_FORMA[l.forma]} → ${NOME_FORMA[l.formaAtual]}` }) : null,
-    l.corrigidoNoCaixa ? el("p", { class: "suave destaque-texto", "data-teste": "lancamento-corrigido", text: `Corrigido${l.motivoCorrecao ? `: ${l.motivoCorrecao}` : ""}` }) : null,
-    l.desconto ? el("p", { class: "suave", "data-teste": "desconto-lancamento", text: `Desconto de ${bpParaTexto(l.desconto.percentualBp)}% (− ${reais(l.desconto.valorCentavos)}; sem desconto seria ${reais(l.desconto.brutoCentavos)})` }) : null,
-    l.vendaCancelada && l.tipo === "venda" ? el("p", { class: "suave", text: "Venda cancelada" }) : null,
-    l.tipo === "promissoria" ? el("span", { class: `etiqueta ${{ aberta: "amarela", quitada: "verde", estornada: "" }[l.notaSituacao]}`, "data-teste": "nota-situacao",
-      text: { aberta: "Nota em aberto", quitada: "Nota paga", estornada: "Nota estornada" }[l.notaSituacao] }) : null,
-    l.podeCorrigir || l.podeCancelarVenda ? el("div", { class: "item-acoes" },
-      l.podeCorrigir && l.agendamentoId ? botao("Corrigir", () => janelaCorrigirLancamento(l, recarregar), "pequeno") : null,
-      l.podeCorrigir && !l.agendamentoId ? botao("Corrigir forma", () => abrirJanela("Corrigir forma de pagamento", [
-        el("p", { text: `${reais(l.valorCentavos)} está em ${NOME_FORMA[l.formaAtual]}. Qual a forma certa?` }),
-        campo("Forma certa", { tag: "select", name: "nova", opcoes: OPCOES_FORMA.filter(([f]) => f !== l.formaAtual) }),
-        campo("Motivo", { name: "motivo", required: true, minlength: "3" })
-      ], {
-        ok: "Corrigir",
-        aoConfirmar: async f => {
-          await api("/caixa/corrigir-forma", { metodo: "POST", corpo: { id: l.id, novaForma: f.nova.value, motivo: f.motivo.value } });
-          avisar("Forma corrigida."); recarregar();
-        }
-      }), "pequeno") : null,
-      l.podeCancelarVenda ? botao("Cancelar venda", () => pedirMotivo("Cancelar venda", "O estoque volta e a entrada é estornada. Nada é apagado.", async motivo => {
-        await api("/vendas/cancelar", { metodo: "POST", corpo: { id: l.vendaId, motivo } });
-        avisar("Venda cancelada."); recarregar();
-      }, "Cancelar venda"), "pequeno perigo") : null) : null)));
+  // Cada lançamento é uma linha enxuta (hora, cliente, valor); tocar abre os detalhes e as ações (padrão "toca e expande").
+  const corrigirForma = l => abrirJanela("Corrigir forma de pagamento", [
+    el("p", { text: `${reais(l.valorCentavos)} está em ${NOME_FORMA[l.formaAtual]}. Qual a forma certa?` }),
+    campo("Forma certa", { tag: "select", name: "nova", opcoes: OPCOES_FORMA.filter(([f]) => f !== l.formaAtual) }),
+    campo("Motivo", { name: "motivo", required: true, minlength: "3" })
+  ], {
+    ok: "Corrigir",
+    aoConfirmar: async f => {
+      await api("/caixa/corrigir-forma", { metodo: "POST", corpo: { id: l.id, novaForma: f.nova.value, motivo: f.motivo.value } });
+      avisar("Forma corrigida."); recarregar();
+    }
+  });
+  return el("ul", { class: "lista-x lista-lanc" }, c.lancamentos.map(l => itemExpansivel({
+    chave: `lanc-${l.id}`,
+    attrs: { "data-lancamento": l.cliente || l.descricao || l.tipo },
+    classe: `mov-${l.tipo} ${l.valorCentavos < 0 ? "estorno" : ""} ${l.vendaCancelada ? "inativo" : ""}`,
+    titulo: [l.hora, l.cliente || NOME_TIPO_CAIXA[l.tipo]].filter(Boolean).join(" "),
+    sub: [l.cliente ? NOME_TIPO_CAIXA[l.tipo] : l.descricao, l.tipo === "sangria" || l.tipo === "suprimento" ? null : NOME_FORMA[l.formaAtual],
+      l.corrigidoNoCaixa || l.corrigido ? "corrigido" : null].filter(Boolean).join(" · "),
+    direita: el("span", { class: `preco ${l.valorCentavos < 0 ? "negativo" : ""}`, text: reais(l.valorCentavos) }),
+    detalhes: () => [
+      el("p", { class: "suave", text: [l.cliente ? NOME_TIPO_CAIXA[l.tipo] : null, l.barbeiro, l.descricao,
+        l.tipo === "sangria" || l.tipo === "suprimento" ? null : NOME_FORMA[l.formaAtual]].filter(Boolean).join(" · ") }),
+      l.corrigido ? el("p", { class: "suave destaque-texto", text: `Forma corrigida: ${NOME_FORMA[l.forma]} → ${NOME_FORMA[l.formaAtual]}` }) : null,
+      l.corrigidoNoCaixa ? el("p", { class: "suave destaque-texto", "data-teste": "lancamento-corrigido", text: `Corrigido${l.motivoCorrecao ? `: ${l.motivoCorrecao}` : ""}` }) : null,
+      l.desconto ? el("p", { class: "suave", "data-teste": "desconto-lancamento", text: `Desconto de ${bpParaTexto(l.desconto.percentualBp)}% (− ${reais(l.desconto.valorCentavos)}; sem desconto seria ${reais(l.desconto.brutoCentavos)})` }) : null,
+      l.vendaCancelada && l.tipo === "venda" ? el("p", { class: "suave", text: "Venda cancelada" }) : null,
+      l.tipo === "promissoria" ? el("span", { class: `etiqueta ${{ aberta: "amarela", quitada: "verde", estornada: "" }[l.notaSituacao]}`, "data-teste": "nota-situacao",
+        text: { aberta: "Nota em aberto", quitada: "Nota paga", estornada: "Nota estornada" }[l.notaSituacao] }) : null,
+      l.podeCorrigir || l.podeCancelarVenda ? el("div", { class: "item-acoes" },
+        // um só "Corrigir": atendimento abre a correção completa; venda corrige a forma de pagamento
+        l.podeCorrigir ? botao("Corrigir", () => (l.agendamentoId ? janelaCorrigirLancamento(l, recarregar) : corrigirForma(l)), "pequeno") : null,
+        l.podeCancelarVenda ? botao("Cancelar venda", () => pedirMotivo("Cancelar venda", "O estoque volta e a entrada é estornada. Nada é apagado.", async motivo => {
+          await api("/vendas/cancelar", { metodo: "POST", corpo: { id: l.vendaId, motivo } });
+          avisar("Venda cancelada."); recarregar();
+        }, "Cancelar venda"), "pequeno texto-perigo") : null) : null
+    ].filter(Boolean)
+  })));
 }
 
 // Corrigir um atendimento cobrado (19/11/2026): só a forma (rápido) ou valor/serviços (estorna e cobra de novo, com motivo).

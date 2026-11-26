@@ -2508,3 +2508,11 @@ main:has(.fc) { padding-top: 12px; }
 .lanc-busca:focus-within { border-color: var(--dourado); box-shadow: 0 0 0 3px color-mix(in srgb, var(--dourado) 20%, transparent); }
 .lanc-busca .icone { width: 20px; height: 20px; color: var(--suave); flex: none; }
 .lanc-busca input { flex: 1; min-width: 0; }
+
+/* LANÇAMENTOS: linha enxuta que expande (barra de cor por tipo) */
+.lista-lanc > .item-x { border-left: 4px solid var(--dourado); }
+.lista-lanc > .item-x.mov-venda { border-left-color: #0369a1; }
+.lista-lanc > .item-x.estorno { border-left-color: var(--erro); }
+.lista-lanc .item-x-dir .preco { font-weight: 800; white-space: nowrap; }
+.lista-lanc .item-x-dir .preco.negativo { color: var(--erro); }
+.lista-lanc .item-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
