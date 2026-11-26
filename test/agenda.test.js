@@ -131,7 +131,8 @@ describe("agenda (4.1)", () => {
     assert.equal((await marcar(barb.token, { hora: "09:00", servicoIds: [corte.id, barba.id] })).status, 201);   // 09:00–09:50
     const s = await marcar(barb.token, { hora: "09:40" });
     assert.equal(s.status, 409);
-    assert.match(s.dados.erro, /outro atendimento/);
+    assert.match(s.dados.erro, /já tem Cliente Teste/);
+    assert.equal(s.dados.codigo, "sobreposicao");
     assert.equal((await marcar(ger.token, { barbeiroId: barb.id, hora: "09:30" })).status, 409, "gerente também não sobrepõe");
     assert.equal((await marcar(barb.token, { hora: "09:50" })).status, 201, "encostado no fim pode");
     assert.equal((await marcar(barb2.token, { hora: "09:00" })).status, 201, "outro barbeiro no mesmo horário pode");

@@ -141,6 +141,40 @@ async function rodar(tela) {
     assert.match(await page.textContent(".grade-semana [data-evento='Sozinho Fictício']"), /Sozinho Fictício/, "nome aparece");
     await print("semana-grade");
 
+    passo("sobreposição: o barbeiro atende outro cliente enquanto um espera — pop-up \"Marcar por cima\" e os dois lado a lado no Dia");
+    {
+      await ir(page, "Agenda");
+      await visao("Dia");
+      await page.click("button:has-text('+ Novo horário')");
+      await page.selectOption("dialog[open] #c-prof", { label: "Rafael Barbeiro" });
+      await page.fill("dialog[open] #c-data", somarDias(HOJE, 1));
+      await page.locator("dialog[open] #c-data").dispatchEvent("change");
+      await page.fill("dialog[open] [name=hora]", "16:15");
+      await page.check("dialog[open] input[name=serv] >> nth=0");
+      await page.fill("dialog[open] [name=cliNome]", "Atende Por Cima Fictício");
+      await page.fill("dialog[open] [name=cliTel]", "11 98877-6655");
+      await page.check("dialog[open] [name=cliLgpd]");
+      await page.click("dialog[open] button[type=submit]");
+      await page.waitForSelector("[data-teste=alerta-aceite][open]");
+      assert.match(await page.textContent("[data-teste=alerta-aceite]"), /Sozinho Fictício/);
+      await print("pop-up-sobreposicao");
+      await page.click("[data-teste=alerta-aceite] [data-teste=aceitar]");
+      await page.waitForSelector("dialog#janela h3:has-text('Horário marcado'), dialog#janela:has-text('Horário marcado')", { timeout: 8000 }).catch(() => {});
+      if (await page.locator("dialog#janela[open]").count()) await page.keyboard.press("Escape");
+      await page.waitForFunction(() => !document.querySelector("dialog#janela").open);
+      // vai para amanhã e confere os dois blocos na coluna do Rafael, lado a lado
+      await page.waitForSelector(".grade-evento");
+      await pronto();
+      const grade = page.locator(`[data-grade="${somarDias(HOJE, 1)}"]`);
+      if (!(await grade.count())) { await page.click(".navega-data button:has-text('›')"); await pronto(); }
+      await page.waitForSelector(".grade-evento.sobreposto");
+      const larg = await page.locator(".grade-evento.sobreposto").evaluateAll(es => es.map(e => Math.round(e.getBoundingClientRect().width)));
+      assert.equal(larg.length, 2, "os dois atendimentos cruzados aparecem");
+      assert.ok(Math.abs(larg[0] - larg[1]) <= 2, `mesma largura (lado a lado): ${larg}`);
+      await print("dia-atendimentos-sobrepostos");
+      await page.click("[data-teste=link-lote]").catch(() => {});
+    }
+
     passo("Mês: célula enxuta; Ano: dias passados neutros");
     await visao("Mês");
     await page.waitForSelector(".mes-calendario");

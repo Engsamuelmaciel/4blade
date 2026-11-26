@@ -222,14 +222,16 @@ async function servicosEscolhidos(ctx, servicoIds) {
 }
 
 // Comandos para gravar UM horário, só se não houver sobreposição nem bloqueio (conferência e gravação no mesmo comando).
-function comandosDoHorario(ctx, { id, prof, cliente, data, ini, fim, servs, observacao, serieId }) {
+function comandosDoHorario(ctx, { id, prof, cliente, data, ini, fim, servs, observacao, serieId, sobreposicao = false }) {
   const { db, user } = ctx;
   const inicio = momento(data, ini);
   const termino = momento(data, fim);
+  // sobreposicao (27/11/2026): o profissional aceitou atender por cima de outro cliente (ex.: progressiva esperando o produto agir);
+  // continua recusado se cair num bloqueio.
   const conflito = `
-    NOT EXISTS (SELECT 1 FROM agendamentos WHERE barbearia_id = ? AND barbeiro_id = ? AND situacao IN ('agendado','finalizado') AND inicio < ? AND fim > ?)
+    ${sobreposicao ? "1 = 1" : "NOT EXISTS (SELECT 1 FROM agendamentos WHERE barbearia_id = ? AND barbeiro_id = ? AND situacao IN ('agendado','finalizado') AND inicio < ? AND fim > ?)"}
     AND NOT EXISTS (SELECT 1 FROM bloqueios WHERE barbearia_id = ? AND barbeiro_id = ? AND ativo = 1 AND inicio < ? AND fim > ?)`;
-  const pConflito = [ctx.barbeariaId, prof.id, termino, inicio, ctx.barbeariaId, prof.id, termino, inicio];
+  const pConflito = [...(sobreposicao ? [] : [ctx.barbeariaId, prof.id, termino, inicio]), ctx.barbeariaId, prof.id, termino, inicio];
   const existe = ["EXISTS (SELECT 1 FROM agendamentos WHERE id = ?)", [id]];
   return [
     db.prepare(`INSERT INTO agendamentos (id, barbearia_id, barbeiro_id, cliente_id, data, inicio, fim, observacao, criado_por)
@@ -302,6 +304,23 @@ export async function marcar(ctx) {
   // Cliente bloqueado não marca; nota vencida (30 dias) exige o aceite de quem marca (pop-up na tela), que fica auditado.
   const notaVencida = cliente.novo ? null : await conferirClienteParaMarcar(ctx, cliente.id, input.aceiteNotaVencida);
   if (notaVencida) comandos.push(auditoria(ctx, "marcou_com_nota_vencida", cliente.id, { totalCentavos: notaVencida.totalCentavos, desde: notaVencida.desde, data, hora: input.hora }));
+  // Sobreposição (27/11/2026, pedido do responsável): o barbeiro pode atender outro cliente enquanto um espera (ex.: progressiva).
+  // Sem o aceite, o 1º horário que cruza com outro atendimento é recusado com a lista de quem já está lá; com o aceite, marca por cima.
+  const aceiteSobre = input.aceiteSobreposicao === true;
+  const sobrepostos = (await db.prepare(`
+    SELECT a.inicio, a.fim, c.nome AS cliente,
+      (SELECT group_concat(nome, ' + ') FROM (SELECT nome FROM agendamento_servicos s WHERE s.agendamento_id = a.id
+        AND NOT EXISTS (SELECT 1 FROM agendamento_servicos_removidos rm WHERE rm.linha_id = s.id) ORDER BY s.rowid)) AS servicos
+    FROM agendamentos a JOIN clientes c ON c.id = a.cliente_id
+    WHERE a.barbearia_id = ? AND a.barbeiro_id = ? AND a.situacao IN ('agendado','finalizado') AND a.inicio < ? AND a.fim > ?
+      AND NOT EXISTS (SELECT 1 FROM agendamentos_excluidos x WHERE x.agendamento_id = a.id) ORDER BY a.inicio`)
+    .bind(ctx.barbeariaId, prof.id, momento(data, fim), momento(data, ini)).all()).results;
+  if (sobrepostos.length && !aceiteSobre) {
+    const lista = sobrepostos.map(o => `${o.cliente} (${o.inicio.slice(11)}–${o.fim.slice(11)}${o.servicos ? `, ${o.servicos}` : ""})`).join("; ");
+    throw new HttpError(`${prof.nome || "O profissional"} já tem ${lista} nesse horário.`, 409,
+      { codigo: "sobreposicao", conflitos: sobrepostos.map(o => ({ cliente: o.cliente, inicio: o.inicio.slice(11), fim: o.fim.slice(11), servicos: o.servicos || "" })) });
+  }
+  if (sobrepostos.length) comandos.push(auditoria(ctx, "marcou_sobreposto", prof.id, { data, hora: input.hora, comAtendimentos: sobrepostos.map(o => `${o.cliente} ${o.inicio.slice(11)}–${o.fim.slice(11)}`) }));
   const serieId = rep ? crypto.randomUUID() : null;
   if (rep) {
     comandos.push(
@@ -312,7 +331,7 @@ export async function marcar(ctx) {
   }
   if (foraDoHorario.length) comandos.push(auditoria(ctx, "marcou_fora_do_horario", prof.id, { hora: input.hora, dias: foraDoHorario }));
   const ids = validas.map(d => [d, crypto.randomUUID()]);
-  for (const [d, id] of ids) comandos.push(...comandosDoHorario(ctx, { id, prof, cliente, data: d, ini, fim, servs, observacao, serieId }));
+  for (const [d, id] of ids) comandos.push(...comandosDoHorario(ctx, { id, prof, cliente, data: d, ini, fim, servs, observacao, serieId, sobreposicao: aceiteSobre }));
   await db.batch(comandos);
 
   const criados = (await db.prepare(`SELECT id, data FROM agendamentos WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids.map(x => x[1])).all()).results;

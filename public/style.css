@@ -2516,3 +2516,7 @@ main:has(.fc) { padding-top: 12px; }
 .lista-lanc .item-x-dir .preco { font-weight: 800; white-space: nowrap; }
 .lista-lanc .item-x-dir .preco.negativo { color: var(--erro); }
 .lista-lanc .item-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ATENDIMENTOS SOBREPOSTOS (27/11/2026): dividem a largura da coluna do profissional */
+.grade-evento.sobreposto { box-shadow: 0 0 0 2px var(--cartao); }
+.grade-evento.sobreposto .ev-servico { display: none; }

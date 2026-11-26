@@ -1873,6 +1873,19 @@ function gradeAgenda(ag, d, profs, disp) {
       filhos.push(posicionar(el("button", { type: "button", class: "grade-livre", "data-livre-grade": `${p.nome}|${minParaHoraTela(t)}`, "aria-label": `Marcar ${minParaHoraTela(t)} com ${p.nome}`,
         "data-hora": minParaHoraTela(t), onclick: () => janelaMarcar(ag, { barbeiroId: p.id, hora: minParaHoraTela(t), data: d }) }, el("span", { class: "mais", text: "+" })), linha(t), (prox - t) / MIN_LINHA, col));
     });
+    // Atendimentos que se cruzam (27/11/2026: o barbeiro atende outro cliente enquanto um espera): cada um numa faixa lado a lado.
+    {
+      const ord = [...meus].sort((x, y) => x.inicio.localeCompare(y.inicio) || x.fim.localeCompare(y.fim));
+      let bloco = [], fimBloco = -1, fins = [];
+      const fecha = () => { for (const a of bloco) a._k = fins.length; bloco = []; fins = []; fimBloco = -1; };
+      for (const a of ord) {
+        if (bloco.length && minDe(a.inicio) >= fimBloco) fecha();
+        let k = fins.findIndex(f => f <= minDe(a.inicio));
+        if (k < 0) { k = fins.length; fins.push(0); }
+        fins[k] = minDe(a.fim); a._lane = k; bloco.push(a); fimBloco = Math.max(fimBloco, minDe(a.fim));
+      }
+      fecha();
+    }
     // Atendimentos: bloco do tamanho da duração; tocar abre a ficha com todas as opções.
     for (const a of meus) {
       const dur = minDe(a.fim) - minDe(a.inicio);
@@ -1885,6 +1898,10 @@ function gradeAgenda(ag, d, profs, disp) {
         medio || curto ? el("span", { class: "ev-linha" }, hora, cliente) : [hora, cliente],
         curto ? null : el("span", { class: "ev-servico", text: a.servicos.map(s => s.nome).join(" + ") })), linha(minDe(a.inicio)), dur / MIN_LINHA, col);
       card._agendamento = a;
+      if (a._k > 1) {   // cruzado com outro: divide a largura da coluna do profissional
+        card.style.width = `${100 / a._k}%`; card.style.justifySelf = "start"; card.style.marginLeft = `${(100 / a._k) * a._lane}%`;
+        card.classList.add("sobreposto");
+      }
       filhos.push(card);
     }
   });
@@ -6062,7 +6079,7 @@ function alertaAceite({ titulo, texto, detalhe = null, ok = "Aceito e quero cont
 // Pede os aceites que o servidor exigir (nota vencida; fora do funcionamento/horário do profissional) e tenta de novo.
 async function comAceiteNota(chamar) {
   const extra = {};
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i++) {
     try {
       return await chamar({ ...extra });
     } catch (e) {
@@ -6085,6 +6102,15 @@ async function comAceiteNota(chamar) {
         });
         if (!sim) throw new Error("Horário não marcado (fora do horário).");
         extra.aceiteForaHorario = true;
+      } else if (e.dados?.codigo === "sobreposicao" && !extra.aceiteSobreposicao) {
+        const sim = await alertaAceite({
+          titulo: "Horário já ocupado",
+          texto: e.message,
+          detalhe: "Dá para atender os dois ao mesmo tempo, por exemplo enquanto o cliente da progressiva espera o produto agir. Os horários ficam sobrepostos na agenda e isso fica registrado.",
+          ok: "Marcar por cima"
+        });
+        if (!sim) throw new Error("Horário não marcado (já ocupado).");
+        extra.aceiteSobreposicao = true;
       } else throw e;
     }
   }
