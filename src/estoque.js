@@ -237,7 +237,13 @@ export async function montarVenda(ctx, { caixa, vendedor, clienteId = null, agen
     if (p.uso_interno) erro(`${p.nome} é material de uso da barbearia: não é vendido.`, 409);
     const q = lerQuantidade(i.quantidade);
     if (p.saldo < q) erro(`Estoque insuficiente de ${p.nome} (tem ${p.saldo}). Peça ao gerente para ajustar.`, 409);
-    return { p, q, preco: p.preco_centavos, custo: p.custo_medio_centavos };
+    // Preço da linha: o de tabela, ou o que o usuário digitou na comanda (desconto/ajuste direto no produto).
+    let preco = p.preco_centavos;
+    if (i.precoCentavos !== undefined && i.precoCentavos !== null) {
+      if (!Number.isInteger(i.precoCentavos) || i.precoCentavos < 0 || i.precoCentavos > 100000000) erro(`Preço de ${p.nome} inválido.`);
+      preco = i.precoCentavos;
+    }
+    return { p, q, preco, tabela: p.preco_centavos, custo: p.custo_medio_centavos };
   });
   const bruto = itens.reduce((t, i) => t + i.preco * i.q, 0);
   // Desconto em % (centésimos: 1000 = 10%), calculado aqui no servidor; o total final é o que entra no caixa.
@@ -288,7 +294,7 @@ export async function montarVenda(ctx, { caixa, vendedor, clienteId = null, agen
                   SELECT ?, ?, ?, 'venda', ?, ?, ?, ?, ? WHERE ${existe[0]}`)
       .bind(crypto.randomUUID(), ctx.barbeariaId, clienteId, id, caixa.id, nota.valorCentavos, itens.map(i => `${i.q}x ${i.p.nome}`).join(", "), user.id, ...existe[1])] : []),
     auditoriaSe(ctx, ...existe, "venda_registrada", id, {
-      total, ...(descontoBp ? { bruto, descontoBp, descontoCentavos } : {}), vendedor: vendedorId, itens: itens.map(i => ({ produto: i.p.nome, quantidade: i.q, preco: i.preco })), pagamentos
+      total, ...(descontoBp ? { bruto, descontoBp, descontoCentavos } : {}), vendedor: vendedorId, itens: itens.map(i => ({ produto: i.p.nome, quantidade: i.q, preco: i.preco, ...(i.preco !== i.tabela ? { tabela: i.tabela } : {}) })), pagamentos
     })
   ];
   return { id, total, bruto, descontoBp, descontoCentavos, comandos, itens };

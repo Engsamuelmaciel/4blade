@@ -361,12 +361,36 @@ async function rodar(tela) {
     assert.match(await page.textContent("[data-teste=desconto-venda]"), /9,00/);
     assert.match(await page.textContent("[data-teste=subtotal-venda]"), /90,00/);
     await print("caixa-pdv-carrinho");
+    // preço do produto editável na própria linha (sem trava)
+    await page.fill('input[name^="valor-prod-"]', "40,00");
+    await page.waitForSelector("[data-teste=total-venda]:has-text('72,00')");   // 2 × 40,00 − 10%
+    assert.ok(await page.locator('[data-produto-final="Pomada"] .alterado:visible').count(), "valor diferente da tabela destacado");
+    await page.fill('input[name^="valor-prod-"]', "45,00");
+    await page.waitForSelector("[data-teste=total-venda]:has-text('81,00')");
     await page.click("[data-teste=carrinho] button[type=submit]");
     await page.waitForSelector("text=Venda registrada");
     await lancamentos(page);
     await page.waitForSelector('[data-lancamento="Hugo Avulso Fictício"]');
     assert.match(await page.textContent("[data-teste=desconto-lancamento]"), /Desconto de 10%/);
     await print("caixa-lancamentos");
+
+    passo("desconto em % vale também com serviço + produto na mesma comanda (sem trava)");
+    await chamar("/estoque/entrada", { produtoId: pomadaId, quantidade: 5, custoUnitCentavos: 2000 }, gerT);
+    await page.reload();
+    await page.waitForSelector("[data-teste=frente-caixa]");
+    await voltarVenda(page);
+    await vitrine(page, "servicos");
+    await page.click('[data-servico-pdv="Corte"]');
+    await vitrine(page, "produtos");
+    await page.click('[data-produto-pdv="Pomada"]');
+    assert.equal(await page.locator("#c-desconto").isDisabled(), false, "desconto liberado com serviço na comanda");
+    const cheio = await page.textContent("[data-teste=total-venda]");
+    await page.locator("#c-desconto").fill("");
+    await page.locator("#c-desconto").pressSequentially("10");
+    await page.waitForFunction(a => document.querySelector("[data-teste=total-venda]").textContent !== a, cheio);
+    assert.doesNotMatch(await page.textContent("[data-teste=desconto-venda]"), /^\s*R\$\s?0,00\s*$/, "desconto aplicado na comanda mista");
+    await print("caixa-desconto-servico-e-produto");
+    await page.click("button:has-text('Limpar comanda')");
 
     passo("caixa lança atendimento na promissória para cliente da base e depois dá baixa na nota");
     await voltarVenda(page);

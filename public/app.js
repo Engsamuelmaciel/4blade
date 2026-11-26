@@ -3680,7 +3680,7 @@ async function telaCaixa(dataHistorico = null) {
 // ---------- FRENTE DE CAIXA (25/11/2026) ----------
 // Três zonas, como numa frente de caixa de loja: Vitrine (fila, serviços, produtos) · Comanda (busca + itens) · Total e pagamento.
 // Tudo vira uma "comanda": atendimento da fila (cobrar), atendimento sem horário (serviços) ou venda de produto.
-const novaComanda = () => ({ ag: null, barbeiroId: null, cliente: null, servicos: [], produtos: new Map(), descontoTxt: "" });
+const novaComanda = () => ({ ag: null, barbeiroId: null, cliente: null, servicos: [], produtos: new Map(), precos: new Map(), descontoTxt: "" });
 const estadoCaixa = { vitrine: "fila", visao: "venda", busca: "", comanda: novaComanda(), lanc: { tipo: "dia", data: null, busca: "" } };
 const reiniciarCaixa = () => Object.assign(estadoCaixa, { vitrine: "fila", visao: "venda", busca: "", comanda: novaComanda(), lanc: { tipo: "dia", data: null, busca: "" } });
 
@@ -3723,13 +3723,17 @@ async function frenteCaixa(c, recarregar) {
 
   // ---------- contas da comanda ----------
   const valorDe = l => paraCentavos(l.valor) ?? 0;
-  const totalServicos = () => cm.servicos.reduce((t, l) => t + valorDe(l) * l.qtd, 0);
-  const brutoProdutos = () => produtos.reduce((t, p) => t + (cm.produtos.get(p.id) || 0) * p.precoCentavos, 0);
-  const soProdutos = () => !cm.servicos.length;
-  const descontoBp = () => { if (!soProdutos()) return 0; const v = paraBp(cm.descontoTxt || "0"); return v === null || v >= 10000 ? null : v; };
-  const descontoValor = () => (soProdutos() ? Math.round((brutoProdutos() * (descontoBp() || 0)) / 10000) : 0);
-  const bruto = () => totalServicos() + brutoProdutos();
-  const total = () => bruto() - descontoValor();
+  const precoDe = p => { const t = cm.precos.get(p.id); const v = t === undefined ? null : paraCentavos(t); return v ?? p.precoCentavos; };
+  const brutoProdutos = () => produtos.reduce((t, p) => t + (cm.produtos.get(p.id) || 0) * precoDe(p), 0);
+  const descontoBp = () => { const v = paraBp(cm.descontoTxt || "0"); return v === null || v >= 10000 ? null : v; };
+  // Desconto em % vale para a comanda toda. Só produtos: o servidor registra o desconto. Com serviço: cada linha (serviço e produto) leva o desconto.
+  const aplica = v => (cm.servicos.length ? Math.round((v * (10000 - (descontoBp() || 0))) / 10000) : v);
+  const totalServicos = () => cm.servicos.reduce((t, l) => t + aplica(valorDe(l)) * l.qtd, 0);
+  const bruto = () => cm.servicos.reduce((t, l) => t + valorDe(l) * l.qtd, 0) + brutoProdutos();
+  const total = () => cm.servicos.length
+    ? totalServicos() + produtos.reduce((t, p) => t + (cm.produtos.get(p.id) || 0) * aplica(precoDe(p)), 0)
+    : brutoProdutos() - Math.round((brutoProdutos() * (descontoBp() || 0)) / 10000);
+  const descontoValor = () => bruto() - total();
   const qtdItens = () => cm.servicos.reduce((n, l) => n + l.qtd, 0) + [...cm.produtos.values()].reduce((n, q) => n + q, 0);
 
   // ---------- ações sobre a comanda ----------
@@ -3744,6 +3748,7 @@ async function frenteCaixa(c, recarregar) {
   const addProduto = p => {
     const q = cm.produtos.get(p.id) || 0;
     if (q >= saldoDe(p)) { avisar(`Só há ${saldoDe(p)} em estoque.`, "erro"); return; }
+    if (!q) cm.precos.delete(p.id);
     cm.produtos.set(p.id, q + 1);
     desenharComanda();
   };
@@ -3773,7 +3778,7 @@ async function frenteCaixa(c, recarregar) {
   const descontoEl = el("strong", { "data-teste": "desconto-venda" });
   const descontoInput = el("input", { type: "text", id: "c-desconto", name: "desconto", inputmode: "decimal", "data-numero": "percentual", placeholder: "0", autocomplete: "off", value: cm.descontoTxt,
     oninput: e => { cm.descontoTxt = e.target.value; } });
-  const avisoDesconto = el("p", { class: "ajuda", text: "O desconto em % vale para venda só de produtos. Em serviço, ajuste o valor na linha." });
+  const avisoDesconto = el("p", { class: "ajuda", text: "O desconto em % vale para a comanda toda. Para um item só, mude o valor na linha." });
   const campoDesconto = el("div", { class: "campo fc-desconto" }, el("label", { for: "c-desconto", text: "Desconto (%)" }), descontoInput, avisoDesconto);
   const botaoFinalizar = el("button", { type: "submit", class: "botao fc-finalizar", "data-teste": "finalizar" }, icone("recibo"), el("span", { text: "Finalizar venda" }));
   const form = el("form", { class: "fc-pagar", id: "fc-pagar", "data-teste": "carrinho" },
@@ -3827,13 +3832,18 @@ async function frenteCaixa(c, recarregar) {
       }),
       ...produtos.filter(p => cm.produtos.get(p.id)).map(p => {
         const q = cm.produtos.get(p.id);
+        const sub = el("strong", { class: "fc-sub" });
+        const aviso = el("small", { class: "alterado", text: "valor diferente da tabela" });
+        const valorProd = el("input", { type: "text", inputmode: "decimal", class: "fc-valor", value: cm.precos.get(p.id) ?? centavosParaTexto(p.precoCentavos), "aria-label": `Valor cobrado de ${p.nome} (cada)`, name: `valor-prod-${p.id}`,
+          oninput: e => { cm.precos.set(p.id, e.target.value); atualizarTotais(); } });
+        p._sub = sub; p._aviso = aviso;
         return el("div", { class: "fc-linha produto", "data-linha": p.nome, "data-produto-final": p.nome },
-          el("div", { class: "fc-item" }, el("strong", { text: p.nome }), el("small", { text: "produto" })),
+          el("div", { class: "fc-item" }, el("strong", { text: p.nome }), el("small", { text: `produto · tabela ${reais(p.precoCentavos)}` }), aviso),
           el("div", { class: "qtd" },
             el("button", { type: "button", class: "qtd-btn", "aria-label": `Menos ${p.nome}`, text: "−", onclick: () => { const n = q - 1; if (n > 0) cm.produtos.set(p.id, n); else cm.produtos.delete(p.id); desenharComanda(); } }),
             el("span", { class: "qtd-num", text: String(q) }),
             el("button", { type: "button", class: "qtd-btn", "aria-label": `Mais ${p.nome}`, text: "+", onclick: () => addProduto(p) })),
-          el("span", { class: "fc-valor fixo", text: reais(p.precoCentavos) }), el("strong", { class: "fc-sub", text: reais(p.precoCentavos * q) }),
+          valorProd, sub,
           el("button", { type: "button", class: "fc-x", "aria-label": `Tirar ${p.nome}`, title: "Tirar da comanda", text: "×", onclick: () => { cm.produtos.delete(p.id); desenharComanda(); } }));
       })];
     itensTabela.replaceChildren(...(linhas.length ? [
@@ -3848,10 +3858,13 @@ async function frenteCaixa(c, recarregar) {
       if (l.sub) l.sub.textContent = reais((v ?? 0) * l.qtd);
       if (l.aviso) l.aviso.hidden = v === l.s.precoCentavos;
     }
+    for (const p of produtos) {
+      const q = cm.produtos.get(p.id);
+      if (!q || !p._sub) continue;
+      p._sub.textContent = reais(precoDe(p) * q);
+      if (p._aviso) p._aviso.hidden = precoDe(p) === p.precoCentavos;
+    }
     const bp = descontoBp();
-    const soP = soProdutos();
-    campoDesconto.querySelector("input").disabled = !soP;
-    avisoDesconto.hidden = soP;
     totalEl.textContent = reais(total());
     itensEl.textContent = String(qtdItens());
     descontoEl.textContent = descontoValor() ? `− ${reais(descontoValor())}` : reais(0);
@@ -3950,14 +3963,17 @@ async function frenteCaixa(c, recarregar) {
       if (!qtdItens()) throw new Error("A comanda está vazia: escolha um atendimento, serviço ou produto.");
       const pagamentos = pag.ler(form);
       const naNota = pag.temNota();
-      const prods = [...cm.produtos.entries()].map(([produtoId, quantidade]) => ({ produtoId, quantidade }));
+      const prods = [...cm.produtos.entries()].map(([produtoId, quantidade]) => {
+        const p = produtos.find(x => x.id === produtoId);
+        return { produtoId, quantidade, precoCentavos: aplica(precoDe(p)) };
+      });
       if (naNota && !cm.cliente?.id) throw new Error("Para lançar promissória, o cliente precisa estar cadastrado na base de clientes. Toque em \"Cliente\" e escolha o cliente da lista.");
       const valor = total();
       if (cm.servicos.length) {
         const itens = cm.servicos.map(l => {
           const v = paraCentavos(l.valor);
           if (v === null) throw new Error(`Valor de ${l.s.nome} inválido. Exemplo: 40,00`);
-          return { servicoId: l.s.id, precoCobradoCentavos: v, ...(l.qtd > 1 ? { quantidade: l.qtd } : {}) };
+          return { servicoId: l.s.id, precoCobradoCentavos: aplica(v), ...(l.qtd > 1 ? { quantidade: l.qtd } : {}) };
         });
         if (cm.ag) await api("/caixa/cobrar", { metodo: "POST", corpo: { id: cm.ag.id, itens, pagamentos, ...(prods.length ? { produtos: prods } : {}) } });
         else {

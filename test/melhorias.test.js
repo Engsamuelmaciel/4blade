@@ -300,6 +300,22 @@ describe("caixa como recepção: agenda de todos, clientes, mensagens e catálog
 });
 
 describe("desconto na venda do caixa (pedido de 16/11/2026)", () => {
+  test("preço do produto editado na comanda vale na venda; inválido é recusado; só a própria barbearia (27/11/2026)", async () => {
+    const amb = await cenario();
+    const { post, ger, cx } = amb;
+    const pom = (await post("/api/produtos", ger.token, { nome: "Pomada Preço", precoCentavos: 2500, estoqueInicial: { quantidade: 9, custoUnitCentavos: 1000 } })).dados.produto;
+    await post("/api/caixa/abrir", cx.token, { trocoCentavos: 1000 });
+    assert.equal((await post("/api/vendas", cx.token, { itens: [{ produtoId: pom.id, quantidade: 1, precoCentavos: -1 }], pagamentos: [{ forma: "pix", valorCentavos: 100 }] })).status, 400);
+    assert.equal((await post("/api/vendas", cx.token, { itens: [{ produtoId: pom.id, quantidade: 1, precoCentavos: 12.5 }], pagamentos: [{ forma: "pix", valorCentavos: 100 }] })).status, 400);
+    // preço cheio de tabela ainda é cobrado se não vier preço
+    assert.equal((await post("/api/vendas", cx.token, { itens: [{ produtoId: pom.id, quantidade: 1 }], pagamentos: [{ forma: "pix", valorCentavos: 2500 }] })).status, 201);
+    // preço editado (R$ 20,00 cada, 2 unidades) + desconto de 10% sobre o editado = R$ 36,00
+    const v = await post("/api/vendas", cx.token, { itens: [{ produtoId: pom.id, quantidade: 2, precoCentavos: 2000 }], descontoBp: 1000, pagamentos: [{ forma: "pix", valorCentavos: 3600 }] });
+    assert.equal(v.status, 201);
+    assert.equal(v.dados.venda.totalCentavos, 3600);
+    assert.equal(v.dados.venda.brutoCentavos, 4000);
+  });
+
   test("2 pomadas com 10%: servidor calcula, caixa recebe o final, comissão sobre o final, desconto registrado; cancelar estorna o final", async () => {
     const amb = await cenario();
     const { post, get, ger, barb, cx } = amb;
