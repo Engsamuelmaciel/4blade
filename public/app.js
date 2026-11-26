@@ -3410,6 +3410,47 @@ function janelaCorrigirLancamento(l, recarregar) {
   ], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
 }
 
+// Cadeado do caixa (27/11/2026): mostra a situação e a ação certa — fechar (aberto), reabrir (fechado, só gerente) ou abrir (ainda não aberto).
+function janelaCaixaSituacao(c, recarregar, reabrir) {
+  const sit = c.caixa.situacao;
+  const quando = iso => (iso ? ` às ${horaLocal(iso)}` : "");
+  const f = c.fechamento;
+  const aberto = sit === "aberto", fechado = sit === "fechado";
+  const faixa = el("div", { class: `caixa-faixa caixa-faixa-${aberto ? "aberto" : "fechado"}`, "data-teste": "caixa-faixa" },
+    el("span", { class: "mov-icone", "aria-hidden": "true" }, icone(aberto ? "cadeadoAberto" : "cadeado")),
+    el("div", {}, el("strong", { text: aberto ? "Caixa aberto" : fechado ? "Caixa fechado" : "Caixa ainda não aberto" }),
+      el("small", { text: aberto ? `Aberto por ${c.caixa.abertoPor}${quando(c.caixa.abertoEm)} · troco ${reais(c.caixa.trocoCentavos)}`
+        : fechado ? `Fechado${f?.fechadoPor ? ` por ${f.fechadoPor}` : ""}${quando(f?.fechadoEm)}` : "O primeiro lançamento do dia abre o caixa sozinho, com troco R$ 0,00." })));
+  const acao = (classe, icone_, titulo, dica, fn, extra = {}) => el("button", { type: "button", class: `mov-cartao ${classe}`, ...extra, onclick: fn },
+    el("span", { class: "mov-icone", "aria-hidden": "true" }, icone(icone_)), el("strong", { class: "mov-titulo", text: titulo }), el("span", { class: "mov-dica", text: dica }));
+  const proximo = fn => () => { janela.close(); setTimeout(fn); };
+  const corpo = [faixa];
+  if (aberto) corpo.push(acao("mov-sangria", "cadeado", "Fechar caixa", "Conferir o dinheiro e encerrar o dia", proximo(() => janelaFechar(c, recarregar)), { "data-caixa-acao": "fechar" }));
+  else if (fechado) {
+    corpo.push(gestao()
+      ? acao("mov-suprimento", "cadeadoAberto", "Reabrir caixa", "Volta a abrir para uma nova contagem", proximo(reabrir), { "data-caixa-acao": "reabrir" })
+      : el("p", { class: "suave centro", text: "Só o gerente reabre o caixa. Você continua podendo lançar e corrigir normalmente." }));
+  } else {
+    corpo.push(acao("mov-suprimento", "cadeadoAberto", "Abrir caixa", "Informar o troco da gaveta e começar o dia", proximo(() => janelaAbrirCaixa(recarregar)), { "data-caixa-acao": "abrir" }));
+  }
+  return abrirJanela("Caixa do dia", corpo, { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
+}
+
+function janelaAbrirCaixa(recarregar) {
+  return abrirJanela("Abrir o caixa", [
+    el("p", { class: "suave", text: "Quanto de troco tem na gaveta? (Se não informar, o caixa abre sozinho no primeiro lançamento, com troco R$ 0,00.)" }),
+    campo("Troco na gaveta (R$)", { name: "troco", inputmode: "decimal", required: true, placeholder: "100,00" })
+  ], {
+    ok: "Abrir caixa",
+    aoConfirmar: async f => {
+      const troco = paraCentavos(f.troco.value);
+      if (troco === null) throw new Error("Valor do troco inválido. Exemplo: 100,00");
+      await api("/caixa/abrir", { metodo: "POST", corpo: { trocoCentavos: troco } });
+      avisar("Caixa aberto."); recarregar();
+    }
+  });
+}
+
 // Sangria e suprimento num botão só (27/11/2026): dois cartões grandes e coloridos — vermelho (sai dinheiro) e verde (entra dinheiro).
 function janelaMovimentacoes(recarregar, naGavetaCentavos = null) {
   const abrir = tipo => { janela.close(); setTimeout(() => janelaMovimento(tipo, recarregar)); };
@@ -3592,12 +3633,11 @@ async function telaCaixa(dataHistorico = null) {
   // Caixa de hoje: frente de caixa sempre disponível (aberto, fechado ou ainda não aberto).
   const frente = await frenteCaixa(c, recarregar);
   const sit = c.caixa.situacao;
-  const situacao = el("div", { class: `pdv-situacao sit-${sit}`, "data-teste": "situacao-caixa" },
-    el("span", { class: "sit-ponto", "aria-hidden": "true" }),
-    el("span", { class: "sit-txt" },
-      sit === "aberto" ? [el("span", { class: "sit-nome", text: "Caixa " }), "aberto", el("span", { class: "sit-por", text: ` · por ${c.caixa.abertoPor}` })]
-        : sit === "fechado" ? [el("span", { class: "sit-nome", text: "Caixa " }), "fechado", el("span", { class: "sit-por", text: ` · aberto por ${c.caixa.abertoPor}` })]
-        : [el("span", { class: "sit-nome", text: "Caixa " }), "ainda não aberto"]));
+  // Cadeado (27/11/2026): vermelho = fechado (ou ainda não aberto); verde = aberto. Tocar abre a janela de abrir/fechar.
+  const cadeado = el("button", { type: "button", class: `botao ferramenta cadeado-caixa cadeado-${sit}`, "data-teste": "situacao-caixa", "data-situacao": sit,
+    "aria-label": sit === "aberto" ? "Caixa aberto. Toque para fechar." : sit === "fechado" ? "Caixa fechado. Toque para ver." : "Caixa ainda não aberto. Toque para abrir.",
+    title: sit === "aberto" ? "Caixa aberto" : sit === "fechado" ? "Caixa fechado" : "Caixa ainda não aberto",
+    onclick: () => janelaCaixaSituacao(c, recarregar, reabrir) }, icone(sit === "aberto" ? "cadeadoAberto" : "cadeado"));
   const aviso = sit === "fechado"
     ? el("details", { class: "cartao aviso-fechado", "data-teste": "aviso-gerente-caixa" },
       el("summary", { text: "O caixa de hoje já foi fechado. Pode continuar lançando: entra no caixa de hoje, depois do fechamento." }),
@@ -3626,12 +3666,11 @@ async function telaCaixa(dataHistorico = null) {
     // (sangria e suprimento juntos), Fechar caixa e Outros dias.
     el("header", { class: "fc-topo" },
       el("div", { class: "fc-topo-titulo" },
-        el("div", { class: "fc-titulo-col" }, el("h2", { text: "Caixa" }), situacao),
-        etiquetaData(dataBR(c.data)),
+        el("div", { class: "fc-titulo-col" }, el("h2", { text: "Caixa" }), etiquetaData(dataBR(c.data))),
         abasTopo),
       el("section", { class: "pdv-ferramentas", "aria-label": "Ações do caixa" },
         el("button", { type: "button", class: "botao ferramenta destaque-mov", "data-teste": "movimentacoes", onclick: () => janelaMovimentacoes(recarregar, t.dinheiroEsperadoCentavos) }, icone("contas"), el("span", { text: "Movimentações" })),
-        aberto ? el("button", { type: "button", class: "botao ferramenta perigo", onclick: () => janelaFechar(c, recarregar, dataHistorico) }, icone("cadeado"), el("span", { text: "Fechar caixa" })) : null,
+        cadeado,
         gestao() ? el("a", { class: "botao ferramenta", href: "#/caixa-historico" }, icone("lista"), el("span", { text: "Outros dias" })) : null)),
     el("div", { class: "fc-resumo" }, ...topo),
     c.reaberturas?.length ? el("p", { class: "suave", text: `Reaberto ${c.reaberturas.length}x (último motivo: ${c.reaberturas[0].motivo})` }) : null,
@@ -6743,6 +6782,7 @@ const ICONES = {
   setaBaixo: "M12 4v14M6 12l6 6 6-6",
   setaCima: "M12 20V6M6 12l6-6 6 6",
   cadeado: "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3",
+  cadeadoAberto: "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 6.6-1.6",
   sino: "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0",
   lixeira: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
   estoque: "M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8",

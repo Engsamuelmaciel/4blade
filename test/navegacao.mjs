@@ -137,3 +137,9 @@ export async function movimentacao(page, tipo, aoAbrir = null) {
   if (aoAbrir) await aoAbrir();
   await page.click(`dialog[open] [data-mov=${tipo}]`);
 }
+
+// Cadeado do caixa (27/11/2026): abre a janela da situação e toca na ação (fechar | reabrir | abrir).
+export async function caixaAcao(page, acao) {
+  await page.click("[data-teste=situacao-caixa]");
+  await page.click(`dialog[open] [data-caixa-acao=${acao}]`);
+}

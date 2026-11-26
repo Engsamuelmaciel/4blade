@@ -169,7 +169,8 @@ try {
   await foto("vender", { janela: true });
   await page.click("[data-teste=ver-lancamentos]");
   await page.waitForTimeout(300);
-  await page.click("button:has-text('Fechar caixa')");
+  await page.click("[data-teste=situacao-caixa]");
+  await page.click("dialog[open] [data-caixa-acao=fechar]");
   await page.waitForSelector("dialog[open]");
   await foto("fechar-caixa", { janela: true });
   await page.keyboard.press("Escape");

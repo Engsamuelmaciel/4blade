@@ -9,7 +9,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir, abrirItem, abrirCadastro, vitrine, forma, lancamentos, voltarVenda, abrirLancamento, movimentacao } from "./navegacao.mjs";
+import { ir, abrirItem, abrirCadastro, vitrine, forma, lancamentos, voltarVenda, abrirLancamento, movimentacao, caixaAcao } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -173,7 +173,7 @@ async function rodar(tela) {
         await page.waitForTimeout(150);
         const m = await page.evaluate(() => {
           const topo = document.querySelector(".fc-topo");
-          const caixas = [".fc-titulo-col", ".cab-chip", ".abas-topo", "[data-teste=movimentacoes]"].map(q => document.querySelector(q)?.getBoundingClientRect());
+          const caixas = [".fc-titulo-col", ".abas-topo", "[data-teste=movimentacoes]", "[data-teste=situacao-caixa]"].map(q => document.querySelector(q)?.getBoundingClientRect());
           return { topo: topo.getBoundingClientRect().height, centros: caixas.map(r => r ? Math.round(r.top + r.height / 2) : null), esq: caixas.map(r => r ? Math.round(r.right) : null),
             dir: Math.round(document.querySelector(".pdv-ferramentas").getBoundingClientRect().right), larguraTopo: Math.round(topo.getBoundingClientRect().right), sobra: topo.scrollWidth - topo.clientWidth };
         });
@@ -248,7 +248,9 @@ async function rodar(tela) {
     await print("caixa-lancamentos-do-dia");
 
     passo("caixa fecha com R$ 5,00 de falta");
-    await page.click("button:has-text('Fechar caixa')");
+    assert.equal(await page.getAttribute("[data-teste=situacao-caixa]", "data-situacao"), "aberto", "cadeado verde: caixa aberto");
+    await print("caixa-cadeado-aberto");
+    await caixaAcao(page, "fechar");
     await page.fill("dialog[open] [name=contado]", "195,00");
     await page.waitForSelector("dialog[open] [data-teste=diferenca]:has-text('Falta de R$')");
     assert.match(await texto("dialog[open] [data-teste=diferenca]"), /Falta de R\$\s?5,00/);
@@ -262,7 +264,12 @@ async function rodar(tela) {
     await page.click("[data-teste=aviso-gerente-caixa] > summary");
     assert.match(await texto("[data-teste=diferenca-fechada]"), /Falta de R\$\s?5,00/);
     assert.equal(await page.locator("button:has-text('Reabrir caixa')").count(), 0, "caixa não reabre");
-    assert.equal(await page.locator(".pdv-ferramentas button:has-text('Fechar caixa')").count(), 0, "já fechado");
+    assert.equal(await page.getAttribute("[data-teste=situacao-caixa]", "data-situacao"), "fechado", "cadeado vermelho: caixa fechado");
+    await page.click("[data-teste=situacao-caixa]");
+    await page.waitForSelector("dialog[open] [data-teste=caixa-faixa].caixa-faixa-fechado");
+    assert.equal(await page.locator("dialog[open] [data-caixa-acao]").count(), 0, "caixa (recepção) não reabre: sem ação no cadeado fechado");
+    await print("caixa-cadeado-fechado");
+    await page.click("dialog[open] button:has-text('Fechar')");
     await print("caixa-fechado");
     await sair();
 
@@ -300,7 +307,7 @@ async function rodar(tela) {
     await page.click("button:has-text('Reabrir caixa')");
     await page.fill("dialog[open] #c-motivo", "Conferir venda lançada");
     await ok();
-    await page.waitForSelector("button:has-text('Fechar caixa')");
+    await page.waitForSelector("[data-teste=situacao-caixa][data-situacao=aberto]");
     await page.waitForSelector("text=Reaberto 1x");
     await print("gerente-caixa-reaberto");
 

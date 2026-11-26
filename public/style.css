@@ -2610,3 +2610,28 @@ main:has(.fc) { padding-top: 12px; }
   .fc-topo .pdv-ferramentas .botao.ferramenta span { display: inline !important; }
   .fc-topo .abas-topo .botao .icone { display: inline-block; }
 }
+
+/* CADEADO DO CAIXA (27/11/2026): vermelho = fechado / ainda não aberto; verde = aberto */
+.fc-topo .pdv-ferramentas .botao.ferramenta.cadeado-caixa { min-width: 52px; padding: 0; justify-content: center; border-width: 2px; border-style: solid; }
+.fc-topo .pdv-ferramentas .botao.ferramenta.cadeado-caixa .icone { width: 24px; height: 24px; }
+.fc-topo .pdv-ferramentas .botao.ferramenta.cadeado-aberto { background: var(--ok-fundo); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
+.fc-topo .pdv-ferramentas .botao.ferramenta.cadeado-fechado, .fc-topo .pdv-ferramentas .botao.ferramenta.cadeado-nao_aberto { background: var(--erro-fundo); color: var(--erro); border-color: color-mix(in srgb, var(--erro) 55%, transparent); }
+.fc-titulo-col .cab-chip { justify-self: start; }
+.caixa-faixa { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 18px; margin-bottom: 10px; }
+.caixa-faixa strong { display: block; font-size: 18px; font-family: "Marca", system-ui, sans-serif; font-weight: 800; }
+.caixa-faixa small { display: block; font-size: 13px; opacity: .85; margin-top: 2px; }
+.caixa-faixa .mov-icone { width: 52px; height: 52px; margin: 0; flex: none; }
+.caixa-faixa .mov-icone .icone { width: 26px; height: 26px; }
+.caixa-faixa-aberto { background: var(--ok-fundo); color: var(--ok); }
+.caixa-faixa-aberto .mov-icone { background: var(--ok); color: #fff; }
+.caixa-faixa-fechado { background: var(--erro-fundo); color: var(--erro); }
+.caixa-faixa-fechado .mov-icone { background: var(--erro); color: #fff; }
+dialog .mov-cartao[data-caixa-acao] { width: 100%; }
+
+/* FRENTE DE CAIXA: três painéis da mesma altura; ações da comanda sempre visíveis */
+@media (min-width: 1100px) {
+  .fc { align-items: stretch; }
+  .fc-vitrine, .fc-comanda, .fc-pagar { height: calc(100vh - 262px); min-height: 440px; overflow-y: auto; box-sizing: border-box; }
+  .fc-pagar { position: static; }
+  .fc-comanda .fc-acoes { position: sticky; bottom: -16px; background: var(--cartao); margin-bottom: -16px; padding-bottom: 14px; z-index: 2; }
+}
