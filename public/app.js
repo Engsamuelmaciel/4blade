@@ -3283,7 +3283,7 @@ const NOME_TIPO_CAIXA = {
 };
 
 // Lançamentos por período (dia, semana ou mês): junta os caixas do período; busca por cliente, profissional ou item.
-function blocoLancamentosPeriodo(recarregar, { e = estadoCaixa.lanc, tipos = [["dia", "Dia"], ["semana", "Semana"]], avisoMesFechado = false } = {}) {
+function blocoLancamentosPeriodo(recarregar, { e = estadoCaixa.lanc, tipos = [["dia", "Dia"], ["semana", "Semana"]], avisoMesFechado = false, aoCarregar = null } = {}) {
   if (!tipos.some(([k]) => k === e.tipo)) e.tipo = tipos[0][0];
   e.data ||= hojeLocal();
   const corpo = el("div", { "data-teste": "lanc-corpo" }, el("p", { class: "suave", text: "Carregando…" }));
@@ -3318,6 +3318,7 @@ function blocoLancamentosPeriodo(recarregar, { e = estadoCaixa.lanc, tipos = [["
         : e.tipo === "mes" ? new Date(`${ultimo.periodo.ini}T12:00:00Z`).toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).replace(/^./, c => c.toUpperCase())
         : `${dataBR(ultimo.periodo.ini)} a ${dataBR(ultimo.periodo.fim)}`;
       montarLista();
+      aoCarregar?.(ultimo);
     } catch (err) { corpo.replaceChildren(el("p", { class: "erro", text: err.message })); }
   };
   busca.addEventListener("input", () => { e.busca = busca.value; montarLista(); });
@@ -3407,6 +3408,23 @@ function janelaCorrigirLancamento(l, recarregar) {
       el("button", { type: "button", class: "botao largo", "data-correcao": "forma", text: "Só a forma de pagamento", onclick: () => { janela.close(); setTimeout(soForma); } }),
       el("button", { type: "button", class: "botao principal largo", "data-correcao": "valor", text: "Quem atendeu, valor ou serviços (e forma)", onclick: () => { janela.close(); setTimeout(() => valor().catch(e => avisar(e.message, "erro"))); } }))
   ], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
+}
+
+// Sangria e suprimento num botão só (27/11/2026): dois cartões grandes e coloridos — vermelho (sai dinheiro) e verde (entra dinheiro).
+function janelaMovimentacoes(recarregar, naGavetaCentavos = null) {
+  const abrir = tipo => { janela.close(); setTimeout(() => janelaMovimento(tipo, recarregar)); };
+  const cartao = (tipo, seta, titulo, dica, exemplo) => el("button", { type: "button", class: `mov-cartao mov-${tipo}`, "data-mov": tipo, onclick: () => abrir(tipo) },
+    el("span", { class: "mov-icone", "aria-hidden": "true" }, icone(seta)),
+    el("strong", { class: "mov-titulo", text: titulo }),
+    el("span", { class: "mov-dica", text: dica }),
+    el("small", { class: "mov-exemplo", text: exemplo }));
+  return abrirJanela("Movimentações do caixa", [
+    naGavetaCentavos !== null ? el("div", { class: "mov-gaveta", "data-teste": "mov-gaveta" }, el("span", { text: "Dinheiro na gaveta agora" }), el("strong", { text: reais(naGavetaCentavos) })) : null,
+    el("p", { class: "suave centro", text: "O que aconteceu com o dinheiro da gaveta?" }),
+    el("div", { class: "mov-escolha" },
+      cartao("sangria", "setaBaixo", "Sangria", "Saiu dinheiro da gaveta", "Ex.: depósito no banco, pagamento em dinheiro"),
+      cartao("suprimento", "setaCima", "Suprimento", "Entrou dinheiro na gaveta", "Ex.: troco extra, reforço do caixa"))
+  ].filter(Boolean), { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
 }
 
 function janelaMovimento(tipo, recarregar) {
@@ -3585,23 +3603,36 @@ async function telaCaixa(dataHistorico = null) {
       el("summary", { text: "O caixa de hoje já foi fechado. Pode continuar lançando: entra no caixa de hoje, depois do fechamento." }),
       blocoFechamento(c), gestao() ? botao("Reabrir caixa", reabrir, "pequeno") : null)
     : null;
+  const abasTopo = el("div", { class: "alterna abas-caixa abas-topo", role: "tablist", "aria-label": "Caixa", "data-teste": "abas-caixa" },
+    [["venda", "Vender", "recibo", null], ["lancamentos", "Lançamentos", "lista", c.lancamentos.length]].map(([k, t, ic, n]) =>
+      el("button", { type: "button", role: "tab", class: "botao", "data-aba-caixa": k, onclick: () => frente.trocarVisao(k) },
+        icone(ic), el("span", { text: t }), n ? el("span", { class: "aba-num", "data-teste": "num-lancamentos", text: String(n) }) : null)));
+  frente.aoTrocar(k => abasTopo.querySelectorAll("[data-aba-caixa]").forEach(b => {
+    const on = b.dataset.abaCaixa === k;
+    b.classList.toggle("ativo", on); b.setAttribute("aria-selected", String(on));
+  }));
+  // A bolinha com o total do dia acompanha os lançamentos buscados (dia de hoje).
+  frente.aoContar(u => {
+    if (u.periodo.tipo !== "dia" || u.periodo.ini !== u.periodo.hoje) return;
+    const aba = abasTopo.querySelector("[data-aba-caixa=lancamentos]");
+    let num = aba.querySelector(".aba-num");
+    if (!num) { num = el("span", { class: "aba-num", "data-teste": "num-lancamentos" }); aba.append(num); }
+    num.textContent = String(u.total); num.hidden = !u.total;
+  });
   mostrar(
     cartaoAbrir,
     aviso,
-    // Uma faixa só no alto (aproveita o espaço): nome da tela + data + situação à esquerda, ferramentas do caixa à direita
+    // Topo (27/11/2026): "Caixa" com a situação logo abaixo, a data e as abas Vender | Lançamentos ao lado; à direita, Movimentações
+    // (sangria e suprimento juntos), Fechar caixa e Outros dias.
     el("header", { class: "fc-topo" },
-      el("div", { class: "fc-topo-titulo" }, el("h2", { text: "Caixa" }), etiquetaData(dataBR(c.data)), situacao),
+      el("div", { class: "fc-topo-titulo" },
+        el("div", { class: "fc-titulo-col" }, el("h2", { text: "Caixa" }), situacao),
+        etiquetaData(dataBR(c.data)),
+        abasTopo),
       el("section", { class: "pdv-ferramentas", "aria-label": "Ações do caixa" },
-        el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("sangria", recarregar) }, icone("setaBaixo"), el("span", { text: "Sangria" })),
-        el("button", { type: "button", class: "botao ferramenta", onclick: () => janelaMovimento("suprimento", recarregar) }, icone("setaCima"), el("span", { text: "Suprimento" })),
+        el("button", { type: "button", class: "botao ferramenta destaque-mov", "data-teste": "movimentacoes", onclick: () => janelaMovimentacoes(recarregar, t.dinheiroEsperadoCentavos) }, icone("contas"), el("span", { text: "Movimentações" })),
         aberto ? el("button", { type: "button", class: "botao ferramenta perigo", onclick: () => janelaFechar(c, recarregar, dataHistorico) }, icone("cadeado"), el("span", { text: "Fechar caixa" })) : null,
         gestao() ? el("a", { class: "botao ferramenta", href: "#/caixa-historico" }, icone("lista"), el("span", { text: "Outros dias" })) : null)),
-    // Dois botões grandes no alto (26/11/2026): "Vender" e "Lançamentos do dia" (antes ficava só num botão pequeno embaixo da comanda).
-    el("div", { class: "alterna largo abas-caixa", role: "tablist", "aria-label": "Caixa", "data-teste": "abas-caixa" },
-      [["venda", "Vender", "recibo", null], ["lancamentos", "Lançamentos", "lista", c.lancamentos.length]].map(([k, t, ic, n]) =>
-        el("button", { type: "button", role: "tab", "aria-selected": String(estadoCaixa.visao === k), class: `botao ${estadoCaixa.visao === k ? "ativo" : ""}`, "data-aba-caixa": k,
-          onclick: () => { if (estadoCaixa.visao !== k) { estadoCaixa.visao = k; recarregar(); } } },
-          icone(ic), el("span", { text: t }), n ? el("span", { class: "aba-num", "data-teste": "num-lancamentos", text: String(n) }) : null))),
     el("div", { class: "fc-resumo" }, ...topo),
     c.reaberturas?.length ? el("p", { class: "suave", text: `Reaberto ${c.reaberturas.length}x (último motivo: ${c.reaberturas[0].motivo})` }) : null,
     frente.el);
@@ -3850,15 +3881,26 @@ async function frenteCaixa(c, recarregar) {
   const movelNum = el("span", { class: "fc-movel-num" });
   const barraMovel = el("div", { class: "fc-movel" }, movelNum,
     el("button", { type: "button", class: "botao principal pequeno", text: "Pagar ›", onclick: () => document.getElementById("fc-pagar")?.scrollIntoView({ behavior: "smooth", block: "start" }) }));
+  // Troca Vender ↔ Lançamentos SEM recarregar o caixa (27/11/2026: recarregar refazia 5 consultas e deixava a troca lenta):
+  // os dois painéis ficam na tela, um escondido; os lançamentos são montados só na primeira vez que são abertos.
+  let aoTrocarVisao = () => {};
+  const botaoVer = el("button", { type: "button", class: "fc-acao", "data-teste": "ver-lancamentos", onclick: () => trocarVisao(estadoCaixa.visao === "lancamentos" ? "venda" : "lancamentos") });
   const acoes = el("div", { class: "fc-acoes", role: "toolbar", "aria-label": "Ações da comanda" },
-    el("button", { type: "button", class: "fc-acao", onclick: limpar }, icone("lixeira"), el("span", { text: "Limpar comanda" })),
-    el("button", { type: "button", class: `fc-acao ${estadoCaixa.visao === "lancamentos" ? "ativo" : ""}`, "data-teste": "ver-lancamentos",
-      onclick: () => { estadoCaixa.visao = estadoCaixa.visao === "lancamentos" ? "venda" : "lancamentos"; recarregar(); } }, icone("lista"), el("span", { text: estadoCaixa.visao === "lancamentos" ? "Voltar à venda" : "Lançamentos do dia" })));
-  const centro = estadoCaixa.visao === "lancamentos"
-    ? el("section", { class: "fc-comanda", id: "fc-comanda" }, el("h3", { class: "fc-titulo", text: "Lançamentos" }), blocoLancamentosPeriodo(recarregar), acoes)
-    : el("section", { class: "fc-comanda", id: "fc-comanda" },
-      el("div", { class: "fc-busca" }, icone("busca"), buscaEl),
-      cabecaEl, itensTabela, acoes);
+    el("button", { type: "button", class: "fc-acao", onclick: limpar }, icone("lixeira"), el("span", { text: "Limpar comanda" })), botaoVer);
+  const painelComanda = el("div", { class: "fc-pane" }, el("div", { class: "fc-busca" }, icone("busca"), buscaEl), cabecaEl, itensTabela);
+  const painelLanc = el("div", { class: "fc-pane fc-pane-lanc", id: "fc-lanc", hidden: true }, el("h3", { class: "fc-titulo", text: "Lançamentos" }));
+  let aoContarLanc = () => {};
+  const trocarVisao = k => {
+    estadoCaixa.visao = k;
+    const lanc = k === "lancamentos";
+    painelComanda.hidden = lanc; painelLanc.hidden = !lanc;
+    // Os lançamentos são buscados ao abrir (sempre atuais) — só essa lista, não o caixa inteiro.
+    if (lanc) { painelLanc.querySelector(".lanc-periodo")?.remove(); painelLanc.append(blocoLancamentosPeriodo(recarregar, { aoCarregar: u => aoContarLanc(u) })); }
+    botaoVer.classList.toggle("ativo", lanc);
+    botaoVer.replaceChildren(icone("lista"), el("span", { text: lanc ? "Voltar à venda" : "Lançamentos do dia" }));
+    aoTrocarVisao(k);
+  };
+  const centro = el("section", { class: "fc-comanda", id: "fc-comanda" }, painelComanda, painelLanc, acoes);
 
   form.addEventListener("change", () => { atualizarTotais(); });
   form.addEventListener("input", () => { atualizarTotais(); });
@@ -3897,7 +3939,9 @@ async function frenteCaixa(c, recarregar) {
   });
 
   desenharVitrine(); desenharComanda();
-  return { el: el("div", { class: "fc", "data-teste": "frente-caixa" }, vitrineEl, centro, form, barraMovel), qtd: aCobrar.length, vazia: () => !qtdItens() };
+  trocarVisao(estadoCaixa.visao);
+  return { el: el("div", { class: "fc", "data-teste": "frente-caixa" }, vitrineEl, centro, form, barraMovel), qtd: aCobrar.length, vazia: () => !qtdItens(),
+    trocarVisao, aoTrocar: fn => { aoTrocarVisao = fn; fn(estadoCaixa.visao); }, aoContar: fn => { aoContarLanc = fn; } };
 }
 
 async function telaHistoricoCaixa() {

@@ -117,7 +117,7 @@ export async function abrirLivres(page) {
 export const vitrine = (page, qual) => page.click(`.fc-aba[data-vitrine=${qual}]`);
 export const forma = (page, f) => page.click(`[data-forma-btn=${f}]`);
 export async function lancamentos(page) {
-  if (!(await page.locator("[data-lancamento]").count())) await page.click("[data-teste=ver-lancamentos]");
+  if (!(await page.locator("[data-lancamento]:visible").count())) await page.click("[data-teste=ver-lancamentos]");
 }
 export async function voltarVenda(page) {
   if (/Voltar/.test(await page.locator("[data-teste=ver-lancamentos]").innerText())) await page.click("[data-teste=ver-lancamentos]");
@@ -128,4 +128,12 @@ export async function abrirLancamento(page, nome) {
   const r = page.locator(`[data-lancamento="${nome}"] > .item-x-resumo`).first();
   await r.waitFor();
   if ((await r.getAttribute("aria-expanded")) !== "true") await r.click();
+}
+
+// Sangria e suprimento ficam juntos no botão "Movimentações" (27/11/2026): abre a escolha e depois a janela do tipo.
+export async function movimentacao(page, tipo, aoAbrir = null) {
+  await page.click("[data-teste=movimentacoes]");
+  await page.waitForSelector("dialog[open] [data-mov=sangria]");
+  if (aoAbrir) await aoAbrir();
+  await page.click(`dialog[open] [data-mov=${tipo}]`);
 }

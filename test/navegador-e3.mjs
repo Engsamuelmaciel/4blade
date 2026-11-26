@@ -9,7 +9,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir, abrirItem, abrirCadastro, vitrine, forma, lancamentos, voltarVenda, abrirLancamento } from "./navegacao.mjs";
+import { ir, abrirItem, abrirCadastro, vitrine, forma, lancamentos, voltarVenda, abrirLancamento, movimentacao } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -165,9 +165,15 @@ async function rodar(tela) {
     await page.waitForSelector('[data-lancamento="Elias Cliente Fictício"]');
 
     // Vender | Lançamentos do dia em destaque no alto do Caixa (26/11/2026)
+    // trocar de aba é local: não busca o caixa inteiro de novo (era a causa da lentidão)
+    const pedidos = [];
+    const ouvir = r => pedidos.push(r.url());
+    page.on("request", ouvir);
     await page.click("[data-aba-caixa=venda]");
     await page.waitForSelector(".fc-busca");
-    assert.equal(await page.locator("[data-lancamento]").count(), 0, "Vender não mostra os lançamentos");
+    page.off("request", ouvir);
+    assert.deepEqual(pedidos.filter(u => /\/api\/(caixa\/hoje|caixa\/atendimentos|produtos|servicos)/.test(u)), [], `trocar para Vender não recarrega o caixa: ${pedidos.join(" ")}`);
+    assert.equal(await page.locator("[data-lancamento]:visible").count(), 0, "Vender não mostra os lançamentos");
     assert.ok(Number((await page.locator("[data-aba-caixa=lancamentos] .aba-num").innerText()).trim()) >= 1, "contador de lançamentos na aba");
     await page.click("[data-aba-caixa=lancamentos]");
     await page.waitForSelector('[data-lancamento="Elias Cliente Fictício"]');
@@ -189,12 +195,15 @@ async function rodar(tela) {
     await lancamentos(page);
     await page.waitForSelector('[data-lancamento="2x Pomada modeladora"]');
 
-    await page.click("button:has-text('Sangria')");
+    await movimentacao(page, "sangria", async () => {
+      assert.ok(await page.locator("dialog[open] [data-teste=mov-gaveta]").isVisible(), "mostra o dinheiro na gaveta");
+      await print("caixa-movimentacoes");
+    });
     await page.fill("dialog[open] [name=valor]", "50,00");
     await page.fill("dialog[open] [name=motivo]", "Depósito no banco");
     await ok();
     await page.waitForSelector('[data-lancamento="Depósito no banco (Camila Caixa)"]');
-    await page.click("button:has-text('Suprimento')");
+    await movimentacao(page, "suprimento");
     await page.fill("dialog[open] [name=valor]", "20,00");
     await page.fill("dialog[open] [name=motivo]", "Troco extra");
     await ok();

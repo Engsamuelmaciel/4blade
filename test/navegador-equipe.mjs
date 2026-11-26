@@ -7,7 +7,7 @@ import { mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { ir, abrirItem } from "./navegacao.mjs";
+import { ir, abrirItem, movimentacao } from "./navegacao.mjs";
 import { hojeBrasil } from "../src/util.js";
 import { somarDias } from "../src/agenda-util.js";
 
@@ -161,7 +161,7 @@ async function rodar(tela) {
     await entrar("caixa.semana");
     await ir(page, "Caixa");
     await page.waitForSelector(".pdv-topo");
-    await page.click(".pdv-ferramentas button:has-text('Sangria')");
+    await movimentacao(page, "sangria");
     await page.fill("dialog[open] #c-valor", "2.000,00");
     await page.fill("dialog[open] #c-motivo", "Fornecedor pago no Pix (fictício)");
     await ok();
@@ -236,7 +236,7 @@ async function rodar(tela) {
     await page.click("[data-teste=enviar-lote]");
     await page.waitForSelector("[data-teste=lote-resumo].com-erro");
     assert.match(await page.textContent("[data-teste=lote-resumo]"), /2 salvo\(s\)\. 1 com problema/);
-    assert.match(await linhaL(2).locator(".lote-msg").textContent(), /Já existe outro atendimento/);
+    assert.match(await linhaL(2).locator(".lote-msg").textContent(), /já tem Agenda Lote Um/);
     await print("suporte-horarios-lote");
 
     passo("horário fixo pelo lote, fora do funcionamento: avisa e marca com o aceite");
