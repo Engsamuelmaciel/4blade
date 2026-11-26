@@ -177,7 +177,7 @@ function arquivos(rel, barbeariaNome) {
 // ---------- cópia dos dados (planilhas) ----------
 const EXPORTAR = {
   clientes: {
-    sql: "SELECT nome, telefone, observacao, aceite_lgpd, aceite_lgpd_em, ativo, criado_em FROM clientes WHERE barbearia_id = ? ORDER BY nome",
+    sql: "SELECT nome, telefone, observacao, aceite_lgpd, aceite_lgpd_em, ativo, criado_em FROM clientes WHERE barbearia_id = ? AND id NOT IN (SELECT cliente_id FROM clientes_avulsos WHERE promovido_em IS NULL) ORDER BY nome",
     cab: ["Nome", "Telefone", "Observação", "Aceite LGPD", "Aceite em", "Ativo", "Cadastrado em"],
     linha: r => [r.nome, telefoneReal(r.telefone), r.observacao, r.aceite_lgpd ? "sim" : "não", dataCsv(r.aceite_lgpd_em), r.ativo ? "sim" : "não", dataCsv(r.criado_em)]
   },

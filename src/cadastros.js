@@ -4,7 +4,7 @@ import {
   json, fail, HttpError, readJson, validId, textoLimpo, textoOpcional, validCentavos, validDate,
   normalizarTelefone, exigirMotivo, auditoria, diferenca
 } from "./util.js";
-import { isGestao } from "./perfis.js";
+import { isGestao, veTodasAgendas } from "./perfis.js";
 
 // Caixa (recepção) também cuida de clientes: ver, cadastrar e editar (desativar continua com a gestão).
 const cuidaDeClientes = (user, nome) => nome === "clientes" && user.perfil === "caixa";
@@ -160,7 +160,12 @@ async function rotasCadastro(ctx, nome, def, path, method) {
     if (!gestao) sql += ` AND ${def.ativoCol || (def.selectLista ? "p.ativo" : "ativo")} = 1`;
     // Material de uso da barbearia (lâminas, cremes…) não aparece para quem vende.
     if (!gestao && nome === "produtos") sql += " AND NOT EXISTS (SELECT 1 FROM produtos_uso_interno ui WHERE ui.produto_id = p.id)";
-    if (nome === "clientes") { sql += " AND id NOT IN (SELECT cliente_id FROM clientes_excluidos WHERE barbearia_id = ?)"; params.push(ctx.barbeariaId); }
+    if (nome === "clientes") {
+      // Avulsos (só o nome, sem WhatsApp) ficam fora da lista de cadastrados; "?avulsos=1" (só gestão e caixa) lista só eles para cadastrar na base.
+      const soAvulsos = url.searchParams.get("avulsos") === "1" && veTodasAgendas(user);
+      sql += ` AND id NOT IN (SELECT cliente_id FROM clientes_excluidos WHERE barbearia_id = ?) AND id ${soAvulsos ? "IN" : "NOT IN"} (SELECT cliente_id FROM clientes_avulsos WHERE promovido_em IS NULL AND barbearia_id = ?)`;
+      params.push(ctx.barbeariaId, ctx.barbeariaId);
+    }
     const busca = (url.searchParams.get("busca") || "").trim().slice(0, 60);
     if (busca && nome === "clientes") {
       const digitos = busca.replace(/\D/g, "");
@@ -285,6 +290,10 @@ async function rotasCadastro(ctx, nome, def, path, method) {
       `).bind(...Object.values(sets), atual.id, ctx.barbeariaId),
       auditoria(ctx, desativando ? `${def.singular}_desativado` : `${def.singular}_alterado`, atual.id,
         { motivo, antes: dif.antes, depois: dif.depois }),
+      // Avulso que ganhou WhatsApp = cadastrado na base: passa a aparecer na lista de clientes.
+      ...(nome === "clientes" && !telefoneReal(atual.telefone) && telefoneReal(novo.telefone)
+        ? [db.prepare("UPDATE clientes_avulsos SET promovido_em = CURRENT_TIMESTAMP WHERE cliente_id = ? AND barbearia_id = ? AND promovido_em IS NULL").bind(atual.id, ctx.barbeariaId),
+          auditoria(ctx, "cliente_avulso_cadastrado", atual.id, { telefone: novo.telefone })] : []),
       ...(mudaApelido ? [db.prepare(`INSERT INTO clientes_apelidos (cliente_id, barbearia_id, apelido) VALUES (?, ?, ?)
         ON CONFLICT(cliente_id) DO UPDATE SET apelido = excluded.apelido, atualizado_em = CURRENT_TIMESTAMP`).bind(atual.id, ctx.barbeariaId, apelidoNovo)] : [])
     ]);

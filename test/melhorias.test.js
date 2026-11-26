@@ -172,17 +172,18 @@ describe("telefone opcional na marcação (pedido de 16/11/2026)", () => {
     const reg = await post("/api/agenda/mensagem", barb.token, { id: ag[0].id, tipo: "lembrete" });
     assert.equal(reg.status, 201, JSON.stringify(reg.dados));
     assert.match(reg.dados.url, /^https:\/\/wa\.me\/\?text=/, "registra o envio mesmo sem número");
-    // lista de clientes: aparece sem telefone; pode renomear sem informar telefone; busca por número não o encontra
+    // cliente avulso (só o nome): NÃO aparece na lista de cadastrados (27/11/2026); a busca por número também não o acha
     const lista = (await get("/api/clientes", ger.token)).dados.clientes;
-    const ze = lista.find(c => c.nome === "Seu Zé Sem Fone");
-    assert.equal(ze.telefone, null);
-    const ren = await post("/api/clientes/alterar", ger.token, { id: ze.id, nome: "Seu Zé Fictício", telefone: "", observacao: null, aceiteLgpd: false });
-    assert.equal(ren.status, 200, JSON.stringify(ren.dados));
-    assert.equal(ren.dados.cliente.telefone, null);
+    assert.equal(lista.find(c => c.nome === "Seu Zé Sem Fone"), undefined);
     assert.equal((await get("/api/clientes?busca=123", ger.token)).dados.clientes.length, 0);
-    // depois pode ganhar telefone
+    // os avulsos ficam numa lista à parte (só gestão/caixa) e, ao ganhar WhatsApp, entram na base
+    const avulsos = (await get("/api/clientes?avulsos=1", ger.token)).dados.clientes;
+    const ze = avulsos.find(c => c.nome === "Seu Zé Sem Fone");
+    assert.ok(ze, "aparece na lista de avulsos");
     const comFone = await post("/api/clientes/alterar", ger.token, { id: ze.id, telefone: "11 97777-1212", aceiteLgpd: true });
     assert.equal(comFone.dados.cliente.telefone, "11977771212");
+    assert.ok((await get("/api/clientes", ger.token)).dados.clientes.some(c => c.nome === "Seu Zé Sem Fone"), "agora está na lista de cadastrados");
+    assert.ok(!(await get("/api/clientes?avulsos=1", ger.token)).dados.clientes.some(c => c.nome === "Seu Zé Sem Fone"));
     // caixa: atendimento sem horário também aceita sem telefone
     await post("/api/caixa/abrir", cx.token, { trocoCentavos: 0 });
     const av = await post("/api/caixa/atendimento-avulso", cx.token, { barbeiroId: barb.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }],
@@ -689,7 +690,8 @@ describe("confirmação de horário e mensagem para clientes cadastrados (pedido
     // clientes cadastrados: todos (sem telefone também); envio para vários; campos de horário recusados
     const c2 = (await post("/api/clientes", ger.token, { nome: "Contato Dois", telefone: "11 97100-0002", aceiteLgpd: true })).dados.cliente;
     const contatos = (await get("/api/mensagens/contatos", cx.token)).dados.contatos;
-    assert.ok(contatos.some(c => c.nome === "Contato Dois") && contatos.some(c => c.nome === "Sem Fone Conf" && c.telefone === null));
+    assert.ok(contatos.some(c => c.nome === "Contato Dois"));
+    assert.ok(!contatos.some(c => c.nome === "Sem Fone Conf"), "avulso (só o nome) não vira contato de mensagem");
     const idsC = contatos.filter(c => ["Contato Dois", "Confirmado Fictício"].includes(c.nome)).map(c => c.clienteId);
     assert.equal((await post("/api/mensagens/envios", cx.token, { texto: "Oi {cliente}, às {hora}", clienteIds: idsC })).status, 400);
     const env = await post("/api/mensagens/envios", cx.token, { texto: "Oi {cliente}! Promoção na {barbearia}.", clienteIds: idsC });

@@ -190,7 +190,9 @@ async function clienteDaMarcacao(ctx, c = {}, comandos, origem = "agenda") {
     comandos.push(
       db.prepare(`INSERT INTO clientes (id, barbearia_id, nome, telefone, aceite_lgpd) VALUES (?, ?, ?, ?, 0)`)
         .bind(id, ctx.barbeariaId, nome, PREFIXO_SEM_TELEFONE + id),
-      auditoria(ctx, "cliente_criado", id, { origem, depois: { nome, telefone: null } })
+      // Só pelo nome = cliente AVULSO: não entra na lista de cadastrados (para entrar na base, cadastrar com WhatsApp).
+      db.prepare("INSERT INTO clientes_avulsos (cliente_id, barbearia_id) VALUES (?, ?)").bind(id, ctx.barbeariaId),
+      auditoria(ctx, "cliente_criado", id, { origem, avulso: true, depois: { nome, telefone: null } })
     );
     return { id, nome, novo: true };
   }
@@ -874,7 +876,7 @@ async function buscarClientes(ctx) {
   const nome = `%${busca.replace(/[%_]/g, "")}%`;
   // Busca por nome, apelido (migração 0016) ou telefone.
   const r = await ctx.db.prepare(`SELECT c.id, c.nome, c.telefone, ap.apelido FROM clientes c LEFT JOIN clientes_apelidos ap ON ap.cliente_id = c.id
-      WHERE c.barbearia_id = ? AND c.ativo = 1
+      WHERE c.barbearia_id = ? AND c.ativo = 1 AND c.id NOT IN (SELECT cliente_id FROM clientes_avulsos WHERE promovido_em IS NULL AND barbearia_id = c.barbearia_id)
       AND (c.nome LIKE ? OR ap.apelido LIKE ? ${digitos.length >= 3 ? "OR (c.telefone LIKE ? AND c.telefone NOT LIKE 'sem:%')" : ""}) ORDER BY c.nome LIMIT 8`)
     .bind(ctx.barbeariaId, nome, nome, ...(digitos.length >= 3 ? [`%${digitos}%`] : [])).all();
   const sinais = r.results.length ? await sinaisClientes(ctx.db, ctx.barbeariaId) : new Map();

@@ -48,8 +48,9 @@ export async function rotasMensagens(ctx, path, method) {
   // Clientes cadastrados (para mandar mensagem a quem não tem horário no dia). Sem telefone também (escolhe o contato no WhatsApp).
   if (path === "/mensagens/contatos" && method === "GET") {
     const r = await db.prepare(`SELECT id, nome, telefone FROM clientes WHERE barbearia_id = ? AND ativo = 1
-                                AND id NOT IN (SELECT cliente_id FROM clientes_excluidos WHERE barbearia_id = ?) ORDER BY nome LIMIT 1000`)
-      .bind(ctx.barbeariaId, ctx.barbeariaId).all();
+                                AND id NOT IN (SELECT cliente_id FROM clientes_excluidos WHERE barbearia_id = ?)
+                                AND id NOT IN (SELECT cliente_id FROM clientes_avulsos WHERE promovido_em IS NULL AND barbearia_id = ?) ORDER BY nome LIMIT 1000`)
+      .bind(ctx.barbeariaId, ctx.barbeariaId, ctx.barbeariaId).all();
     return json({ contatos: r.results.map(c => ({ clienteId: c.id, nome: c.nome, telefone: telefoneReal(c.telefone) })) });
   }
 

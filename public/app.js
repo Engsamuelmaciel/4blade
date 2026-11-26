@@ -5986,8 +5986,21 @@ function blocoHistoricoCliente(c) {
 
 async function telaClientes(busca = null) {
   if (busca !== null) estadoClientes.busca = busca;
-  const { clientes } = await api("/clientes");
+  const [{ clientes }, { clientes: avulsosRaw }] = await Promise.all([api("/clientes"), veTodas() ? api("/clientes?avulsos=1") : { clientes: [] }]);
+  const avulsos = avulsosRaw.map(c => ({ ...c, avulso: true, ativo: true }));
   const recarregar = () => telaClientes();
+  const defBase = {   // avulso → cadastrado na base: WhatsApp obrigatório + aceite do uso do telefone
+    rota: "clientes", aoSalvar: recarregar,
+    campos: c => [
+      campo("Nome", { name: "nome", required: true, value: c?.nome, autocomplete: "off" }),
+      campo("WhatsApp", { name: "telefone", required: true, inputmode: "tel", autocomplete: "off" }),
+      caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "lgpd", required: true })
+    ],
+    montarCorpo: f => {
+      if (!f.lgpd.checked) throw new Error("Marque o aceite do uso do telefone (LGPD).");
+      return { nome: f.nome.value, telefone: f.telefone.value, aceiteLgpd: true };
+    }
+  };
   const def = {
     titulo: "Novo cliente",
     rota: "clientes",
@@ -6003,7 +6016,8 @@ async function telaClientes(busca = null) {
   };
   const filtros = [["todos", "Todos", c => c.ativo], ["whats", "Com WhatsApp", c => c.ativo && c.telefone], ["semfone", "Sem telefone", c => c.ativo && !c.telefone],
     ["pendencia", "Nota vencida ou bloqueado", c => c.ativo && (c.bloqueado || c.notaVencidaCentavos)],
-    ...(gestao() ? [["desativados", "Desativados", c => !c.ativo]] : [])];
+    ...(gestao() ? [["desativados", "Desativados", c => !c.ativo]] : []),
+    ...(avulsos.length ? [["avulsos", `Avulsos (${avulsos.length})`, () => true]] : [])];
   const ul = el("ul", { class: "lista-x" });
   const contador = el("p", { class: "suave contador-lista" });
   const historicos = new Map();   // id do cliente → bloco do histórico (carrega só quando o cliente é aberto)
@@ -6011,15 +6025,18 @@ async function telaClientes(busca = null) {
     historicos.clear();
     const f = (filtros.find(x => x[0] === estadoClientes.filtro) || filtros[0])[2];
     const t = normalizar(estadoClientes.busca), dig = estadoClientes.busca.replace(/\D/g, "");
-    const vis = clientes.filter(c => f(c) && (!t || normalizar(c.nome).includes(t) || normalizar(c.apelido).includes(t) || (dig.length >= 3 && (c.telefone || "").includes(dig))));
-    contador.textContent = `${vis.length} cliente${vis.length === 1 ? "" : "s"}`;
+    const vis = (estadoClientes.filtro === "avulsos" ? avulsos : clientes).filter(c => f(c) && (!t || normalizar(c.nome).includes(t) || normalizar(c.apelido).includes(t) || (dig.length >= 3 && (c.telefone || "").includes(dig))));
+    contador.textContent = `${vis.length} ${estadoClientes.filtro === "avulsos" ? "avulso" : "cliente"}${vis.length === 1 ? "" : "s"}`;
     ul.replaceChildren(...(vis.length ? vis.map(c => itemExpansivel({
       chave: `c:${c.id}`, attrs: { "data-cliente": c.nome }, classe: c.ativo ? "" : "inativo", avatar: iniciais(c.nome),
       titulo: [c.nome, c.apelido ? el("span", { class: "apelido", text: `“${c.apelido}”` }) : null],
-      sub: c.telefone ? fone(c.telefone) : "sem telefone",
-      direita: c.ativo ? seloCliente(c) : el("span", { class: "etiqueta vermelha", text: "Desativado" }),
+      sub: c.avulso ? "avulso · só o nome, fora da base" : c.telefone ? fone(c.telefone) : "sem telefone",
+      direita: c.avulso ? el("span", { class: "etiqueta", text: "Avulso" }) : c.ativo ? seloCliente(c) : el("span", { class: "etiqueta vermelha", text: "Desativado" }),
       aoAbrir: () => historicos.get(c.id)?.carregar(),
-      detalhes: () => [
+      detalhes: () => c.avulso ? [
+        el("p", { class: "suave", text: "Atendido só pelo nome. Não aparece na lista de clientes nem na busca. Para ficar na base, cadastre o WhatsApp." }),
+        acoesItem(botao("Cadastrar na base", () => editarEmJanela(`Cadastrar ${c.nome} na base`, defBase, c), "pequeno principal"))
+      ] : [
         avisoCliente(c),
         el("p", { class: "suave", text: [c.telefone ? (c.aceiteLgpd ? "Aceitou o uso do telefone (LGPD)" : "Sem aceite LGPD") : null, c.observacao].filter(Boolean).join(" · ") || "Sem observação." }),
         acoesAgrupadas([

@@ -366,6 +366,17 @@ async function rodar(tela) {
     await page.evaluate(() => document.querySelectorAll('.pagos-hoje').forEach(d => { d.open = true; }));
     await page.waitForSelector('[data-cobrar="Cliente não identificado"] >> text=Pago');
 
+    passo("avulso (só o nome) fica FORA da lista de clientes; aparece só no filtro Avulsos, onde dá para cadastrar na base");
+    await ir(page, "Clientes");
+    await page.waitForSelector("[data-cliente]");
+    assert.equal(await page.locator('[data-cliente="Cliente não identificado"]').count(), 0, "avulso não aparece em Todos");
+    await page.click('.chip-filtro:has-text("Avulsos")');
+    await page.waitForSelector('[data-cliente="Cliente não identificado"]');
+    await print("clientes-avulsos-separados");
+    await abrirItem(page, '[data-cliente="Cliente não identificado"]');
+    assert.ok(await page.locator('[data-cliente="Cliente não identificado"] >> text=Cadastrar na base').count(), "botão para cadastrar na base");
+    await ir(page, "Caixa");
+
     await vitrine(page, "produtos");
     await page.click('[data-produto-pdv="Pomada"]');
     await page.click('[data-produto-pdv="Pomada"]');
@@ -505,6 +516,8 @@ async function rodar(tela) {
     await page.waitForSelector('[data-prof="Beto Barbeiro"] [data-agendamento="Ivo Recepção Fictício"] >> text=18:00');
     const tokCaixa = (await chamar("/auth/login", { login: "caixa.semana", senha: SENHA })).token;
     await chamar("/clientes", { nome: "Duplicado Fictício", aceiteLgpd: true, telefone: "11 93210-0000" }, tokCaixa);
+    // o "Ivo" digitado só pelo nome na agenda é avulso (fora da lista); o cadastro de verdade, com WhatsApp, entra na base
+    await chamar("/clientes", { nome: "Ivo Recepção Fictício", aceiteLgpd: true, telefone: "11 93210-1111" }, tokCaixa);
     await ir(page, "Clientes");
     await page.waitForSelector('[data-cliente="Ivo Recepção Fictício"]');
     // excluir um cadastro duplicado (sem histórico): pede motivo e some da lista
