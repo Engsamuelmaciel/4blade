@@ -240,6 +240,9 @@ async function rodar(tela) {
     const outros = await quem.locator("option").evaluateAll((os, a) => os.map(o => o.value).filter(v => v !== a), atual);
     assert.ok(outros.length >= 1, "há outro profissional para escolher");
     await quem.selectOption(outros[outros.length - 1]);
+    // o cliente também pode ser corrigido: o campo mostra o cliente atual com "Trocar"
+    await page.waitForSelector("dialog[open] [data-teste=corrigir-cliente] [data-teste=corr-cli-escolhido]");
+    assert.match(await page.textContent("dialog[open] [data-teste=corrigir-cliente]"), /Diego Cliente Fictício/);
     await print("caixa-corrigir-valor");
     await page.click("dialog[open] button[type=submit]");
     await page.waitForSelector("text=Atendimento corrigido");

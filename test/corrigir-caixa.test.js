@@ -90,4 +90,27 @@ describe("corrigir atendimento já cobrado no caixa", () => {
     assert.equal((await post("/api/caixa/corrigir-atendimento", cx.token, { ...corpo({ barbeiroId: outro.id }), id: m2.id })).status, 400);
     void get;
   });
+
+  test("corrigir o cliente: troca por outro já cadastrado; bloqueado recusado; outra barbearia e barbeiro recusados; registrado", async () => {
+    const amb = await cenario("corr5");
+    const { post, cx, ger, barb, corte, env } = amb;
+    const m = await cobrado(amb, "14:00");
+    const novo = (await post("/api/clientes", ger.token, { nome: "Cliente Certo", telefone: "11988880001", aceiteLgpd: true })).dados.cliente;
+    const bloq = (await post("/api/clientes", ger.token, { nome: "Cliente Bloqueado", telefone: "11988880002", aceiteLgpd: true })).dados.cliente;
+    await post("/api/clientes/bloquear", ger.token, { clienteId: bloq.id, motivo: "teste" });
+    const corpo = (extra = {}) => ({ id: m.id, motivo: "Cliente errado", itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], pagamentos: [{ forma: "pix", valorCentavos: 4000 }], ...extra });
+    assert.equal((await post("/api/caixa/corrigir-atendimento", barb.token, corpo({ clienteId: novo.id }))).status, 403);
+    assert.equal((await post("/api/caixa/corrigir-atendimento", cx.token, corpo({ clienteId: bloq.id }))).status, 409);
+    const outra = await cenario("corr6", amb, amb.p);
+    const alheio = (await post("/api/clientes", outra.ger.token, { nome: "De Outra", telefone: "11988880003", aceiteLgpd: true })).dados.cliente;
+    assert.equal((await post("/api/caixa/corrigir-atendimento", cx.token, corpo({ clienteId: alheio.id }))).status, 404);
+    let ag = await env.DB.prepare("SELECT cliente_id, situacao FROM agendamentos WHERE id = ?").bind(m.id).first();
+    assert.notEqual(ag.cliente_id, novo.id); assert.equal(ag.situacao, "finalizado");
+    const r = await post("/api/caixa/corrigir-atendimento", cx.token, corpo({ clienteId: novo.id }));
+    assert.equal(r.status, 201, JSON.stringify(r.dados));
+    ag = await env.DB.prepare("SELECT cliente_id, situacao FROM agendamentos WHERE id = ?").bind(m.id).first();
+    assert.equal(ag.cliente_id, novo.id); assert.equal(ag.situacao, "finalizado");
+    const aud = await env.DB.prepare("SELECT detalhes FROM auditoria WHERE acao = 'atendimento_cliente_corrigido' AND alvo = ?").bind(m.id).first();
+    assert.ok(aud && JSON.parse(aud.detalhes).depois.cliente === novo.id);
+  });
 });

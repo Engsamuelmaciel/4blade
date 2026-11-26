@@ -5,6 +5,7 @@ import { json, fail, HttpError, readJson, validCentavos, validDate, textoOpciona
 import { isGestao, atende, veTodasAgendas } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
 import { FORMAS, formaEfetiva, telefoneReal, somarDias } from "./agenda-util.js";
+import { conferirClienteParaMarcar } from "./notificacoes.js";
 import { finalizarDados, atendimentoAvulso, reabrirDados } from "./agenda.js";
 
 const erro = (msg, status = 400) => { throw new HttpError(msg, status); };
@@ -216,7 +217,7 @@ export async function rotasCaixa(ctx, path, method) {
   // PDV: atendimentos de hoje para cobrar (sem comissão) + profissionais e serviços para o atendimento sem horário.
   if (path === "/caixa/atendimentos" && method === "GET") {
     const [ags, servs, profs] = await Promise.all([
-      db.prepare(`SELECT a.id, a.inicio, a.fim, a.situacao, a.barbeiro_id, u.nome AS barbeiro, c.nome AS cliente, c.telefone,
+      db.prepare(`SELECT a.id, a.inicio, a.fim, a.situacao, a.barbeiro_id, a.cliente_id, u.nome AS barbeiro, c.nome AS cliente, c.telefone,
                     f.total_centavos
                   FROM agendamentos a JOIN usuarios u ON u.id = a.barbeiro_id JOIN clientes c ON c.id = a.cliente_id
                   LEFT JOIN finalizacoes f ON f.agendamento_id = a.id AND f.estornada = 0
@@ -232,7 +233,7 @@ export async function rotasCaixa(ctx, path, method) {
       atendimentos: ags.results.map(a => ({
         id: a.id, data: a.inicio.slice(0, 10), atrasado: a.inicio.slice(0, 10) < hoje,
         inicio: a.inicio.slice(11), fim: a.fim.slice(11), situacao: a.situacao, barbeiroId: a.barbeiro_id, barbeiro: a.barbeiro,
-        cliente: { nome: a.cliente, telefone: telefoneReal(a.telefone) }, totalCentavos: a.total_centavos ?? null,
+        cliente: { id: a.cliente_id, nome: a.cliente, telefone: telefoneReal(a.telefone) }, totalCentavos: a.total_centavos ?? null,
         servicos: servs.results.filter(s => s.agendamento_id === a.id).map(s => ({ id: s.servico_id, nome: s.nome, precoCentavos: s.preco_centavos ?? 0 }))
       }))
     });
@@ -262,8 +263,29 @@ export async function rotasCaixa(ctx, path, method) {
         novoBarbeiro = { id: p.id, nome: p.nome, antes: ag.barbeiro_id, agId: ag.id };
       }
     }
+    // Cliente (opcional): outro cliente JÁ cadastrado da barbearia (ativo); bloqueado não; nota vencida pede o aceite (como ao marcar).
+    let novoCliente = null;
+    if (input.clienteId) {
+      if (!veTodasAgendas(ctx.user)) return fail("Só o gerente ou o caixa corrigem o cliente.", 403);
+      const ag = await db.prepare("SELECT id, cliente_id FROM agendamentos WHERE id = ? AND barbearia_id = ?").bind(String(input.id || ""), ctx.barbeariaId).first();
+      if (!ag) return fail("Horário não encontrado.", 404);
+      if (input.clienteId !== ag.cliente_id) {
+        const c = await db.prepare("SELECT id, nome FROM clientes WHERE id = ? AND barbearia_id = ? AND ativo = 1").bind(String(input.clienteId), ctx.barbeariaId).first();
+        if (!c) return fail("Cliente não encontrado.", 404);
+        const nv = await conferirClienteParaMarcar(ctx, c.id, input.aceiteNotaVencida);
+        novoCliente = { id: c.id, antes: ag.cliente_id, agId: ag.id, nv };
+      }
+    }
     await reabrirDados(ctx, { id: input.id, motivo: `Correção no caixa: ${motivo}` });
     try {
+      if (novoCliente) {
+        const r = await db.batch([
+          db.prepare("UPDATE agendamentos SET cliente_id = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ? AND barbearia_id = ? AND situacao = 'agendado'").bind(novoCliente.id, novoCliente.agId, ctx.barbeariaId),
+          auditoriaSe(ctx, "EXISTS (SELECT 1 FROM agendamentos WHERE id = ? AND cliente_id = ?)", [novoCliente.agId, novoCliente.id],
+            "atendimento_cliente_corrigido", novoCliente.agId, { motivo, antes: { cliente: novoCliente.antes }, depois: { cliente: novoCliente.id }, ...(novoCliente.nv ? { notaVencidaAceita: true } : {}) })
+        ]);
+        if (!r[0].meta?.changes) throw new HttpError("Não foi possível trocar o cliente.", 409);
+      }
       if (novoBarbeiro) {
         // o horário já voltou para "agendado": troca o profissional (com a mesma conferência de conflito) e registra antes/depois
         const r = await db.batch([

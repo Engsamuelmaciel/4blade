@@ -2679,6 +2679,7 @@ function janelaBloquear(ag) {
 }
 
 // Finalizar: serviços com valor de tabela (alterável), até 2 formas de pagamento com soma conferida.
+let seletorCorrecao = null;
 async function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar = telaAgenda, titulo = "Finalizar atendimento", correcao = null } = {}) {
   // Começa só com o(s) serviço(s) do horário; "Adicionar outro serviço" abre a lista dos demais (sem repetir:
   // serviço repetido = quantidade). Pedido de 17/11/2026.
@@ -2796,6 +2797,8 @@ async function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar =
     // Correção (19/11/2026): a cobrança antiga é estornada e esta entra no lugar; o motivo fica registrado.
     correcao ? el("p", { class: "info", "data-teste": "correcao-antes", text: `Cobrado antes: ${correcao.antes}. Ajuste os serviços, os valores e a forma certos — a cobrança antiga é estornada (fica registrada) e esta entra no lugar.` }) : null,
     correcao ? campo("Motivo da correção", { name: "motivoCorrecao", required: true, minlength: "3", placeholder: "Ex.: cobrei o valor errado" }) : null,
+    correcao?.cliente ? (() => { seletorCorrecao = seletorCliente({ id: "corr-cli", preSelecionado: correcao.cliente });
+      return el("div", { "data-teste": "corrigir-cliente" }, el("p", { class: "suave", text: "Cliente" }), seletorCorrecao.el); })() : null,
     correcao?.profissionais?.length ? campo("Quem atendeu", { tag: "select", name: "quemAtendeu", "data-teste": "corrigir-quem",
       opcoes: correcao.profissionais.map(p => [p.id, p.nome]), valor: correcao.barbeiroId }) : null,
     el("p", { class: "suave", text: `${a.cliente.nome} · ${a.inicio} · o valor pode ser alterado (fica registrado e aparece para o gerente).` }),
@@ -2821,8 +2824,10 @@ async function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar =
         if (v1 === null || v1 <= 0 || v1 >= t) throw new Error("Valor da 1ª forma inválido: precisa ser maior que zero e menor que o total.");
         pagamentos = [{ forma: f.forma1.value, valorCentavos: v1 }, { forma: f.forma2.value, valorCentavos: t - v1 }];
       }
-      await api(endpoint, { metodo: "POST", corpo: { id: a.id, itens, pagamentos, ...(produtos.length ? { produtos } : {}), ...(correcao ? { motivo: f.motivoCorrecao.value } : {}),
-        ...(correcao?.profissionais?.length && f.quemAtendeu?.value ? { barbeiroId: f.quemAtendeu.value } : {}) } });
+      const novoCli = correcao?.cliente && seletorCorrecao?.escolhido();
+      await comAceiteNota(extra => api(endpoint, { metodo: "POST", corpo: { id: a.id, itens, pagamentos, ...(produtos.length ? { produtos } : {}), ...(correcao ? { motivo: f.motivoCorrecao.value } : {}),
+        ...(novoCli && novoCli.id !== correcao.cliente.id ? { clienteId: novoCli.id } : {}), ...extra,
+        ...(correcao?.profissionais?.length && f.quemAtendeu?.value ? { barbeiroId: f.quemAtendeu.value } : {}) } }));
       avisar(correcao ? "Atendimento corrigido: a cobrança antiga foi estornada e a certa entrou no caixa."
         : produtos.length ? "Atendimento e produtos cobrados. Entrada lançada no caixa." : "Atendimento finalizado. Entrada lançada no caixa.");
       aoTerminar();
@@ -3210,7 +3215,7 @@ function janelaCorrigirLancamento(l, recarregar) {
     janelaFinalizar(a, { endpoint: "/caixa/corrigir-atendimento", aoTerminar: recarregar, titulo: `Corrigir atendimento de ${a.cliente.nome}`,
       correcao: { antes: `${reais(l.valorCentavos)} em ${NOME_FORMA[l.formaAtual]} (${l.descricao || "serviços"})`,
         // quem atendeu: só gerente/caixa trocam (o servidor confere de novo)
-        profissionais: veTodas() ? profissionais : null, barbeiroId: a.barbeiroId } });
+        profissionais: veTodas() ? profissionais : null, barbeiroId: a.barbeiroId, cliente: veTodas() ? a.cliente : null } });
   };
   return abrirJanela(`Corrigir ${l.cliente || "atendimento"}`, [
     el("p", { text: `${[l.hora, l.cliente].filter(Boolean).join(" ")} · ${l.descricao || ""} · ${reais(l.valorCentavos)} em ${NOME_FORMA[l.formaAtual]}` }),
