@@ -176,6 +176,32 @@ async function rodar(tela) {
       await page.click("[data-teste=link-lote]").catch(() => {});
     }
 
+    passo("duração personalizada: a da tabela vem primeiro; \"Alterar duração\" ajusta para este cliente e a agenda mostra o horário novo");
+    {
+      await page.click("button:has-text('+ Novo horário')");
+      await page.selectOption("dialog[open] #c-prof", { label: "Rafael Barbeiro" });
+      await page.fill("dialog[open] #c-data", somarDias(HOJE, 1));
+      await page.locator("dialog[open] #c-data").dispatchEvent("change");
+      await page.fill("dialog[open] [name=hora]", "18:00");
+      await page.check("dialog[open] input[name=serv] >> nth=0");
+      assert.match(await page.textContent("dialog[open] [data-teste=duracao-texto]"), /\(tabela\)/, "começa com a duração da tabela");
+      await page.click("dialog[open] [data-teste=duracao-alterar]");
+      await page.fill("dialog[open] #c-duracao", "50");
+      assert.match(await page.textContent("dialog[open] [data-teste=duracao-texto]"), /50 min \(personalizada · tabela: /);
+      await print("novo-horario-duracao-personalizada");
+      await page.fill("dialog[open] #cli-busca", "Duração Personalizada Fictício");
+      await page.click("dialog[open] button[type=submit]");
+      await page.waitForSelector("dialog#janela:has-text('Horário marcado'), [data-teste=aviso][open], .aviso", { timeout: 8000 }).catch(() => {});
+      if (await page.locator("dialog#janela[open]").count()) await page.keyboard.press("Escape");
+      await page.waitForFunction(() => !document.querySelector("dialog#janela").open);
+      await pronto();
+      const grade2 = page.locator(`[data-grade="${somarDias(HOJE, 1)}"]`);
+      if (!(await grade2.count())) { await page.click(".navega-data button:has-text('›')"); await pronto(); }
+      await page.waitForSelector('.grade-evento[title*="Duração Personalizada"]');
+      assert.match(await page.getAttribute('.grade-evento[title*="Duração Personalizada"]', "title"), /18:00–18:50/, "a agenda do barbeiro mostra o horário com a duração personalizada");
+      await print("dia-duracao-personalizada");
+    }
+
     passo("Mês: célula enxuta; Ano: dias passados neutros");
     await visao("Mês");
     await page.waitForSelector(".mes-calendario");

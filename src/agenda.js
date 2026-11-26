@@ -248,6 +248,13 @@ function comandosDoHorario(ctx, { id, prof, cliente, data, ini, fim, servs, obse
   ];
 }
 
+// Duração personalizada (27/11/2026): inteiro de 5 a 720 minutos; sem o campo vale a da tabela.
+export function lerDuracao(valor, padrao) {
+  if (valor === undefined || valor === null || valor === "") return padrao;
+  if (!Number.isInteger(valor) || valor < 5 || valor > 720) erro("Duração inválida: de 5 a 720 minutos.");
+  return valor;
+}
+
 const NOME_DIA_SEMANA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 
 export async function marcar(ctx) {
@@ -261,7 +268,10 @@ export async function marcar(ctx) {
   const observacao = textoOpcional(input.observacao, 300);
   if (observacao === false) erro("Observação muito longa (até 300 letras).");
   const servs = await servicosEscolhidos(ctx, input.servicoIds);
-  const fim = ini + servs.reduce((t, x) => t + x.duracao_min, 0);
+  // Duração: a da tabela (soma dos serviços) por padrão; quem marca pode personalizar para este cliente (27/11/2026).
+  const duracaoTabela = servs.reduce((t, x) => t + x.duracao_min, 0);
+  const duracao = lerDuracao(input.duracaoMin, duracaoTabela);
+  const fim = ini + duracao;
   if (fim > 24 * 60) erro("O horário passa da meia-noite.");
 
   // Horário fixo: repete a cada N semanas até a data final. Desde 25/11/2026 (pedido do responsável) até 2 anos
@@ -320,6 +330,7 @@ export async function marcar(ctx) {
     throw new HttpError(`${prof.nome || "O profissional"} já tem ${lista} nesse horário.`, 409,
       { codigo: "sobreposicao", conflitos: sobrepostos.map(o => ({ cliente: o.cliente, inicio: o.inicio.slice(11), fim: o.fim.slice(11), servicos: o.servicos || "" })) });
   }
+  if (duracao !== duracaoTabela) comandos.push(auditoria(ctx, "duracao_personalizada", prof.id, { data, hora: input.hora, tabelaMin: duracaoTabela, usadaMin: duracao }));
   if (sobrepostos.length) comandos.push(auditoria(ctx, "marcou_sobreposto", prof.id, { data, hora: input.hora, comAtendimentos: sobrepostos.map(o => `${o.cliente} ${o.inicio.slice(11)}–${o.fim.slice(11)}`) }));
   const serieId = rep ? crypto.randomUUID() : null;
   if (rep) {
@@ -627,7 +638,8 @@ async function editar(ctx) {
   if (observacao === false) erro("Observação muito longa (até 300 letras).");
   const servs = await servicosEscolhidos(ctx, input.servicoIds);
   const ini = horaParaMin(a.inicio.slice(11));
-  const fim = ini + servs.reduce((t, x) => t + x.duracao_min, 0);
+  const duracaoTabela = servs.reduce((t, x) => t + x.duracao_min, 0);
+  const fim = ini + lerDuracao(input.duracaoMin, duracaoTabela);
   if (fim > 24 * 60) erro("O horário passa da meia-noite.");
   conferirHorario(await regrasDoDia(db, ctx.barbeariaId, a.barbeiro_id, a.data), ini, fim);
   const comandos = [];

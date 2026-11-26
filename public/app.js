@@ -2381,10 +2381,20 @@ async function janelaEditarHorario(a) {
     campo("Telefone (WhatsApp) — opcional", { name: "eTel", inputmode: "tel", autocomplete: "off" }),
     Object.assign(caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "eLgpd" }), { hidden: true }));
   const seletor = seletorCliente({ id: "ed-cli", aoMudar: c => { novoCli.hidden = Boolean(c); } });
+  const minDe2 = h => Number(h.slice(0, 2)) * 60 + Number(h.slice(3));
+  const duracaoAtual = minDe2(a.fim) - minDe2(a.inicio);
+  const tabelaEd = () => servicos.filter(sv => janela.querySelector(`#eserv-${sv.id}`)?.checked).reduce((t, sv) => t + sv.duracaoMin, 0);
+  const tabelaInicial = servicos.filter(sv => atuais.has(sv.id)).reduce((t, sv) => t + sv.duracaoMin, 0);
+  const dur = campoDuracao({ tabela: tabelaEd, inicial: duracaoAtual !== tabelaInicial ? duracaoAtual : null });
+  setTimeout(() => {
+    const ff = janela.querySelector("form");
+    ff?.querySelectorAll("input[name=eserv]").forEach(c => c.addEventListener("change", () => dur.servicosMudaram()));
+    dur.atualizar();
+  });
   const promessa = abrirJanela(`Editar horário · ${a.inicio}`, [
     el("p", { class: "suave", text: "Corrija o que foi lançado errado. Para mudar dia, hora ou profissional, use Remarcar." }),
     el("fieldset", { class: "servicos-escolha" }, el("legend", { text: "Serviços" }),
-      servicos.map(sv => caixaMarcar(`${sv.nome} · ${reais(sv.precoCentavos)} · ${sv.duracaoMin} min`, { name: "eserv", value: sv.id, id: `eserv-${sv.id}`, checked: atuais.has(sv.id) || null }))),
+      servicos.map(sv => caixaMarcar(`${sv.nome} · ${reais(sv.precoCentavos)} · ${sv.duracaoMin} min`, { name: "eserv", value: sv.id, id: `eserv-${sv.id}`, checked: atuais.has(sv.id) || null })), dur.el),
     el("fieldset", { class: "servicos-escolha bloco-cliente" }, el("legend", { text: `Cliente: ${a.cliente.nome} (trocar só se estiver errado)` }), seletor.el, novoCli),
     campo("Observação (opcional)", { name: "eObs", maxlength: "300", autocomplete: "off", value: a.observacao || "" })
   ], {
@@ -2395,7 +2405,7 @@ async function janelaEditarHorario(a) {
       const esc = seletor.escolhido();
       const cliente = esc ? { id: esc.id }
         : (f.eNome.value.trim() || f.eTel.value.trim()) ? { nome: f.eNome.value.trim() || undefined, telefone: f.eTel.value, aceiteLgpd: f.eLgpd.checked } : undefined;
-      const r = await comAceiteNota(extra => api("/agenda/editar", { metodo: "POST", corpo: { ...extra, id: a.id, servicoIds, observacao: f.eObs.value, ...(cliente ? { cliente } : {}) } }));
+      const r = await comAceiteNota(extra => api("/agenda/editar", { metodo: "POST", corpo: { ...extra, id: a.id, servicoIds, duracaoMin: dur.efetiva(), observacao: f.eObs.value, ...(cliente ? { cliente } : {}) } }));
       avisar(`${r.mensagem} Termina às ${r.fim}.`);
       recarregarHorarios();
     }
@@ -2521,6 +2531,36 @@ function painelDisponibilidade() {
   return { el: painel, atualizar };
 }
 
+// Duração do atendimento (27/11/2026): a da tabela vem sempre primeiro; quem marca pode personalizar para este cliente.
+// tabela(): soma da tabela dos serviços marcados. inicial: duração personalizada já existente (ao editar).
+const textoDuracao = m => (m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? String(m % 60).padStart(2, "0") : ""}` : `${m} min`);
+function campoDuracao({ tabela, inicial = null, aoMudar = () => {} }) {
+  let manual = inicial;
+  const texto = el("span", { "data-teste": "duracao-texto" });
+  const entrada = el("input", { type: "number", id: "c-duracao", name: "duracao", min: "5", max: "720", step: "5", inputmode: "numeric", "aria-label": "Duração em minutos" });
+  const efetiva = () => manual ?? tabela();
+  const editor = el("div", { class: "duracao-editor", hidden: true, "data-teste": "duracao-editor" },
+    el("label", { for: "c-duracao", text: "Duração (minutos)" }), entrada,
+    botao("Usar a da tabela", () => { manual = null; entrada.value = String(tabela()); desenhar(); aoMudar(); }, "pequeno"));
+  const abrir = botao("Alterar duração", () => { editor.hidden = !editor.hidden; if (!editor.hidden) { entrada.value = String(efetiva()); entrada.focus(); } }, "pequeno");
+  abrir.dataset.teste = "duracao-alterar";
+  const desenhar = () => {
+    const t = tabela();
+    raiz.hidden = t === 0;
+    texto.textContent = manual ? `Duração: ${textoDuracao(manual)} (personalizada · tabela: ${textoDuracao(t)})` : `Duração: ${textoDuracao(t)} (tabela)`;
+    texto.className = manual ? "destaque-texto" : "suave";
+  };
+  entrada.addEventListener("input", () => {
+    const v = Number(entrada.value);
+    if (!Number.isInteger(v) || v < 5 || v > 720) return;
+    manual = v === tabela() ? null : v;
+    desenhar(); aoMudar();
+  });
+  const raiz = el("div", { class: "duracao-linha", "data-teste": "duracao" }, el("p", {}, texto), abrir, editor);
+  desenhar();
+  return { el: raiz, valor: () => manual, efetiva, atualizar: desenhar, servicosMudaram: () => { manual = null; editor.hidden = true; desenhar(); } };
+}
+
 function janelaMarcar(ag, pre = {}) {
   const servicos = servicosCache || [];
   // Sem profissional ou sem serviço não há como marcar: explica o que falta em vez de um formulário vazio.
@@ -2590,6 +2630,9 @@ function janelaMarcar(ag, pre = {}) {
   }, "pequeno");
   botaoCad.dataset.teste = "cli-cadastrar";
   const disp = painelDisponibilidade();
+  let recalcularDisp = () => {};
+  const duracaoTabela = () => servicos.filter(sv => janela.querySelector(`#serv-${sv.id}`)?.checked).reduce((t, sv) => t + sv.duracaoMin, 0);
+  const dur = campoDuracao({ tabela: duracaoTabela, aoMudar: () => recalcularDisp() });
 
   setTimeout(() => {
     const f = janela.querySelector("form");
@@ -2602,14 +2645,14 @@ function janelaMarcar(ag, pre = {}) {
     f.repetir.addEventListener("change", atualizarRep);
     if (pre.hora) f.hora.value = pre.hora;
     // Disponibilidade: muda com profissional, data e serviços escolhidos (a duração soma os serviços).
-    const duracao = () => servicos.filter(sv => f.querySelector(`#serv-${sv.id}`)?.checked).reduce((t, sv) => t + sv.duracaoMin, 0);
     const recalcular = () => disp.atualizar({
-      data: f.data.value, barbeiroId: f.prof?.value || null, duracao: duracao(), hora: f.hora.value,
+      data: f.data.value, barbeiroId: f.prof?.value || null, duracao: dur.efetiva(), hora: f.hora.value,
       aoEscolher: h => { f.hora.value = h; }
     });
+    recalcularDisp = recalcular;
     f.data.addEventListener("change", recalcular);
     f.prof?.addEventListener("change", recalcular);
-    f.querySelectorAll("input[name=serv]").forEach(c => c.addEventListener("change", recalcular));
+    f.querySelectorAll("input[name=serv]").forEach(c => c.addEventListener("change", () => { dur.servicosMudaram(); recalcular(); }));
     recalcular();
   });
   // Serviço como linha selecionável: nome à esquerda, preço e tempo à direita
@@ -2628,7 +2671,7 @@ function janelaMarcar(ag, pre = {}) {
         campo("Hora", { name: "hora", type: "time", step: "300", required: true })),
       disp.el),
     el("fieldset", { class: "servicos-escolha form-secao" }, el("legend", { class: "form-secao-titulo", text: "Serviços" }),
-      servicos.map(linhaServico)),
+      servicos.map(linhaServico), dur.el),
     el("fieldset", { class: "servicos-escolha bloco-cliente form-secao" }, el("legend", { class: "form-secao-titulo", text: "Cliente" }), seletor.el, blocoNovo, botaoCad, painelCad),
     el("section", { class: "form-secao" }, el("h4", { class: "form-secao-titulo", text: "Detalhes" }),
       campo("Observação", { name: "obs", maxlength: "300", autocomplete: "off", placeholder: "Opcional" }),
@@ -2653,6 +2696,7 @@ function janelaMarcar(ag, pre = {}) {
         metodo: "POST",
         corpo: { ...extra,
           barbeiroId: f.prof?.value, data: f.data.value, hora: f.hora.value, servicoIds,
+          ...(dur.valor() ? { duracaoMin: dur.valor() } : {}),
           observacao: f.obs.value || null,
           cliente: daBase ? { id: daBase.id } : novoCliente(f),
           ...(f.repetir.value ? { repetir: { intervaloSemanas: Number(f.repetir.value), ate: f.repAte.value } } : {})
