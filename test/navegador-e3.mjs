@@ -165,6 +165,28 @@ async function rodar(tela) {
     await page.waitForSelector('[data-lancamento="Elias Cliente Fictício"]');
 
     // Vender | Lançamentos do dia em destaque no alto do Caixa (26/11/2026)
+    // topo numa linha só em qualquer largura de computador (27/11/2026): título, data, abas e botões alinhados lado a lado
+    if (!tela.movel) {
+      const largOriginal = page.viewportSize();
+      for (const largura of [1366, 1180, 1100, 960]) {
+        await page.setViewportSize({ width: largura, height: largOriginal.height });
+        await page.waitForTimeout(150);
+        const m = await page.evaluate(() => {
+          const topo = document.querySelector(".fc-topo");
+          const caixas = [".fc-titulo-col", ".cab-chip", ".abas-topo", "[data-teste=movimentacoes]"].map(q => document.querySelector(q)?.getBoundingClientRect());
+          return { topo: topo.getBoundingClientRect().height, centros: caixas.map(r => r ? Math.round(r.top + r.height / 2) : null), esq: caixas.map(r => r ? Math.round(r.right) : null),
+            dir: Math.round(document.querySelector(".pdv-ferramentas").getBoundingClientRect().right), larguraTopo: Math.round(topo.getBoundingClientRect().right), sobra: topo.scrollWidth - topo.clientWidth };
+        });
+        const [mini, maxi] = [Math.min(...m.centros), Math.max(...m.centros)];
+        assert.ok(maxi - mini <= 12, `${largura}px: tudo na mesma linha (centros ${m.centros}) — altura do topo ${m.topo}`);
+        assert.ok(m.topo < 110, `${largura}px: topo de uma linha só (altura ${m.topo})`);
+        assert.ok(m.sobra <= 1, `${largura}px: nada vaza para fora do topo`);
+        if (largura === 1100) await print("caixa-topo-1100px");
+      }
+      await page.setViewportSize(largOriginal);
+      await page.waitForTimeout(150);
+    }
+
     // trocar de aba é local: não busca o caixa inteiro de novo (era a causa da lentidão)
     const pedidos = [];
     const ouvir = r => pedidos.push(r.url());

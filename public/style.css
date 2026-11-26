@@ -2582,3 +2582,31 @@ main:has(.fc) { padding-top: 12px; }
 .mov-sangria .mov-icone { background: var(--erro); color: #fff; box-shadow: 0 6px 14px color-mix(in srgb, var(--erro) 40%, transparent); }
 .mov-suprimento { background: var(--ok-fundo); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
 .mov-suprimento .mov-icone { background: var(--ok); color: #fff; box-shadow: 0 6px 14px color-mix(in srgb, var(--ok) 40%, transparent); }
+
+/* TOPO DO CAIXA NUMA LINHA SÓ (27/11/2026, 2ª rodada): título + data + abas à esquerda; Movimentações, Fechar caixa e Outros dias à direita.
+   Em janelas mais estreitas os botões encolhem (e os de apoio ficam só com o ícone) em vez de cair para a linha de baixo. */
+.fc-topo { container-type: inline-size; flex-wrap: nowrap; }
+.fc-topo-titulo { flex: 1 1 auto; flex-wrap: nowrap; min-width: 0; }
+.fc-topo .pdv-ferramentas { flex: 0 0 auto; flex-wrap: nowrap; overflow: visible; margin-left: auto; }
+.fc-topo .abas-topo, .fc-topo .etiqueta-data, .fc-topo .cab-chip { flex: 0 0 auto; }
+@container (max-width: 1240px) {
+  .fc-topo .abas-topo .botao { padding: 0 14px; font-size: 14.5px; min-height: 44px; }
+  .fc-topo .pdv-ferramentas .botao.ferramenta { padding: 0 14px; font-size: 14px; min-height: 46px; }
+  .fc-topo .pdv-ferramentas { gap: 8px; }
+}
+@container (max-width: 1060px) {
+  .fc-topo .pdv-ferramentas .botao.ferramenta:not(.destaque-mov) span { display: none; }
+  .fc-topo .pdv-ferramentas .botao.ferramenta:not(.destaque-mov) { padding: 0 14px; }
+  .fc-topo .abas-topo .botao { padding: 0 11px; gap: 7px; }
+}
+@container (max-width: 860px) {
+  .fc-topo .pdv-ferramentas .botao.ferramenta.destaque-mov span { display: none; }
+  .fc-topo .abas-topo .botao .icone { display: none; }
+}
+@media (max-width: 700px) {
+  .fc-topo { flex-wrap: wrap; }
+  .fc-topo-titulo { flex-wrap: wrap; }
+  .fc-topo .pdv-ferramentas { flex-basis: 100%; margin-left: 0; overflow-x: auto; }
+  .fc-topo .pdv-ferramentas .botao.ferramenta span { display: inline !important; }
+  .fc-topo .abas-topo .botao .icone { display: inline-block; }
+}
