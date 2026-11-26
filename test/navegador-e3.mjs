@@ -298,7 +298,7 @@ async function rodar(tela) {
     await page.click("[data-teste=carrinho] button:has-text('Finalizar venda')");
     await page.waitForSelector("text=Venda registrada");
     await print("gerente-vende-com-caixa-fechado");
-    await page.click(".pdv-ferramentas a:has-text('Outros dias')");
+    await page.evaluate(() => { location.hash = "#/caixa-historico"; });
     await page.waitForSelector(`[data-caixa-dia="${HOJE}"]`);
     assert.match(await texto(`[data-caixa-dia="${HOJE}"]`), /falta R\$\s?5,00/);
     await print("gerente-historico-de-caixas");

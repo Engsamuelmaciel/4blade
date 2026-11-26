@@ -2635,3 +2635,31 @@ dialog .mov-cartao[data-caixa-acao] { width: 100%; }
   .fc-pagar { position: static; }
   .fc-comanda .fc-acoes { position: sticky; bottom: -16px; background: var(--cartao); margin-bottom: -16px; padding-bottom: 14px; z-index: 2; }
 }
+
+/* CAIXA v110: celular sem corte, abas Vender/Lançamentos grandes; computador aproveita as laterais */
+@media (max-width: 700px) {
+  .fc-topo { padding: 12px; gap: 10px; }
+  .fc-topo-titulo { gap: 10px; }
+  .fc-topo .fc-titulo-col { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; }
+  .fc-topo .abas-topo { padding: 5px; gap: 6px; border-radius: 18px; width: 100%; }
+  .fc-topo .abas-topo .botao { min-height: 60px; font-size: 18px; font-weight: 800; border-radius: 14px; gap: 10px; }
+  .fc-topo .abas-topo .botao .icone { width: 24px; height: 24px; }
+  .fc-topo .abas-topo .botao.ativo { box-shadow: 0 6px 16px color-mix(in srgb, var(--dourado) 50%, transparent); }
+  .fc-topo .abas-topo .botao:not(.ativo) { background: var(--cartao); border: 2px solid var(--linha); }
+  .fc-topo .pdv-ferramentas { display: grid; grid-template-columns: 1fr auto; gap: 10px; overflow: visible; }
+  .fc-topo .pdv-ferramentas .botao.ferramenta { justify-content: center; min-height: 52px; }
+  .fc-topo .pdv-ferramentas .botao.ferramenta.cadeado-caixa { min-width: 64px; }
+}
+@media (min-width: 1100px) {
+  main:has(.fc) { max-width: none; padding-left: 16px; padding-right: 16px; }
+  .fc { grid-template-columns: minmax(300px, 22%) minmax(0, 1fr) minmax(380px, 26%); }
+}
+@media (max-width: 700px) {
+  .fc-topo .abas-topo { display: grid; grid-template-columns: 1fr 1fr; box-sizing: border-box; max-width: 100%; }
+  .fc-topo .abas-topo .botao { min-width: 0; padding: 0 6px; font-size: 16px; gap: 6px; white-space: nowrap; justify-content: center; }
+  .fc-topo .abas-topo .botao .icone { width: 20px; height: 20px; }
+}
+@media (max-width: 700px) {
+  .fc-topo .abas-topo .botao { font-size: 15px; padding: 0 4px; gap: 5px; }
+  .fc-topo .abas-topo .botao .aba-num { min-width: 22px; height: 22px; font-size: 12px; margin-left: 0; }
+}

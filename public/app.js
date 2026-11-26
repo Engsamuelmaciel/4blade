@@ -3663,15 +3663,14 @@ async function telaCaixa(dataHistorico = null) {
     cartaoAbrir,
     aviso,
     // Topo (27/11/2026): "Caixa" com a situação logo abaixo, a data e as abas Vender | Lançamentos ao lado; à direita, Movimentações
-    // (sangria e suprimento juntos), Fechar caixa e Outros dias.
+    // (sangria e suprimento juntos) e o cadeado (abre/fecha o caixa).
     el("header", { class: "fc-topo" },
       el("div", { class: "fc-topo-titulo" },
         el("div", { class: "fc-titulo-col" }, el("h2", { text: "Caixa" }), etiquetaData(dataBR(c.data))),
         abasTopo),
       el("section", { class: "pdv-ferramentas", "aria-label": "Ações do caixa" },
         el("button", { type: "button", class: "botao ferramenta destaque-mov", "data-teste": "movimentacoes", onclick: () => janelaMovimentacoes(recarregar, t.dinheiroEsperadoCentavos) }, icone("contas"), el("span", { text: "Movimentações" })),
-        cadeado,
-        gestao() ? el("a", { class: "botao ferramenta", href: "#/caixa-historico" }, icone("lista"), el("span", { text: "Outros dias" })) : null)),
+        cadeado)),
     el("div", { class: "fc-resumo" }, ...topo),
     c.reaberturas?.length ? el("p", { class: "suave", text: `Reaberto ${c.reaberturas.length}x (último motivo: ${c.reaberturas[0].motivo})` }) : null,
     frente.el);
