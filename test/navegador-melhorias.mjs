@@ -552,7 +552,7 @@ async function rodar(tela) {
     assert.ok(!(await page.locator("#nav-topo").isVisible()), "gerente sem menu no topo");
     if (!tela.movel) assert.ok(await page.locator("#menu").isVisible(), "no computador o menu lateral fica fixo");
     const fin = await page.locator('#menu [data-grupo="financeiro"] [data-nav]').evaluateAll(a => a.map(x => x.dataset.nav));
-    assert.deepEqual(fin, ["Relatório financeiro", "Despesas", "Notas em aberto"]);   // 25/11/2026: Contador/Painel no Relatório; Pagamento em Despesas
+    assert.deepEqual(fin, ["Relatório financeiro", "Lançamentos", "Despesas", "Notas em aberto"]);   // 27/11/2026: Lançamentos no Financeiro; 25/11/2026: Contador/Painel no Relatório; Pagamento em Despesas
     await page.click("#btn-conta");
     await page.waitForSelector("dialog[open] .conta-cartao >> text=Gustavo Gerente");
     await print("minha-conta", false);

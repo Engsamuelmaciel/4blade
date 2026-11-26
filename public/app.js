@@ -4044,7 +4044,7 @@ async function telaPainel() {
 
 // ---------- RELATÓRIO FINANCEIRO (gestão): entradas e saídas por dia, semana, mês e ano ----------
 // Cores das séries: --serie-entrada (azul) e --serie-saida (laranja), validadas para daltonismo e nos dois temas.
-const estadoFin = { periodo: "mes", data: null, filtroMov: "todos", movVisiveis: 30, aba: "resumo", cache: null, lanc: { tipo: "mes", data: null, busca: "" } };
+const estadoFin = { periodo: "mes", data: null, filtroMov: "todos", movVisiveis: 30, aba: "resumo", cache: null };
 const NOME_ANTERIOR = { dia: "o dia anterior", semana: "a semana anterior", mes: "o mês anterior", ano: "o ano anterior" };
 const NO_ANTERIOR = { dia: "no dia anterior", semana: "na semana anterior", mes: "no mês anterior", ano: "no ano anterior" };
 const AO_ANTERIOR = { dia: "ao dia anterior", semana: "à semana anterior", mes: "ao mês anterior", ano: "ao ano anterior" };
@@ -4223,10 +4223,19 @@ function listaPartes(itens, classe, total) {
     el("progress", { max: String(max), value: String(Math.max(0, i.valor)), "aria-label": i.nome }))));
 }
 
-// Abas do Relatório financeiro (a aba Lançamentos mostra o mês completo, sem buscar o relatório).
+// Lançamentos (27/11/2026): área própria no menu Financeiro (gerente e dono) — dia, semana ou mês completo, com busca.
+// Mês anterior ao atual = fechado: só consulta (o servidor também recusa qualquer alteração).
+const estadoLanc = { tipo: "mes", data: null, busca: "" };
+async function telaLancamentos() {
+  mostrar(cabecalho("Lançamentos", "Tudo que entrou e saiu do caixa, por dia, semana ou mês. Toque numa linha para ver os detalhes."),
+    el("section", { class: "cartao", "data-teste": "tela-lancamentos" },
+      blocoLancamentosPeriodo(() => telaLancamentos().catch(er => avisar(er.message, "erro")), { e: estadoLanc, tipos: [["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"]], avisoMesFechado: true })));
+}
+
+// Abas do Relatório financeiro.
 function abasRelatorios(abaFin) {
   return el("div", { class: "alterna abas-fin", role: "tablist", "aria-label": "Relatórios" },
-    [["resumo", "Resumo"], ["equipe", "Equipe"], ["vendas", "Vendas"], ["movimentos", "Movimentos"], ["lancamentos", "Lançamentos"]].map(([k, txt]) =>
+    [["resumo", "Resumo"], ["equipe", "Equipe"], ["vendas", "Vendas"], ["movimentos", "Movimentos"]].map(([k, txt]) =>
       el("button", { type: "button", role: "tab", class: `botao ${abaFin === k ? "ativo" : ""}`, "aria-selected": String(abaFin === k), "data-aba-fin": k, text: txt,
         onclick: () => { estadoFin.aba = k; telaFinanceiro().catch(er => avisar(er.message, "erro")); } })));
 }
@@ -4234,12 +4243,6 @@ function abasRelatorios(abaFin) {
 async function telaFinanceiro() {
   estadoFin.data ||= hojeLocal();
   const e = estadoFin;
-  if (e.aba === "lancamentos") {
-    mostrar(cabecalho("Relatórios", "Quanto entrou, quanto saiu e o que sobrou — por período, equipe e vendas."), abasRelatorios("lancamentos"),
-      el("section", { class: "cartao", "data-teste": "fin-lancamentos" }, el("h3", { text: "Lançamentos do mês" }),
-        blocoLancamentosPeriodo(() => telaFinanceiro().catch(er => avisar(er.message, "erro")), { e: estadoFin.lanc, tipos: [["mes", "Mês"]], avisoMesFechado: true })));
-    return;
-  }
   // Trocar de aba não busca de novo (19/11/2026): guarda a última resposta do mesmo período.
   const chave = `${e.periodo}|${e.data}`;
   const f = e.cache?.chave === chave ? e.cache.f : await api(`/financeiro?periodo=${e.periodo}&data=${e.data}`);
@@ -4349,7 +4352,7 @@ async function telaFinanceiro() {
     el("summary", {}, el("span", { class: "fin-secao-tit", text: titulo }), resumo ? el("span", { class: "fin-secao-res", text: resumo }) : null), ...filhos);
   const maiorDe = l => (l[0] ? `${l[0].nome} ${reais(l[0].valor)}` : "");
   // Relatórios em 4 abas (19/11/2026): o que o dono mais pergunta, sem tela comprida.
-  const abaFin = ["resumo", "equipe", "vendas", "movimentos", "lancamentos"].includes(e.aba) ? e.aba : "resumo";
+  const abaFin = ["resumo", "equipe", "vendas", "movimentos"].includes(e.aba) ? e.aba : "resumo";
   const abasFin = abasRelatorios(abaFin);
   const fixa = (titulo, id, ...filhos) => el("section", { class: "cartao fin-secao aberta", "data-secao-fin": id }, el("h3", { text: titulo }), ...filhos);
   let corpo;
@@ -6311,7 +6314,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 
 const NOME_TELA = {
   "visao-dia": "Visão do dia", painel: "Painel", agenda: "Agenda", "agenda-lote": "Vários de uma vez", "clientes-lote": "Clientes em lote", "horarios-lote": "Horários em lote", "minha-pagina": "Minha página", flyers: "Divulgação", divulgacao: "Divulgação", inicio: "Início", "minha-producao": "Minha produção", caixa: "Caixa", "caixa-historico": "Caixas de outros dias", "caixa-dia": "Caixa de outro dia",
-  clientes: "Clientes", mensagens: "Mensagens", notas: "Notas", notificacoes: "Notificações", financeiro: "Relatório financeiro",
+  clientes: "Clientes", mensagens: "Mensagens", notas: "Notas", notificacoes: "Notificações", financeiro: "Relatório financeiro", lancamentos: "Lançamentos",
   "pagamento-equipe": "Pagamento da equipe", comissoes: "Comissões e vales", contas: "Despesas", contador: "Contador e dados",
   servicos: "Serviços", produtos: "Produtos", estoque: "Estoque", equipe: "Equipe", funcionamento: "Funcionamento", assinatura: "Meu plano",
   duvidas: "Dúvidas", tutoriais: "Tutoriais", suporte: "Suporte", inicio: "Início"
@@ -7379,7 +7382,7 @@ function gruposDoPerfil(p) {
   return [
     // 25/11/2026: sem "Visão geral" — o Início (Visão do dia com a logo) fica no alto do menu, fora dos grupos.
     { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"], ["minha-pagina", "Minha página", "loja"], ["divulgacao", "Divulgação", "megafone"]] },
-    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["contas", "Despesas", "contas"], ["notas", "Notas em aberto", "contas"]] },
+    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["lancamentos", "Lançamentos", "lista"], ["contas", "Despesas", "contas"], ["notas", "Notas em aberto", "contas"]] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos e estoque", "estoque"]] },
     { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"], ["assinatura", "Meu plano", "dinheiro"]] }
   ];
@@ -7542,6 +7545,7 @@ const ROTAS = {
   contas: { perfis: ["proprietario", "gerente"], tela: telaContas },
   contador: { perfis: ["proprietario", "gerente"], tela: telaContador },
   financeiro: { perfis: ["proprietario", "gerente"], tela: telaFinanceiro },
+  lancamentos: { perfis: ["proprietario", "gerente"], tela: telaLancamentos },
   "caixa-historico": { perfis: ["proprietario", "gerente"], tela: telaHistoricoCaixa },
   "caixa-dia": { perfis: ["proprietario", "gerente"], tela: data => telaCaixa(/^\d{4}-\d{2}-\d{2}$/.test(data || "") ? data : hojeLocal()) },
   equipe: { perfis: ["proprietario", "gerente"], tela: telaEquipe },

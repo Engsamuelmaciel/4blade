@@ -160,17 +160,20 @@ async function rodar(tela) {
     await page.locator(".fin-movs").screenshot({ path: join(PRINTS, `${tela.nome}-${String(++n).padStart(2, "0")}-movimentos-entradas.png`) });
     console.log(`  print: docs/prints/financeiro/${tela.nome}-${String(n).padStart(2, "0")}-movimentos-entradas.png`);
 
-    passo("Lançamentos: mês completo; mês passado = só consulta (sem Corrigir) e com aviso");
-    await aba("lancamentos");
-    await page.waitForSelector("[data-teste=fin-lancamentos] [data-teste=lanc-totais]");
-    assert.equal(await page.locator("[data-teste=fin-lancamentos] [data-periodo-lanc]").evaluateAll(b => b.every(x => x.closest("[hidden]"))), true, "só o mês: sem escolha de período");
-    assert.ok(await page.locator("[data-teste=fin-lancamentos] [data-lancamento]").count() >= 5, "lançamentos do mês aparecem");
+    passo("Lançamentos: área própria no menu Financeiro (fora das abas de Relatórios); mês completo; mês passado = só consulta");
+    assert.equal(await page.locator("[data-aba-fin=lancamentos]").count(), 0, "Relatórios não tem mais a aba Lançamentos");
+    await ir(page, "Lançamentos");
+    await page.waitForSelector("[data-teste=tela-lancamentos] [data-teste=lanc-totais]");
+    assert.equal(await page.locator("[data-teste=tela-lancamentos] [data-periodo-lanc]").count(), 3, "Dia, Semana e Mês");
+    assert.equal(await page.locator("[data-periodo-lanc=mes].ativo").count(), 1, "abre no mês");
+    assert.ok(await page.locator("[data-teste=tela-lancamentos] [data-lancamento]").count() >= 5, "lançamentos do mês aparecem");
     assert.equal(await page.locator("[data-teste=mes-fechado]").count(), 0, "mês atual não está fechado");
     await print("lancamentos-mes");
-    await page.click("[data-teste=fin-lancamentos] .navega-data button:has-text('‹')");
+    await page.click("[data-teste=tela-lancamentos] .navega-data button:has-text('‹')");
     await page.waitForSelector("[data-teste=mes-fechado]");
-    assert.equal(await page.locator("[data-teste=fin-lancamentos] button:has-text('Corrigir')").count(), 0, "mês fechado: sem editar");
-    await aba("resumo");
+    assert.equal(await page.locator("[data-teste=tela-lancamentos] button:has-text('Corrigir')").count(), 0, "mês fechado: sem editar");
+    await ir(page, "Relatório financeiro");
+    await page.waitForSelector("[data-aba-fin=resumo]");
 
     passo("tabela do gráfico e tema escuro");
     await aba("resumo");
