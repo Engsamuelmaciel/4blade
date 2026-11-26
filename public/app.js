@@ -3452,6 +3452,19 @@ function janelaAbrirCaixa(recarregar) {
 }
 
 // Sangria e suprimento num botão só (27/11/2026): dois cartões grandes e coloridos — vermelho (sai dinheiro) e verde (entra dinheiro).
+// Novo produto pela vitrine do caixa: é a MESMA compra de produto das Despesas (cria o produto, entra no estoque e lança a despesa).
+async function janelaNovoProdutoCaixa(depois) {
+  const { produtos } = await api("/estoque");
+  const form = formNovaDespesa(produtos.filter(p => p.ativo), { produtoNovo: true, aoSalvar: async () => { janela.close(); await depois(); } });
+  janela.replaceChildren(el("div", { class: "janela-form", "data-teste": "janela-novo-produto" },
+    el("h3", { text: "Novo produto" }),
+    el("p", { class: "suave", text: "Cadastra o produto, põe no estoque e lança a compra em Despesas — tudo de uma vez." }),
+    form,
+    el("div", { class: "janela-botoes um" }, el("button", { type: "button", class: "botao", text: "Fechar", onclick: () => janela.close() }))));
+  aplicarMascaras(janela);
+  janela.showModal();
+}
+
 function janelaMovimentacoes(recarregar, naGavetaCentavos = null) {
   const abrir = tipo => { janela.close(); setTimeout(() => janelaMovimento(tipo, recarregar)); };
   const cartao = (tipo, seta, titulo, dica, exemplo) => el("button", { type: "button", class: `mov-cartao mov-${tipo}`, "data-mov": tipo, onclick: () => abrir(tipo) },
@@ -3920,7 +3933,9 @@ async function frenteCaixa(c, recarregar) {
       const vis = filtradosProd();
       corpo = el("div", { class: "fc-grade" }, ...(vis.length ? vis.map(p => el("button", { type: "button", class: "fc-tile-item produto-tile", "data-produto-pdv": p.nome, disabled: saldoDe(p) < 1 || null, onclick: () => addProduto(p) },
         el("strong", { text: p.nome }), el("span", { class: "preco", text: reais(p.precoCentavos) }), p.saldo !== undefined ? el("small", { text: `Estoque: ${p.saldo}` }) : null))
-        : [el("p", { class: "vazio", text: produtos.length ? "Nenhum produto encontrado." : "Nenhum produto com estoque para vender." })]));
+        : [el("p", { class: "vazio", text: produtos.length ? "Nenhum produto encontrado." : "Nenhum produto com estoque para vender." })]),
+        gestao() ? botao("+ Novo produto", () => janelaNovoProdutoCaixa(recarregar), "pequeno novo-produto-pdv") : null);
+      corpo.querySelector(".novo-produto-pdv")?.setAttribute("data-teste", "novo-produto-pdv");
     }
     vitrineEl.replaceChildren(
       el("h3", { class: "fc-titulo", text: "Vitrine" }),
@@ -5206,7 +5221,7 @@ function janelaCancelarConta(c) {
   });
 }
 
-function formNovaDespesa(doEstoque) {
+function formNovaDespesa(doEstoque, opcoes = {}) {
   const parcelasOps = Array.from({ length: 24 }, (_, i) => [String(i + 1), i ? `${i + 1}x` : "À vista (1x)"]);
   const blocoParcelas = el("div", { class: "campo-parcelas", hidden: true }, campo("Parcelas", { tag: "select", name: "parc", opcoes: parcelasOps, valor: "1" }));
   const resumoParc = el("p", { class: "info", "data-teste": "resumo-parcelas", hidden: true });
@@ -5329,14 +5344,16 @@ function formNovaDespesa(doEstoque) {
         descricao: form.desc.value.trim() || null, categoria: form.cat.value, valorCentavos: v, vencimento: form.venc.value, recorrente: form.rec.checked,
         ...(form.forma.value ? { forma: form.forma.value } : {}), ...(n > 1 ? { parcelas: n } : {}),
         ...(form.paga.checked ? { jaPaga: true, comCaixa: form.comCaixa.checked } : {}), ...(estoque ? { estoque } : {}) } });
-      estadoDespesas.filtro = form.paga.checked && n === 1 ? "pagas" : "abertas";
+      if (!opcoes.aoSalvar) estadoDespesas.filtro = form.paga.checked && n === 1 ? "pagas" : "abertas";
       const e = r.estoque;
       avisar([r.contasCriadas > 1 ? `Despesa lançada em ${r.contasCriadas} parcelas.` : "Despesa lançada.",
         e ? `${e.criado ? "Produto criado e lançado" : "Lançado"} no estoque.` : null,
         e?.margemBp !== null && e?.margemBp !== undefined ? `Lucro de ${reais(e.lucroUnitCentavos)} por unidade (margem de ${(e.margemBp / 100).toLocaleString("pt-BR")}%).` : null].filter(Boolean).join(" "));
-      telaContas();
+      if (opcoes.aoSalvar) await opcoes.aoSalvar(r); else telaContas();
     });
   });
+  // Aberto pelo Caixa (vitrine → Novo produto): já vem como compra de produto novo (entra no estoque).
+  if (opcoes.produtoNovo) { form.cat.value = "produtos"; modoEst = "novo"; atualizar(); }
   return form;
 }
 // Soma meses mantendo o dia (31 → último dia do mês), igual ao servidor.

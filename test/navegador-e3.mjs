@@ -311,6 +311,22 @@ async function rodar(tela) {
     await page.click("[data-teste=carrinho] button:has-text('Finalizar venda')");
     await page.waitForSelector("text=Venda registrada");
     await print("gerente-vende-com-caixa-fechado");
+    await vitrine(page, "produtos");
+    await page.click("[data-teste=novo-produto-pdv]");
+    await page.waitForSelector("dialog[open] [data-teste=janela-novo-produto]");
+    assert.equal(await page.inputValue("dialog[open] [name=cat]"), "produtos", "já vem como compra de produto");
+    assert.ok(await page.locator("dialog[open] [data-teste=est-novo]").isVisible(), "produto novo já aberto");
+    await print("caixa-novo-produto-janela");
+    await page.fill("dialog[open] [name=valor]", "100,00");
+    await page.fill("dialog[open] [name=estNome]", "Shampoo Vitrine Novo");
+    await page.fill("dialog[open] [name=estQtd]", "4");
+    await page.fill("dialog[open] [name=estVenda]", "40,00");
+    await page.click("dialog[open] button:has-text('Salvar despesa')");
+    await page.waitForSelector('[data-produto-pdv="Shampoo Vitrine Novo"]');
+    assert.match(await page.textContent('[data-produto-pdv="Shampoo Vitrine Novo"]'), /Estoque: 4/);
+    assert.match(await page.textContent('[data-produto-pdv="Shampoo Vitrine Novo"]'), /40,00/);
+    await print("caixa-novo-produto-na-vitrine");
+
     await page.evaluate(() => { location.hash = "#/caixa-historico"; });
     await page.waitForSelector(`[data-caixa-dia="${HOJE}"]`);
     assert.match(await texto(`[data-caixa-dia="${HOJE}"]`), /falta R\$\s?5,00/);
