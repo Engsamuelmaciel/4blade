@@ -3385,6 +3385,8 @@ function blocoFechamento(c) {
       el("dd", { class: `forte ${f.diferencaCentavos ? "erro-texto" : "ok-texto"}`, "data-teste": "diferenca-fechada",
         text: f.diferencaCentavos === 0 ? "Sem diferença" : f.diferencaCentavos > 0 ? `Sobra de ${reais(f.diferencaCentavos)}` : `Falta de ${reais(-f.diferencaCentavos)}` })),
     f.observacao ? el("p", { class: "suave", text: `Observação: ${f.observacao}` }) : null,
+    f.correcoesDepois ? el("p", { class: "info", "data-teste": "correcoes-depois-fechamento",
+      text: `${f.correcoesDepois} correção(ões) feita(s) depois do fechamento. Os valores acima são os da hora em que o caixa foi fechado; os lançamentos e totais já estão atualizados.` }) : null,
     el("p", { class: "suave", text: `Fechado por ${f.fechadoPor} às ${horaLocal(f.fechadoEm)}` }));
 }
 
@@ -3450,7 +3452,7 @@ async function telaCaixa(dataHistorico = null) {
       el("a", { class: "forma-card forma-promissoria", href: "#/notas", "data-forma": "promissoria", "data-teste": "notas-lancadas", title: "Notas (promissórias): a receber — toque para ver" },
         el("span", { text: "Nota ›" }), el("strong", { text: reais(t.notasLancadasCentavos || 0) })))
   ];
-  const reabrir = () => pedirMotivo("Reabrir o caixa", "Permite corrigir lançamentos deste dia. Depois, feche de novo.", async motivo => {
+  const reabrir = () => pedirMotivo("Reabrir o caixa", "Abre o caixa deste dia para uma nova contagem. Para corrigir lançamentos não precisa reabrir. Depois, feche de novo.", async motivo => {
     await api("/caixa/reabrir", { metodo: "POST", corpo: { data: c.data, motivo } });
     avisar("Caixa reaberto."); recarregar();
   }, "Reabrir");

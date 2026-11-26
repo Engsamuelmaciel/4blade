@@ -83,7 +83,7 @@ export async function resumoCaixa(db, barbeariaId, caixa, periodo = null) {
       corrigido: l.forma_atual !== l.forma, corrigidoNoCaixa: Boolean(l.motivo_corr && l.tipo === "atendimento"),
       motivoCorrecao: l.tipo === "atendimento" && l.motivo_corr ? l.motivo_corr.replace(/^Correção no caixa:\s*/, "") : null,
       agendamentoId: l.tipo === "atendimento" && !l.estornada ? l.agendamento_id : null,
-      podeCorrigir: l.tipo === "atendimento" && !l.estornada && (l.cx_sit ?? caixa.situacao) === "aberto" && !(l.dia && mesFechado(l.dia))
+      podeCorrigir: l.tipo === "atendimento" && !l.estornada && !(l.dia && mesFechado(l.dia))
     });
   }
   for (const m of movs.results) {
@@ -102,8 +102,8 @@ export async function resumoCaixa(db, barbeariaId, caixa, periodo = null) {
       vendaId: m.venda_id || null, vendaCancelada: v?.situacao === "cancelada",
       desconto: m.tipo === "venda" && v?.desconto_bp ? { percentualBp: v.desconto_bp, valorCentavos: v.desconto_centavos, brutoCentavos: v.bruto_centavos } : null,
       corrigido: m.forma_atual !== m.forma,
-      podeCorrigir: m.tipo === "venda" && v?.situacao === "ativa" && (m.cx_sit ?? caixa.situacao) === "aberto" && !(m.dia && mesFechado(m.dia)),
-      podeCancelarVenda: m.tipo === "venda" && v?.situacao === "ativa" && (m.cx_sit ?? caixa.situacao) === "aberto" && !(m.dia && mesFechado(m.dia))
+      podeCorrigir: m.tipo === "venda" && v?.situacao === "ativa" && !(m.dia && mesFechado(m.dia)),
+      podeCancelarVenda: m.tipo === "venda" && v?.situacao === "ativa" && !(m.dia && mesFechado(m.dia))
     });
   }
   itens.sort((a, b) => a.em.localeCompare(b.em));
@@ -186,13 +186,19 @@ async function respostaCaixa(ctx, data) {
                 WHERE f.caixa_id = ? ORDER BY f.fechado_em DESC, f.rowid DESC`).bind(caixa.id).all()
   ]);
   const ativo = fech.results.find(f => f.ativo);
+  // Correções feitas DEPOIS do fechamento (27/11/2026: corrigir não exige mais reabrir o caixa): o fechamento guarda os valores da hora.
+  const depois = ativo ? await db.prepare(`SELECT
+      (SELECT COUNT(*) FROM finalizacoes WHERE caixa_id = ? AND estornada = 1 AND datetime(estornada_em) >= datetime(?)) +
+      (SELECT COUNT(*) FROM caixa_movimentos WHERE caixa_id = ? AND tipo IN ('correcao_saida','estorno_venda') AND datetime(criado_em) >= datetime(?)) AS n`)
+    .bind(caixa.id, ativo.fechado_em, caixa.id, ativo.fechado_em).first() : null;
   return {
     data,
     caixa: { id: caixa.id, situacao: caixa.situacao, trocoCentavos: caixa.troco_centavos, abertoEm: caixa.aberto_em, abertoPor: caixa.aberto_por_nome },
     ...resumo,
     fechamento: ativo ? {
       esperadoCentavos: ativo.esperado_dinheiro_centavos, contadoCentavos: ativo.contado_dinheiro_centavos,
-      diferencaCentavos: ativo.diferenca_centavos, observacao: ativo.observacao, fechadoPor: ativo.fechado_por_nome, fechadoEm: ativo.fechado_em
+      diferencaCentavos: ativo.diferenca_centavos, observacao: ativo.observacao, fechadoPor: ativo.fechado_por_nome, fechadoEm: ativo.fechado_em,
+      correcoesDepois: Number(depois?.n || 0)
     } : null,
     reaberturas: fech.results.filter(f => !f.ativo).map(f => ({ fechadoEm: f.fechado_em, reabertoEm: f.reaberto_em, motivo: f.motivo_reabertura }))
   };
@@ -211,7 +217,6 @@ async function lancamentoCorrigivel(ctx, id) {
   if (!ok) erro("Só dá para corrigir a forma de um atendimento ou venda válidos.", 409);
   const caixa = await db.prepare("SELECT situacao, data FROM caixas WHERE id = ?").bind(l.caixa_id).first();
   if (mesFechado(caixa.data)) erro(MSG_MES_FECHADO, 409);
-  if (caixa.situacao !== "aberto") erro("Caixa já fechado: não dá para corrigir.", 409);
   return l;
 }
 
@@ -463,7 +468,7 @@ export async function rotasCaixa(ctx, path, method) {
     const motivo = exigirMotivo(input.motivo);
     const l = await lancamentoCorrigivel(ctx, input.id);
     if (l.forma_atual === input.novaForma) return fail(`Esse lançamento já está em ${NOME_FORMA[input.novaForma]}.`);
-    const aberto = "EXISTS (SELECT 1 FROM caixas WHERE id = ? AND situacao = 'aberto')";
+    const aberto = "EXISTS (SELECT 1 FROM caixas WHERE id = ?)";   // 27/11/2026: corrige também com o caixa do dia fechado (só mês fechado não)
     await db.batch([
       db.prepare(`INSERT INTO caixa_movimentos (id, barbearia_id, caixa_id, tipo, forma, valor_centavos, referencia_id, motivo, criado_por)
                   SELECT ?, ?, ?, 'correcao_saida', ?, ?, ?, ?, ? WHERE ${aberto}`)

@@ -100,7 +100,7 @@ export async function rotasPromissorias(ctx, path, method) {
         id: x.id, data: x.data, cliente: x.cliente, totalCentavos: x.total_centavos, notas: Number(x.notas), situacao: x.situacao,
         motivoEstorno: x.motivo_estorno || null, por: x.usuario,
         pagamentos: (x.formas || "").split(",").filter(Boolean).map(f => ({ forma: f.split(":")[0], valorCentavos: Number(f.split(":")[1]) })),
-        podeEstornar: isGestao(user) && x.situacao === "ativo" && x.caixa_situacao === "aberto" && !mesFechado(x.data)
+        podeEstornar: isGestao(user) && x.situacao === "ativo" && !mesFechado(x.data)
       }))
     });
   }
@@ -149,12 +149,11 @@ export async function rotasPromissorias(ctx, path, method) {
     if (!r) erro("Recebimento não encontrado.", 404);
     if (r.situacao !== "ativo") erro("Esse recebimento já foi estornado.", 409);
     if (mesFechado(r.caixa_data)) erro(MSG_MES_FECHADO, 409);
-    if (r.caixa_situacao !== "aberto") erro("O caixa do dia desse recebimento já foi fechado: reabra o caixa antes.", 409);
     const momento = new Date().toISOString();
     const feito = ["EXISTS (SELECT 1 FROM promissoria_recebimentos WHERE id = ? AND estornado_em = ?)", [r.id, momento]];
     await db.batch([
       db.prepare(`UPDATE promissoria_recebimentos SET situacao = 'estornado', motivo_estorno = ?, estornado_por = ?, estornado_em = ?
-                  WHERE id = ? AND barbearia_id = ? AND situacao = 'ativo' AND EXISTS (SELECT 1 FROM caixas WHERE id = ? AND situacao = 'aberto')`)
+                  WHERE id = ? AND barbearia_id = ? AND situacao = 'ativo' AND EXISTS (SELECT 1 FROM caixas WHERE id = ?)`)
         .bind(motivo, user.id, momento, r.id, ctx.barbeariaId, r.caixa_id),
       db.prepare(`UPDATE promissorias SET situacao = 'aberta', recebimento_id = NULL WHERE recebimento_id = ? AND barbearia_id = ? AND ${feito[0]}`)
         .bind(r.id, ctx.barbeariaId, ...feito[1]),

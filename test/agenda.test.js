@@ -352,17 +352,14 @@ describe("finalizar atendimento (4.2) e caixa", () => {
     assert.equal((await get("/api/caixa/hoje", cx.token)).dados.totais.entradasCentavos, 3000);
   });
 
-  test("caixa fechado: barbeiro não reabre; gerente precisa reabrir o caixa antes; lançamento novo entra", async () => {
+  test("caixa fechado: o atendimento pode ser reaberto mesmo assim (27/11/2026); lançamento novo entra", async () => {
     const amb = await cenario();
     const { env, post, marcar, barb, ger, cx, corte } = amb;
     await abrirCaixa(amb, cx.token);
     const id = (await marcar(barb.token, {})).dados.agendamento.id;
     await finalizarSimples(amb, barb.token, id, [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], [{ forma: "pix", valorCentavos: 4000 }]);
     env.DB.raw.prepare("UPDATE caixas SET situacao = 'fechado'").run();   // fechamento chega na E3
-    const b = await post("/api/agenda/reabrir", barb.token, { id, motivo: "engano" });
-    assert.equal(b.status, 409);
-    assert.match(b.dados.erro, /só o gerente/);
-    assert.match((await post("/api/agenda/reabrir", ger.token, { id, motivo: "engano" })).dados.erro, /reabra o caixa/);
+    assert.equal((await post("/api/agenda/reabrir", ger.token, { id, motivo: "engano" })).status, 200, "sem trava de caixa fechado");
     // com o caixa fechado o lançamento novo entra mesmo assim (19/11/2026)
     const id2 = (await marcar(barb.token, { hora: "15:00" })).dados.agendamento.id;
     assert.equal((await finalizarSimples(amb, barb.token, id2, [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], [{ forma: "pix", valorCentavos: 4000 }])).status, 201);

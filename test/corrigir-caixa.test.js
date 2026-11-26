@@ -225,4 +225,33 @@ describe("corrigir atendimento já cobrado no caixa", () => {
     const dHoje = (await get(`/api/caixa/lancamentos?tipo=dia&data=${HOJE}`, ger.token)).dados;
     assert.equal(dHoje.totais.entradasCentavos, 0); assert.equal(dHoje.lancamentos.length, 0);
   });
+
+  test("caixa do dia FECHADO não trava mais a correção (27/11/2026): corrige atendimento, forma e venda; fechamento avisa; mês fechado continua só consulta", async () => {
+    const amb = await cenario("corr15");
+    const { post, get, cx, ger, barb, corte, env } = amb;
+    const m = await cobrado(amb, "09:00");
+    const lanc = (await get("/api/caixa/hoje", cx.token)).dados.lancamentos.find(x => x.tipo === "atendimento");
+    assert.equal((await post("/api/caixa/fechar", cx.token, { contadoCentavos: 4000, observacao: "ok" })).status, 200);
+    let c = (await get("/api/caixa/hoje", cx.token)).dados;
+    assert.equal(c.caixa.situacao, "fechado"); assert.equal(c.fechamento.correcoesDepois, 0);
+    assert.equal(c.lancamentos.find(x => x.tipo === "atendimento").podeCorrigir, true, "o botão Corrigir aparece mesmo com o caixa fechado");
+    // só a forma
+    assert.equal((await post("/api/caixa/corrigir-forma", cx.token, { id: lanc.id, novaForma: "dinheiro", motivo: "Era dinheiro" })).status, 200);
+    // valor + serviços + quem atendeu
+    const r = await post("/api/caixa/corrigir-atendimento", cx.token, { id: m.id, motivo: "Valor errado", barbeiroId: ger.id,
+      itens: [{ servicoId: corte.id, precoCobradoCentavos: 5000 }], pagamentos: [{ forma: "dinheiro", valorCentavos: 5000 }] });
+    assert.equal(r.status, 201, JSON.stringify(r.dados));
+    c = (await get("/api/caixa/hoje", cx.token)).dados;
+    assert.equal(c.caixa.situacao, "fechado", "continua fechado");
+    assert.equal(c.totais.porForma.dinheiro, 5000);
+    assert.ok(c.fechamento.correcoesDepois >= 1, "o fechamento avisa que houve correção depois");
+    assert.equal(c.fechamento.contadoCentavos, 4000, "o fechamento guarda o que foi contado na hora");
+    // reabrir o atendimento com o caixa fechado também vale
+    assert.equal((await post("/api/agenda/reabrir", ger.token, { id: m.id, motivo: "Engano" })).status, 200);
+    // mês fechado continua só para consulta
+    const ant = new Date(`${HOJE.slice(0, 7)}-15T12:00:00Z`); ant.setUTCMonth(ant.getUTCMonth() - 1);
+    env.DB.raw.prepare("UPDATE caixas SET data = ?").run(ant.toISOString().slice(0, 10));
+    assert.equal((await post("/api/agenda/reabrir", ger.token, { id: m.id, motivo: "Tentativa" })).status, 409);
+    void barb;
+  });
 });

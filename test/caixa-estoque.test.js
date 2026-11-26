@@ -115,8 +115,6 @@ describe("dia simulado completo (conferido à mão)", () => {
 
     // Fechado: o fechamento não muda (não fecha de novo nem corrige forma); lançamento novo entra depois (abaixo).
     assert.equal((await post("/api/caixa/fechar", cx.token, { contadoCentavos: 24850, observacao: "de novo" })).status, 409);
-    const algum = c.lancamentos.find(l => l.tipo === "atendimento");
-    assert.equal((await post("/api/caixa/corrigir-forma", cx.token, { id: algum.id, novaForma: "credito", motivo: "teste" })).status, 409);
     const fechado = (await get("/api/caixa/hoje", cx.token)).dados;
     assert.equal(fechado.caixa.situacao, "fechado");
     assert.equal(fechado.fechamento.diferencaCentavos, -500);
@@ -188,15 +186,12 @@ describe("caixa", () => {
     }
   });
 
-  test("gerente reabre o caixa fechado e então reabre o atendimento (pendência da E2)", async () => {
+  test("com o caixa fechado, o atendimento também pode ser reaberto (27/11/2026: sem trava de caixa fechado)", async () => {
     const amb = await cenario();
     const { post, get, cx, ger, barb, corte, atender } = amb;
     await post("/api/caixa/abrir", cx.token, { trocoCentavos: 0 });
     const id = await atender(barb, [[corte, 4000]], [["pix", 4000]]);
     await post("/api/caixa/fechar", cx.token, { contadoCentavos: 0 });
-    assert.match((await post("/api/agenda/reabrir", barb.token, { id, motivo: "engano" })).dados.erro, /só o gerente/);
-    assert.match((await post("/api/agenda/reabrir", ger.token, { id, motivo: "engano" })).dados.erro, /reabra o caixa/);
-    assert.equal((await post("/api/caixa/reabrir", ger.token, { motivo: "Atendimento lançado errado" })).status, 200);
     assert.equal((await post("/api/agenda/reabrir", ger.token, { id, motivo: "engano" })).status, 200);
     assert.equal((await get("/api/caixa/hoje", ger.token)).dados.totais.entradasCentavos, 0);
   });

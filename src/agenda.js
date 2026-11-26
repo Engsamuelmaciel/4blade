@@ -391,7 +391,7 @@ export async function finalizarDados(ctx, input, { caixaId = null } = {}) {
   if (a.data > hoje) erro("Não dá para finalizar um horário de um dia que ainda não chegou.", 409);
   // Correção de um atendimento: a cobrança nova volta para o MESMO caixa da cobrança corrigida (o dia do lançamento não muda).
   // Cobrança normal: caixa de hoje (gerente/dono: também com o caixa fechado — 17/11/2026).
-  const caixa = (caixaId && await db.prepare("SELECT * FROM caixas WHERE id = ? AND barbearia_id = ? AND situacao = 'aberto'").bind(caixaId, ctx.barbeariaId).first())
+  const caixa = (caixaId && await db.prepare("SELECT * FROM caixas WHERE id = ? AND barbearia_id = ?").bind(caixaId, ctx.barbeariaId).first())
     || await caixaParaLancar(ctx);
 
   // Serviços e valores (o valor de tabela vem do cadastro; o cobrado pode ser alterado e fica registrado).
@@ -512,11 +512,6 @@ export async function reabrirDados(ctx, input) {
     erro("A comissão desse atendimento já entrou num fechamento de comissão: não dá para reabrir.", 409);
   }
   if (mesFechado(f.caixa_data)) erro(MSG_MES_FECHADO, 409);
-  if (f.caixa_situacao !== "aberto") {
-    erro(isGestao(user)
-      ? "O caixa desse dia já foi fechado: reabra o caixa (com motivo) antes de reabrir o atendimento."
-      : "O caixa desse dia já foi fechado: só o gerente pode reabrir.", 409);
-  }
   if (!isGestao(user) && await db.prepare("SELECT 1 FROM promissorias WHERE finalizacao_id = ? AND situacao = 'aberta'").bind(f.id).first()) {
     erro("Esse atendimento está numa nota (promissória) em aberto: só o gerente pode reabrir (a nota é cancelada junto).", 403);
   }
@@ -527,7 +522,7 @@ export async function reabrirDados(ctx, input) {
   const feito = ["EXISTS (SELECT 1 FROM finalizacoes WHERE id = ? AND estorno_id = ?)", [f.id, estornoId]];
   await db.batch([
     db.prepare(`UPDATE finalizacoes SET estornada = 1, estorno_id = ?, estornada_por = ?, estornada_em = CURRENT_TIMESTAMP, motivo_estorno = ?
-                WHERE id = ? AND barbearia_id = ? AND estornada = 0 AND EXISTS (SELECT 1 FROM caixas WHERE id = ? AND situacao = 'aberto')
+                WHERE id = ? AND barbearia_id = ? AND estornada = 0 AND EXISTS (SELECT 1 FROM caixas WHERE id = ?)
                   AND NOT EXISTS (SELECT 1 FROM promissorias WHERE finalizacao_id = ? AND situacao = 'quitada')`)
       .bind(estornoId, user.id, motivo, f.id, ctx.barbeariaId, f.caixa_id, f.id),
     // Nota (promissória) em aberto desse atendimento: estornada junto (nada é apagado).
