@@ -17,6 +17,8 @@ export async function resumoCaixa(db, barbeariaId, caixa) {
     db.prepare(`
       SELECT l.id, l.tipo, l.forma, l.valor_centavos, l.criado_em, l.finalizacao_id, f.estornada,
         ${formaEfetiva("l.id", "l.forma")} AS forma_atual,
+        EXISTS (SELECT 1 FROM finalizacoes f3 WHERE f3.agendamento_id = a.id AND f3.estornada = 0) AS tem_ativa,
+        (SELECT f2.motivo_estorno FROM finalizacoes f2 WHERE f2.agendamento_id = a.id AND f2.estornada = 1 ORDER BY f2.estornada_em DESC LIMIT 1) AS motivo_corr,
         a.inicio, a.id AS agendamento_id, c.nome AS cliente, u.nome AS barbeiro,
         (SELECT group_concat(nome, ' + ') FROM (SELECT i.nome FROM finalizacao_itens i WHERE i.finalizacao_id = l.finalizacao_id ORDER BY i.rowid)) AS descricao
       FROM caixa_lancamentos l
@@ -69,10 +71,14 @@ export async function resumoCaixa(db, barbeariaId, caixa) {
   for (const l of lanc.results) {
     porForma[l.forma] += l.valor_centavos;
     atendimentos += l.valor_centavos;
+    // Atendimento corrigido: a cobrança antiga e o estorno somam nos totais, mas a lista mostra só a linha valida (sem confundir).
+    if (l.estornada && l.tem_ativa) continue;
     itens.push({
       id: l.id, tipo: l.tipo, em: l.criado_em, forma: l.forma, formaAtual: l.forma_atual, valorCentavos: l.valor_centavos,
       hora: l.inicio ? l.inicio.slice(11) : null, cliente: l.cliente, barbeiro: l.barbeiro, descricao: l.descricao,
-      corrigido: l.forma_atual !== l.forma, agendamentoId: l.tipo === "atendimento" && !l.estornada ? l.agendamento_id : null,
+      corrigido: l.forma_atual !== l.forma, corrigidoNoCaixa: Boolean(l.motivo_corr && l.tipo === "atendimento"),
+      motivoCorrecao: l.tipo === "atendimento" && l.motivo_corr ? l.motivo_corr.replace(/^Correção no caixa:\s*/, "") : null,
+      agendamentoId: l.tipo === "atendimento" && !l.estornada ? l.agendamento_id : null,
       podeCorrigir: l.tipo === "atendimento" && !l.estornada && caixa.situacao === "aberto"
     });
   }

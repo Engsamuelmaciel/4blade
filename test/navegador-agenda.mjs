@@ -247,10 +247,11 @@ async function rodar(tela) {
     await page.click("dialog[open] button[type=submit]");
     await page.waitForSelector("text=Atendimento corrigido");
     await pronto();
-    await page.waitForFunction(() => document.querySelectorAll("[data-lancamento='Diego Cliente Fictício']").length >= 3);   // a lista recarrega depois do aviso
+    await page.waitForSelector("[data-lancamento='Diego Cliente Fictício'] [data-teste=lancamento-corrigido]");   // a lista recarrega depois do aviso
     const lancs = await page.locator("[data-lancamento='Diego Cliente Fictício']").allInnerTexts();
-    assert.ok(lancs.some(t => /-R\$\s?40,00|R\$\s?-40,00/.test(t)), `estorno aparece: ${lancs.join(" | ")}`);
-    assert.ok(lancs.some(t => /R\$\s?35,00/.test(t) && /Dinheiro/.test(t)), `cobrança certa aparece: ${lancs.join(" | ")}`);
+    assert.equal(lancs.length, 1, `só o lançamento certo aparece (sem estorno): ${lancs.join(" | ")}`);
+    assert.ok(/R\$\s?35,00/.test(lancs[0]) && /Dinheiro/.test(lancs[0]) && /Corrigido: Valor combinado era 35/.test(lancs[0]) && !/estorno/i.test(lancs[0]), lancs[0]);
+    assert.equal(await page.locator("[data-lancamento='Diego Cliente Fictício'] button:has-text('Corrigir')").count(), 1, "dá para corrigir de novo");
     await print("caixa-lancamento-corrigido");
 
     const reais = problemas.filter(p => !/status of 40[039]/.test(p));   // 400 esperado: linha do lote sem o aceite LGPD

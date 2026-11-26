@@ -2795,7 +2795,7 @@ async function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar =
   };
   const conteudo = [
     // Correção (19/11/2026): a cobrança antiga é estornada e esta entra no lugar; o motivo fica registrado.
-    correcao ? el("p", { class: "info", "data-teste": "correcao-antes", text: `Cobrado antes: ${correcao.antes}. Ajuste os serviços, os valores e a forma certos — a cobrança antiga é estornada (fica registrada) e esta entra no lugar.` }) : null,
+    correcao ? el("p", { class: "info", "data-teste": "correcao-antes", text: `Cobrado antes: ${correcao.antes}. Mude o que estiver errado e confirme: o lançamento é atualizado e a correção fica registrada.` }) : null,
     correcao ? campo("Motivo da correção", { name: "motivoCorrecao", required: true, minlength: "3", placeholder: "Ex.: cobrei o valor errado" }) : null,
     correcao?.cliente ? (() => { seletorCorrecao = seletorCliente({ id: "corr-cli", preSelecionado: correcao.cliente });
       return el("div", { "data-teste": "corrigir-cliente" }, el("p", { class: "suave", text: "Cliente" }), seletorCorrecao.el); })() : null,
@@ -2828,7 +2828,7 @@ async function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar =
       await comAceiteNota(extra => api(endpoint, { metodo: "POST", corpo: { id: a.id, itens, pagamentos, ...(produtos.length ? { produtos } : {}), ...(correcao ? { motivo: f.motivoCorrecao.value } : {}),
         ...(novoCli && novoCli.id !== correcao.cliente.id ? { clienteId: novoCli.id } : {}), ...extra,
         ...(correcao?.profissionais?.length && f.quemAtendeu?.value ? { barbeiroId: f.quemAtendeu.value } : {}) } }));
-      avisar(correcao ? "Atendimento corrigido: a cobrança antiga foi estornada e a certa entrou no caixa."
+      avisar(correcao ? "Atendimento corrigido."
         : produtos.length ? "Atendimento e produtos cobrados. Entrada lançada no caixa." : "Atendimento finalizado. Entrada lançada no caixa.");
       aoTerminar();
     }
@@ -3172,6 +3172,7 @@ function listaCaixa(c, recarregar) {
       l.tipo === "sangria" || l.tipo === "suprimento" ? null : NOME_FORMA[l.formaAtual]
     ].filter(Boolean).join(" · ") }),
     l.corrigido ? el("p", { class: "suave destaque-texto", text: `Forma corrigida: ${NOME_FORMA[l.forma]} → ${NOME_FORMA[l.formaAtual]}` }) : null,
+    l.corrigidoNoCaixa ? el("p", { class: "suave destaque-texto", "data-teste": "lancamento-corrigido", text: `Corrigido${l.motivoCorrecao ? `: ${l.motivoCorrecao}` : ""}` }) : null,
     l.desconto ? el("p", { class: "suave", "data-teste": "desconto-lancamento", text: `Desconto de ${bpParaTexto(l.desconto.percentualBp)}% (− ${reais(l.desconto.valorCentavos)}; sem desconto seria ${reais(l.desconto.brutoCentavos)})` }) : null,
     l.vendaCancelada && l.tipo === "venda" ? el("p", { class: "suave", text: "Venda cancelada" }) : null,
     l.tipo === "promissoria" ? el("span", { class: `etiqueta ${{ aberta: "amarela", quitada: "verde", estornada: "" }[l.notaSituacao]}`, "data-teste": "nota-situacao",

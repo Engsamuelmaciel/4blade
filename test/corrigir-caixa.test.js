@@ -41,10 +41,18 @@ describe("corrigir atendimento já cobrado no caixa", () => {
     assert.equal(r.status, 201, JSON.stringify(r.dados));
     c = (await get("/api/caixa/hoje", cx.token)).dados;
     assert.deepEqual([c.totais.porForma.pix, c.totais.porForma.dinheiro, c.totais.atendimentosCentavos], [0, 6500, 6500]);
-    assert.ok(c.lancamentos.some(x => x.tipo === "estorno_atendimento" && x.valorCentavos === -4000), "estorno da antiga continua na lista");
+    // a lista mostra só o lançamento certo (sem estorno nem linha antiga), marcado como corrigido com o motivo; os totais já contam tudo
+    assert.deepEqual(c.lancamentos.filter(x => x.agendamentoId === m.id || x.tipo === "estorno_atendimento").map(x => [x.tipo, x.valorCentavos]), [["atendimento", 6500]]);
+    const certo = c.lancamentos.find(x => x.agendamentoId === m.id);
+    assert.equal(certo.corrigidoNoCaixa, true); assert.equal(certo.motivoCorrecao, "Fez barba também e pagou em dinheiro"); assert.equal(certo.podeCorrigir, true);
+    // pode corrigir de novo (3ª vez)
+    assert.equal((await post("/api/caixa/corrigir-atendimento", cx.token, { id: m.id, motivo: "Segunda correção", itens: [{ servicoId: corte.id, precoCobradoCentavos: 5000 }], pagamentos: [{ forma: "pix", valorCentavos: 5000 }] })).status, 201);
+    c = (await get("/api/caixa/hoje", cx.token)).dados;
+    assert.equal(c.totais.atendimentosCentavos, 5000);
+    assert.deepEqual(c.lancamentos.filter(x => x.tipo.includes("atendimento")).map(x => x.valorCentavos), [5000]);
     const raw = env.DB.raw;
-    assert.equal(raw.prepare("SELECT COUNT(*) n FROM finalizacoes WHERE agendamento_id = ?").get(m.id).n, 2, "nada apagado: antiga (estornada) + nova");
-    assert.equal(raw.prepare("SELECT SUM(valor_centavos) s FROM comissoes WHERE estornada = 0").get().s, 3250, "50% de 65,00");
+    assert.equal(raw.prepare("SELECT COUNT(*) n FROM finalizacoes WHERE agendamento_id = ?").get(m.id).n, 3, "nada apagado: 2 antigas (estornadas) + a atual");
+    assert.equal(raw.prepare("SELECT SUM(valor_centavos) s FROM comissoes WHERE estornada = 0").get().s, 2500, "50% de 50,00 (só a última vale)");
     assert.ok(raw.prepare("SELECT 1 FROM auditoria WHERE acao = 'atendimento_reaberto' AND detalhes LIKE '%Correção no caixa%'").get());
   });
 
