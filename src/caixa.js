@@ -324,7 +324,7 @@ export async function rotasCaixa(ctx, path, method) {
       const inicio = `${input.data}T${input.hora}`, fimNovo = `${input.data}T${hm(ini + dur)}`;
       if (inicio !== ag.inicio) novoHorario = { agId: ag.id, data: input.data, inicio, fim: fimNovo, antes: { data: ag.data, inicio: ag.inicio, fim: ag.fim } };
     }
-    await reabrirDados(ctx, { id: input.id, motivo: `Correção no caixa: ${motivo}` });
+    const { caixaId } = await reabrirDados(ctx, { id: input.id, motivo: `Correção no caixa: ${motivo}` });
     try {
       if (novoHorario) {
         const r = await db.batch([
@@ -353,7 +353,7 @@ export async function rotasCaixa(ctx, path, method) {
         ]);
         if (!r[0].meta?.changes) throw new HttpError("Não foi possível trocar quem atendeu.", 409);
       }
-      return await finalizarDados(ctx, { id: input.id, itens: input.itens, pagamentos: input.pagamentos, produtos: input.produtos });
+      return await finalizarDados(ctx, { id: input.id, itens: input.itens, pagamentos: input.pagamentos, produtos: input.produtos }, { caixaId });
     } catch (e) {
       // estornou mas não cobrou de novo: o atendimento voltou para a fila "Cobrar"
       throw new HttpError(`A cobrança antiga foi estornada, mas a nova não entrou (${e.message}). O atendimento voltou para a fila: cobre de novo.`, e.status || 409);

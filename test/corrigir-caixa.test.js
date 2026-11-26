@@ -202,4 +202,27 @@ describe("corrigir atendimento já cobrado no caixa", () => {
     // nada mudou
     assert.equal(env.DB.raw.prepare("SELECT COUNT(*) n FROM finalizacoes WHERE agendamento_id = ? AND estornada = 0").get(m.id).n, 1);
   });
+
+  test("correção fica no MESMO caixa/dia da cobrança original (não vira lançamento de hoje; sem duplicidade entre dias)", async () => {
+    const amb = await cenario("corr14");
+    const { post, get, cx, ger, corte, env } = amb;
+    const m = await cobrado(amb, "09:00");
+    // a cobrança original foi feita num caixa de outro dia (ontem, ainda aberto): volta o caixa para ontem
+    const ontem = new Date(Date.parse(`${HOJE}T12:00:00Z`) - 86400e3).toISOString().slice(0, 10);
+    env.DB.raw.prepare("UPDATE caixas SET data = ?").run(ontem);
+    const caixaOrig = env.DB.raw.prepare("SELECT id FROM caixas").get().id;
+    const r = await post("/api/caixa/corrigir-atendimento", cx.token, { id: m.id, motivo: "Valor errado",
+      itens: [{ servicoId: corte.id, precoCobradoCentavos: 5000 }], pagamentos: [{ forma: "pix", valorCentavos: 5000 }] });
+    assert.equal(r.status, 201, JSON.stringify(r.dados));
+    // nenhum caixa novo (hoje) foi criado; a cobrança nova está no caixa de ontem, junto do estorno
+    assert.equal(env.DB.raw.prepare("SELECT COUNT(*) n FROM caixas").get().n, 1);
+    const ativa = env.DB.raw.prepare("SELECT caixa_id FROM finalizacoes WHERE agendamento_id = ? AND estornada = 0").get(m.id);
+    assert.equal(ativa.caixa_id, caixaOrig);
+    // dia de ontem fecha certo: só a cobrança nova (50,00); hoje fica vazio
+    const dOntem = (await get(`/api/caixa/lancamentos?tipo=dia&data=${ontem}`, ger.token)).dados;
+    assert.equal(dOntem.totais.entradasCentavos, 5000);
+    assert.equal(dOntem.lancamentos.filter(l => l.tipo === "atendimento").length, 1);
+    const dHoje = (await get(`/api/caixa/lancamentos?tipo=dia&data=${HOJE}`, ger.token)).dados;
+    assert.equal(dHoje.totais.entradasCentavos, 0); assert.equal(dHoje.lancamentos.length, 0);
+  });
 });

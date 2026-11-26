@@ -364,13 +364,16 @@ export async function exigirClienteDaNota(ctx, clienteId) {
   return c;
 }
 
-export async function finalizarDados(ctx, input) {
+export async function finalizarDados(ctx, input, { caixaId = null } = {}) {
   const { db, user } = ctx;
   const a = await agendamentoPermitido(ctx, input.id, { cobrar: true });
   if (a.situacao !== "agendado") erro(`Esse horário está "${a.situacao}"; só dá para finalizar um horário agendado.`, 409);
   const hoje = hojeBrasil();
   if (a.data > hoje) erro("Não dá para finalizar um horário de um dia que ainda não chegou.", 409);
-  const caixa = await caixaParaLancar(ctx);   // gerente/dono: também com o caixa fechado (17/11/2026)
+  // Correção de um atendimento: a cobrança nova volta para o MESMO caixa da cobrança corrigida (o dia do lançamento não muda).
+  // Cobrança normal: caixa de hoje (gerente/dono: também com o caixa fechado — 17/11/2026).
+  const caixa = (caixaId && await db.prepare("SELECT * FROM caixas WHERE id = ? AND barbearia_id = ? AND situacao = 'aberto'").bind(caixaId, ctx.barbeariaId).first())
+    || await caixaParaLancar(ctx);
 
   // Serviços e valores (o valor de tabela vem do cadastro; o cobrado pode ser alterado e fica registrado).
   const itensIn = input.itens;
@@ -523,6 +526,7 @@ export async function reabrirDados(ctx, input) {
   if (!(await db.prepare(`SELECT 1 FROM finalizacoes WHERE id = ? AND estorno_id = ?`).bind(f.id, estornoId).first())) {
     erro("Não foi possível reabrir: o caixa foi fechado ou o atendimento já foi reaberto.", 409);
   }
+  return { caixaId: f.caixa_id };
 }
 
 // ---------- REMARCAR (remanejar um horário agendado: outra hora, outro dia e/ou outro profissional) ----------
