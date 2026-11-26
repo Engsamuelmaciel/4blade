@@ -2800,7 +2800,8 @@ async function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar =
     correcao?.cliente ? (() => { seletorCorrecao = seletorCliente({ id: "corr-cli", preSelecionado: correcao.cliente });
       return el("div", { "data-teste": "corrigir-cliente" }, el("p", { class: "suave", text: "Cliente" }), seletorCorrecao.el); })() : null,
     correcao?.profissionais?.length ? campo("Quem atendeu", { tag: "select", name: "quemAtendeu", "data-teste": "corrigir-quem",
-      opcoes: correcao.profissionais.map(p => [p.id, p.nome]), valor: correcao.barbeiroId }) : null,
+      opcoes: [...(correcao.profissionais.some(p => p.id === correcao.barbeiroId) ? [] : [[correcao.barbeiroId, correcao.barbeiroNome || "Profissional atual"]]),
+        ...correcao.profissionais.map(p => [p.id, p.nome])], valor: correcao.barbeiroId }) : null,
     el("p", { class: "suave", text: `${a.cliente.nome} · ${a.inicio} · o valor pode ser alterado (fica registrado e aparece para o gerente).` }),
     caixaLinhas, botaoMais, painelMais,
     caixaProdutos, botaoProd, painelProd,
@@ -2827,7 +2828,7 @@ async function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar =
       const novoCli = correcao?.cliente && seletorCorrecao?.escolhido();
       await comAceiteNota(extra => api(endpoint, { metodo: "POST", corpo: { id: a.id, itens, pagamentos, ...(produtos.length ? { produtos } : {}), ...(correcao ? { motivo: f.motivoCorrecao.value } : {}),
         ...(novoCli && novoCli.id !== correcao.cliente.id ? { clienteId: novoCli.id } : {}), ...extra,
-        ...(correcao?.profissionais?.length && f.quemAtendeu?.value ? { barbeiroId: f.quemAtendeu.value } : {}) } }));
+        ...(correcao?.profissionais?.length && f.quemAtendeu?.value && f.quemAtendeu.value !== correcao.barbeiroId ? { barbeiroId: f.quemAtendeu.value } : {}) } }));
       avisar(correcao ? "Atendimento corrigido."
         : produtos.length ? "Atendimento e produtos cobrados. Entrada lançada no caixa." : "Atendimento finalizado. Entrada lançada no caixa.");
       aoTerminar();
@@ -3216,7 +3217,7 @@ function janelaCorrigirLancamento(l, recarregar) {
     janelaFinalizar(a, { endpoint: "/caixa/corrigir-atendimento", aoTerminar: recarregar, titulo: `Corrigir atendimento de ${a.cliente.nome}`,
       correcao: { antes: `${reais(l.valorCentavos)} em ${NOME_FORMA[l.formaAtual]} (${l.descricao || "serviços"})`,
         // quem atendeu: só gerente/caixa trocam (o servidor confere de novo)
-        profissionais: veTodas() ? profissionais : null, barbeiroId: a.barbeiroId, cliente: veTodas() ? a.cliente : null } });
+        profissionais: veTodas() ? profissionais : null, barbeiroId: a.barbeiroId, barbeiroNome: a.barbeiro, cliente: veTodas() ? a.cliente : null } });
   };
   return abrirJanela(`Corrigir ${l.cliente || "atendimento"}`, [
     el("p", { text: `${[l.hora, l.cliente].filter(Boolean).join(" ")} · ${l.descricao || ""} · ${reais(l.valorCentavos)} em ${NOME_FORMA[l.formaAtual]}` }),

@@ -67,7 +67,7 @@ describe("corrigir atendimento já cobrado no caixa", () => {
     assert.equal((await post("/api/caixa/corrigir-atendimento", outra.ger.token, corpo)).status, 404);
   });
 
-  test("corrigir quem atendeu: troca o profissional, a comissão vai para o novo; conflito, inativo e outra barbearia recusados", async () => {
+  test("corrigir quem atendeu: troca o profissional, a comissão vai para o novo; sem barrar por choque, inativo e outra barbearia recusados", async () => {
     const amb = await cenario("corr3");
     const { post, get, cx, ger, barb, corte, env } = amb;
     const outro = await amb.criarUsuario(ger.token, "outro.corr3", "barbeiro", { comissaoServicoBp: 3000 });
@@ -79,11 +79,12 @@ describe("corrigir atendimento já cobrado no caixa", () => {
     assert.equal((await post("/api/caixa/corrigir-atendimento", cx.token, corpo({ barbeiroId: outra.barb.id }))).status, 404);
     // conflito: o novo já tem horário às 11:00
     await post("/api/agenda", cx.token, { barbeiroId: outro.id, data: HOJE, hora: "11:00", servicoIds: [corte.id], cliente: { nome: "Ocupado" } });
-    assert.equal((await post("/api/caixa/corrigir-atendimento", cx.token, corpo({ barbeiroId: outro.id }))).status, 409);
-    // nada mudou: continua cobrado, com o profissional antigo
+    // atendimento que já aconteceu: choque de horário NÃO barra a correção (só muda quem atendeu)
+    assert.equal((await post("/api/caixa/corrigir-atendimento", cx.token, corpo({ barbeiroId: outro.id }))).status, 201);
     let ag = await env.DB.prepare("SELECT barbeiro_id, situacao FROM agendamentos WHERE id = ?").bind(m.id).first();
-    assert.equal(ag.barbeiro_id, barb.id); assert.equal(ag.situacao, "finalizado");
-    // livre: outro profissional às 11:00 já ocupado, então usa o gerente
+    assert.equal(ag.barbeiro_id, outro.id); assert.equal(ag.situacao, "finalizado");
+    // mandar o MESMO profissional não troca nada
+    assert.equal((await post("/api/caixa/corrigir-atendimento", cx.token, corpo({ barbeiroId: outro.id }))).status, 201);
     const r = await post("/api/caixa/corrigir-atendimento", cx.token, corpo({ barbeiroId: ger.id }));
     assert.equal(r.status, 201, JSON.stringify(r.dados));
     ag = await env.DB.prepare("SELECT barbeiro_id, situacao FROM agendamentos WHERE id = ?").bind(m.id).first();
@@ -125,7 +126,7 @@ describe("corrigir atendimento já cobrado no caixa", () => {
   test("corrigir lançamento de hoje cujo horário era de outro dia: /caixa/atendimentos?id= traz o atendimento (só da própria barbearia)", async () => {
     const amb = await cenario("corr7");
     const { post, get, cx, barb, corte } = amb;
-    const ontem = new Date(Date.now() - 36 * 3600e3).toISOString().slice(0, 10);
+    const ontem = new Date(Date.parse(`${HOJE}T12:00:00Z`) - 86400e3).toISOString().slice(0, 10);
     const m = (await post("/api/agenda", cx.token, { barbeiroId: barb.id, data: ontem, hora: "09:00", servicoIds: [corte.id], cliente: { nome: "Cliente Ontem" }, aceiteForaHorario: true })).dados.agendamento;
     assert.ok(m, "marcou ontem");
     const r = await post("/api/caixa/cobrar", cx.token, { id: m.id, itens: [{ servicoId: corte.id, precoCobradoCentavos: 4000 }], pagamentos: [{ forma: "pix", valorCentavos: 4000 }] });
