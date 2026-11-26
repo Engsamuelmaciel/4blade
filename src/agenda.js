@@ -13,7 +13,7 @@ import { caixaParaLancar, sqlCaixaOk } from "./caixa.js";
 import {
   horaParaMin, exigirData, exigirMomento, somarDias, regrasDoDia, conferirHorario, momento, carregarRegras, diaSemana, janelaDoDia, livreNaJanela,
   carregarModelos, linksWhatsapp, lerPagamentos, formaEfetiva, FORMAS,
-  telefoneReal, PREFIXO_SEM_TELEFONE, minParaHora, NOME_DIA
+  telefoneReal, PREFIXO_SEM_TELEFONE, minParaHora, NOME_DIA, mesFechado, MSG_MES_FECHADO
 } from "./agenda-util.js";
 
 export { FORMAS };
@@ -482,13 +482,14 @@ export async function reabrirDados(ctx, input) {
   const a = await agendamentoPermitido(ctx, input.id);
   if (a.situacao !== "finalizado") erro("Só dá para reabrir um atendimento finalizado.", 409);
   const motivo = exigirMotivo(input.motivo);
-  const f = await db.prepare("SELECT f.*, c.situacao AS caixa_situacao FROM finalizacoes f JOIN caixas c ON c.id = f.caixa_id WHERE f.agendamento_id = ? AND f.estornada = 0")
+  const f = await db.prepare("SELECT f.*, c.situacao AS caixa_situacao, c.data AS caixa_data FROM finalizacoes f JOIN caixas c ON c.id = f.caixa_id WHERE f.agendamento_id = ? AND f.estornada = 0")
     .bind(a.id).first();
   if (!f) erro("Finalização não encontrada.", 404);
   if (await db.prepare(`SELECT 1 FROM comissoes c JOIN fechamento_comissao_itens i ON i.tipo = 'servico' AND i.ref_id = c.id
                         WHERE c.finalizacao_id = ?`).bind(f.id).first()) {
     erro("A comissão desse atendimento já entrou num fechamento de comissão: não dá para reabrir.", 409);
   }
+  if (mesFechado(f.caixa_data)) erro(MSG_MES_FECHADO, 409);
   if (f.caixa_situacao !== "aberto") {
     erro(isGestao(user)
       ? "O caixa desse dia já foi fechado: reabra o caixa (com motivo) antes de reabrir o atendimento."

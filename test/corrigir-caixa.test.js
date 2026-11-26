@@ -171,13 +171,35 @@ describe("corrigir atendimento já cobrado no caixa", () => {
     assert.equal(dia.lancamentos.length, 2); assert.equal(dia.totais.entradasCentavos, 8000); assert.equal(dia.lancamentos[0].dia, HOJE);
     const sem = (await get(`/api/caixa/lancamentos?tipo=semana&data=${HOJE}`, ger.token)).dados;
     assert.equal(sem.totais.entradasCentavos, 8000); assert.ok(sem.periodo.ini <= HOJE && sem.periodo.fim >= HOJE && sem.periodo.fim > sem.periodo.ini);
-    const mes = (await get(`/api/caixa/lancamentos?tipo=mes&data=${HOJE}`, cx.token)).dados;
+    assert.equal((await get(`/api/caixa/lancamentos?tipo=mes&data=${HOJE}`, cx.token)).status, 403, "o mês completo é só do gerente");
+    const mes = (await get(`/api/caixa/lancamentos?tipo=mes&data=${HOJE}`, ger.token)).dados;
     assert.equal(mes.periodo.ini, `${HOJE.slice(0, 7)}-01`); assert.equal(mes.totais.porForma.pix, 8000); assert.equal(mes.lancamentos[0].podeCorrigir, true);
     assert.equal((await get(`/api/caixa/lancamentos?tipo=ano&data=${HOJE}`, cx.token)).status, 400);
     assert.equal((await get(`/api/caixa/lancamentos?tipo=mes&data=${HOJE}`, barb.token)).status, 403);
     const outra = await cenario("corr12", amb, amb.p);
-    const vazio = (await get(`/api/caixa/lancamentos?tipo=mes&data=${HOJE}`, outra.cx.token)).dados;
+    const vazio = (await get(`/api/caixa/lancamentos?tipo=mes&data=${HOJE}`, outra.ger.token)).dados;
     assert.equal(vazio.lancamentos.length, 0); assert.equal(vazio.totais.entradasCentavos, 0);
     void post;
+  });
+
+  test("mês fechado: lançamentos de meses anteriores só para consulta (não corrige, não reabre, não cancela)", async () => {
+    const amb = await cenario("corr13");
+    const { post, get, cx, ger, corte, env } = amb;
+    const m = await cobrado(amb, "09:00");
+    const lanc = (await get("/api/caixa/hoje", cx.token)).dados.lancamentos.find(x => x.tipo === "atendimento");
+    // volta o caixa para o mês passado (o dia 15 do mês anterior)
+    const ant = new Date(`${HOJE.slice(0, 7)}-15T12:00:00Z`); ant.setUTCMonth(ant.getUTCMonth() - 1);
+    const dataAnt = ant.toISOString().slice(0, 10);
+    env.DB.raw.prepare("UPDATE caixas SET data = ?").run(dataAnt);
+    const ver = (await get(`/api/caixa/lancamentos?tipo=mes&data=${dataAnt}`, ger.token)).dados;
+    assert.equal(ver.lancamentos.length, 1); assert.equal(ver.lancamentos[0].podeCorrigir, false, "mês fechado: sem editar");
+    const corpo = { id: m.id, motivo: "Tentativa", itens: [{ servicoId: corte.id, precoCobradoCentavos: 3000 }], pagamentos: [{ forma: "pix", valorCentavos: 3000 }] };
+    for (const tok of [cx.token, ger.token]) {
+      assert.equal((await post("/api/caixa/corrigir-atendimento", tok, corpo)).status, 409);
+      assert.equal((await post("/api/caixa/corrigir-forma", tok, { id: lanc.id, novaForma: "dinheiro", motivo: "Tentativa" })).status, 409);
+    }
+    assert.equal((await post("/api/agenda/reabrir", ger.token, { id: m.id, motivo: "Tentativa" })).status, 409);
+    // nada mudou
+    assert.equal(env.DB.raw.prepare("SELECT COUNT(*) n FROM finalizacoes WHERE agendamento_id = ? AND estornada = 0").get(m.id).n, 1);
   });
 });

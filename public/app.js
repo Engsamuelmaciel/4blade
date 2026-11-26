@@ -3164,8 +3164,8 @@ const NOME_TIPO_CAIXA = {
 };
 
 // Lançamentos por período (dia, semana ou mês): junta os caixas do período; busca por cliente, profissional ou item.
-function blocoLancamentosPeriodo(recarregar) {
-  const e = estadoCaixa.lanc;
+function blocoLancamentosPeriodo(recarregar, { e = estadoCaixa.lanc, tipos = [["dia", "Dia"], ["semana", "Semana"]], avisoMesFechado = false } = {}) {
+  if (!tipos.some(([k]) => k === e.tipo)) e.tipo = tipos[0][0];
   e.data ||= hojeLocal();
   const corpo = el("div", { "data-teste": "lanc-corpo" }, el("p", { class: "suave", text: "Carregando…" }));
   const passo = n => { e.data = e.tipo === "mes" ? somaDias(`${e.data.slice(0, 7)}-15`, 30 * n).slice(0, 7) + "-01" : somaDias(e.data, (e.tipo === "semana" ? 7 : 1) * n); desenhar(); };
@@ -3182,6 +3182,7 @@ function blocoLancamentosPeriodo(recarregar) {
       el("div", { class: "lanc-totais", "data-teste": "lanc-totais" },
         el("div", {}, el("small", { text: "Entradas" }), el("strong", { text: reais(ultimo.totais.entradasCentavos) })),
         ...OPCOES_FORMA.filter(([k]) => f[k]).map(([k, n]) => el("div", {}, el("small", { text: n }), el("strong", { text: reais(f[k]) })))),
+      avisoMesFechado && ultimo.periodo.fim < `${ultimo.periodo.hoje.slice(0, 7)}-01` ? el("p", { class: "info", "data-teste": "mes-fechado", text: "Mês fechado: os lançamentos ficam só para consulta (não podem ser corrigidos nem cancelados)." }) : null,
       ultimo.totais.notasLancadasCentavos ? el("p", { class: "suave", text: `Em nota (promissória): ${reais(ultimo.totais.notasLancadasCentavos)}` }) : null,
       ultimo.total > ultimo.lancamentos.length ? el("p", { class: "suave", text: `Mostrando os ${ultimo.lancamentos.length} mais recentes de ${ultimo.total}.` }) : null,
       itens.length ? el("div", {}, ...dias.map(d => el("section", { class: "lanc-dia", "data-dia-lanc": d },
@@ -3194,13 +3195,15 @@ function blocoLancamentosPeriodo(recarregar) {
     corpo.replaceChildren(el("p", { class: "suave", text: "Carregando…" }));
     try {
       ultimo = await api(`/caixa/lancamentos?tipo=${e.tipo}&data=${e.data}`);
-      titulo.textContent = e.tipo === "dia" ? dataBR(ultimo.periodo.ini) : `${dataBR(ultimo.periodo.ini)} a ${dataBR(ultimo.periodo.fim)}`;
+      titulo.textContent = e.tipo === "dia" ? dataBR(ultimo.periodo.ini)
+        : e.tipo === "mes" ? new Date(`${ultimo.periodo.ini}T12:00:00Z`).toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).replace(/^./, c => c.toUpperCase())
+        : `${dataBR(ultimo.periodo.ini)} a ${dataBR(ultimo.periodo.fim)}`;
       montarLista();
     } catch (err) { corpo.replaceChildren(el("p", { class: "erro", text: err.message })); }
   };
   busca.addEventListener("input", () => { e.busca = busca.value; montarLista(); });
-  const chips = el("div", { class: "alterna", role: "group", "aria-label": "Período dos lançamentos", "data-teste": "lanc-periodos" },
-    [["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"]].map(([k, txt]) =>
+  const chips = el("div", { class: "alterna", role: "group", hidden: tipos.length < 2 || null, "aria-label": "Período dos lançamentos", "data-teste": "lanc-periodos" },
+    tipos.map(([k, txt]) =>
       el("button", { type: "button", class: `botao pequeno ${e.tipo === k ? "ativo" : ""}`, "data-periodo-lanc": k, "aria-pressed": String(e.tipo === k),
         onclick: () => { e.tipo = k; chips.querySelectorAll("button").forEach(b => { const on = b.dataset.periodoLanc === k; b.classList.toggle("ativo", on); b.setAttribute("aria-pressed", String(on)); }); desenhar(); } }, txt)));
   const raiz = el("div", { class: "lanc-periodo", "data-teste": "lancamentos-periodo" },
@@ -4037,7 +4040,7 @@ async function telaPainel() {
 
 // ---------- RELATÓRIO FINANCEIRO (gestão): entradas e saídas por dia, semana, mês e ano ----------
 // Cores das séries: --serie-entrada (azul) e --serie-saida (laranja), validadas para daltonismo e nos dois temas.
-const estadoFin = { periodo: "mes", data: null, filtroMov: "todos", movVisiveis: 30, aba: "resumo", cache: null };
+const estadoFin = { periodo: "mes", data: null, filtroMov: "todos", movVisiveis: 30, aba: "resumo", cache: null, lanc: { tipo: "mes", data: null, busca: "" } };
 const NOME_ANTERIOR = { dia: "o dia anterior", semana: "a semana anterior", mes: "o mês anterior", ano: "o ano anterior" };
 const NO_ANTERIOR = { dia: "no dia anterior", semana: "na semana anterior", mes: "no mês anterior", ano: "no ano anterior" };
 const AO_ANTERIOR = { dia: "ao dia anterior", semana: "à semana anterior", mes: "ao mês anterior", ano: "ao ano anterior" };
@@ -4216,9 +4219,23 @@ function listaPartes(itens, classe, total) {
     el("progress", { max: String(max), value: String(Math.max(0, i.valor)), "aria-label": i.nome }))));
 }
 
+// Abas do Relatório financeiro (a aba Lançamentos mostra o mês completo, sem buscar o relatório).
+function abasRelatorios(abaFin) {
+  return el("div", { class: "alterna abas-fin", role: "tablist", "aria-label": "Relatórios" },
+    [["resumo", "Resumo"], ["equipe", "Equipe"], ["vendas", "Vendas"], ["movimentos", "Movimentos"], ["lancamentos", "Lançamentos"]].map(([k, txt]) =>
+      el("button", { type: "button", role: "tab", class: `botao ${abaFin === k ? "ativo" : ""}`, "aria-selected": String(abaFin === k), "data-aba-fin": k, text: txt,
+        onclick: () => { estadoFin.aba = k; telaFinanceiro().catch(er => avisar(er.message, "erro")); } })));
+}
+
 async function telaFinanceiro() {
   estadoFin.data ||= hojeLocal();
   const e = estadoFin;
+  if (e.aba === "lancamentos") {
+    mostrar(cabecalho("Relatórios", "Quanto entrou, quanto saiu e o que sobrou — por período, equipe e vendas."), abasRelatorios("lancamentos"),
+      el("section", { class: "cartao", "data-teste": "fin-lancamentos" }, el("h3", { text: "Lançamentos do mês" }),
+        blocoLancamentosPeriodo(() => telaFinanceiro().catch(er => avisar(er.message, "erro")), { e: estadoFin.lanc, tipos: [["mes", "Mês"]], avisoMesFechado: true })));
+    return;
+  }
   // Trocar de aba não busca de novo (19/11/2026): guarda a última resposta do mesmo período.
   const chave = `${e.periodo}|${e.data}`;
   const f = e.cache?.chave === chave ? e.cache.f : await api(`/financeiro?periodo=${e.periodo}&data=${e.data}`);
@@ -4328,11 +4345,8 @@ async function telaFinanceiro() {
     el("summary", {}, el("span", { class: "fin-secao-tit", text: titulo }), resumo ? el("span", { class: "fin-secao-res", text: resumo }) : null), ...filhos);
   const maiorDe = l => (l[0] ? `${l[0].nome} ${reais(l[0].valor)}` : "");
   // Relatórios em 4 abas (19/11/2026): o que o dono mais pergunta, sem tela comprida.
-  const abaFin = ["resumo", "equipe", "vendas", "movimentos"].includes(e.aba) ? e.aba : "resumo";
-  const abasFin = el("div", { class: "alterna abas-fin", role: "tablist", "aria-label": "Relatórios" },
-    [["resumo", "Resumo"], ["equipe", "Equipe"], ["vendas", "Vendas"], ["movimentos", "Movimentos"]].map(([k, txt]) =>
-      el("button", { type: "button", role: "tab", class: `botao ${abaFin === k ? "ativo" : ""}`, "aria-selected": String(abaFin === k), "data-aba-fin": k, text: txt,
-        onclick: () => { estadoFin.aba = k; telaFinanceiro().catch(er => avisar(er.message, "erro")); } })));
+  const abaFin = ["resumo", "equipe", "vendas", "movimentos", "lancamentos"].includes(e.aba) ? e.aba : "resumo";
+  const abasFin = abasRelatorios(abaFin);
   const fixa = (titulo, id, ...filhos) => el("section", { class: "cartao fin-secao aberta", "data-secao-fin": id }, el("h3", { text: titulo }), ...filhos);
   let corpo;
   if (abaFin === "resumo") {

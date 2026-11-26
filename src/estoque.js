@@ -6,7 +6,7 @@ import {
 } from "./util.js";
 import { isGestao, atende } from "./perfis.js";
 import { exigirBarbearia, exigirGestao } from "./usuarios.js";
-import { lerPagamentos, formaEfetiva, somarDias } from "./agenda-util.js";
+import { lerPagamentos, formaEfetiva, somarDias, mesFechado, MSG_MES_FECHADO } from "./agenda-util.js";
 import { exigirClienteDaNota } from "./agenda.js";
 import { caixaParaLancar, sqlCaixaOk } from "./caixa.js";
 
@@ -344,10 +344,11 @@ async function cancelarVenda(ctx) {
   const input = await readJson(request);
   if (!validId(input.id)) erro("Venda inválida.");
   const motivo = exigirMotivo(input.motivo);
-  const v = await db.prepare(`SELECT v.*, c.situacao AS caixa_situacao FROM vendas v JOIN caixas c ON c.id = v.caixa_id
+  const v = await db.prepare(`SELECT v.*, c.situacao AS caixa_situacao, c.data AS caixa_data FROM vendas v JOIN caixas c ON c.id = v.caixa_id
                               WHERE v.id = ? AND v.barbearia_id = ?`).bind(input.id, ctx.barbeariaId).first();
   if (!v) erro("Venda não encontrada.", 404);
   if (v.situacao !== "ativa") erro("Essa venda já foi cancelada.", 409);
+  if (mesFechado(v.caixa_data)) erro(MSG_MES_FECHADO, 409);
   if (v.caixa_situacao !== "aberto") erro("O caixa dessa venda já foi fechado: o gerente precisa reabrir o caixa antes.", 409);
   if (!isGestao(user) && await db.prepare("SELECT 1 FROM promissorias WHERE venda_id = ? AND situacao = 'aberta'").bind(v.id).first()) {
     erro("Essa venda está numa nota (promissória) em aberto: só o gerente pode cancelar (a nota é cancelada junto).", 403);

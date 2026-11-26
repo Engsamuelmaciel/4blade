@@ -4,7 +4,7 @@
 import { json, fail, HttpError, readJson, validCentavos, validDate, textoOpcional, exigirMotivo, auditoria, auditoriaSe, hojeBrasil } from "./util.js";
 import { isGestao, atende, veTodasAgendas } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
-import { FORMAS, formaEfetiva, telefoneReal, somarDias } from "./agenda-util.js";
+import { FORMAS, formaEfetiva, telefoneReal, somarDias, mesFechado, MSG_MES_FECHADO } from "./agenda-util.js";
 import { conferirClienteParaMarcar } from "./notificacoes.js";
 import { finalizarDados, atendimentoAvulso, reabrirDados } from "./agenda.js";
 
@@ -83,7 +83,7 @@ export async function resumoCaixa(db, barbeariaId, caixa, periodo = null) {
       corrigido: l.forma_atual !== l.forma, corrigidoNoCaixa: Boolean(l.motivo_corr && l.tipo === "atendimento"),
       motivoCorrecao: l.tipo === "atendimento" && l.motivo_corr ? l.motivo_corr.replace(/^Correção no caixa:\s*/, "") : null,
       agendamentoId: l.tipo === "atendimento" && !l.estornada ? l.agendamento_id : null,
-      podeCorrigir: l.tipo === "atendimento" && !l.estornada && (l.cx_sit ?? caixa.situacao) === "aberto"
+      podeCorrigir: l.tipo === "atendimento" && !l.estornada && (l.cx_sit ?? caixa.situacao) === "aberto" && !(l.dia && mesFechado(l.dia))
     });
   }
   for (const m of movs.results) {
@@ -102,8 +102,8 @@ export async function resumoCaixa(db, barbeariaId, caixa, periodo = null) {
       vendaId: m.venda_id || null, vendaCancelada: v?.situacao === "cancelada",
       desconto: m.tipo === "venda" && v?.desconto_bp ? { percentualBp: v.desconto_bp, valorCentavos: v.desconto_centavos, brutoCentavos: v.bruto_centavos } : null,
       corrigido: m.forma_atual !== m.forma,
-      podeCorrigir: m.tipo === "venda" && v?.situacao === "ativa" && (m.cx_sit ?? caixa.situacao) === "aberto",
-      podeCancelarVenda: m.tipo === "venda" && v?.situacao === "ativa" && (m.cx_sit ?? caixa.situacao) === "aberto"
+      podeCorrigir: m.tipo === "venda" && v?.situacao === "ativa" && (m.cx_sit ?? caixa.situacao) === "aberto" && !(m.dia && mesFechado(m.dia)),
+      podeCancelarVenda: m.tipo === "venda" && v?.situacao === "ativa" && (m.cx_sit ?? caixa.situacao) === "aberto" && !(m.dia && mesFechado(m.dia))
     });
   }
   itens.sort((a, b) => a.em.localeCompare(b.em));
@@ -209,7 +209,8 @@ async function lancamentoCorrigivel(ctx, id) {
   if (!l) erro("Lançamento não encontrado.", 404);
   const ok = (l.tipo === "atendimento" && !l.estornada) || (l.tipo === "venda" && l.venda_situacao === "ativa");
   if (!ok) erro("Só dá para corrigir a forma de um atendimento ou venda válidos.", 409);
-  const caixa = await db.prepare("SELECT situacao FROM caixas WHERE id = ?").bind(l.caixa_id).first();
+  const caixa = await db.prepare("SELECT situacao, data FROM caixas WHERE id = ?").bind(l.caixa_id).first();
+  if (mesFechado(caixa.data)) erro(MSG_MES_FECHADO, 409);
   if (caixa.situacao !== "aberto") erro("Caixa já fechado: não dá para corrigir.", 409);
   return l;
 }
@@ -235,6 +236,8 @@ export async function rotasCaixa(ctx, path, method) {
     if (tipo === "semana") { ini = somarDias(data, -((new Date(`${data}T12:00:00Z`).getUTCDay() + 6) % 7)); fim = somarDias(ini, 6); }
     else if (tipo === "mes") { ini = `${data.slice(0, 7)}-01`; const d = new Date(`${ini}T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + 1); fim = somarDias(d.toISOString().slice(0, 10), -1); }
     else if (tipo !== "dia") return fail("Período inválido: dia, semana ou mês.");
+    // o mês inteiro é do gerente (Relatórios → Lançamentos); o caixa vê o dia e a semana
+    if (tipo === "mes" && !isGestao(ctx.user)) return fail("O mês completo é só do gerente (Relatórios).", 403);
     const r = await resumoCaixa(db, ctx.barbeariaId, { id: null, situacao: null, troco_centavos: 0 }, { ini, fim });
     const LIMITE = 1000;
     const itens = r.lancamentos.sort((a, b) => b.em.localeCompare(a.em));
@@ -511,6 +514,7 @@ export async function rotasCaixa(ctx, path, method) {
     const motivo = exigirMotivo(input.motivo);
     const caixa = await caixaDoDia(db, ctx.barbeariaId, data);
     if (!caixa) return fail("Caixa não encontrado.", 404);
+    if (mesFechado(caixa.data)) return fail(MSG_MES_FECHADO, 409);
     if (caixa.situacao !== "fechado") return fail("Esse caixa está aberto.", 409);
     await db.batch([
       db.prepare("UPDATE caixas SET situacao = 'aberto', fechado_por = NULL, fechado_em = NULL WHERE id = ? AND barbearia_id = ? AND situacao = 'fechado'")

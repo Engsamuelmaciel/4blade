@@ -258,7 +258,8 @@ async function rodar(tela) {
     await print("caixa-lancamento-corrigido");
     // lançamentos por período: dia, semana e mês juntam os caixas; a busca filtra
     await page.waitForSelector("[data-teste=lancamentos-periodo] [data-teste=lanc-totais]");
-    for (const k of ["semana", "mes", "dia"]) {
+    assert.equal(await page.locator("[data-periodo-lanc=mes]").count(), 0, "o caixa vê só dia e semana");
+    for (const k of ["semana", "dia"]) {
       await page.click(`[data-periodo-lanc=${k}]`);
       await page.waitForFunction(k2 => document.querySelector(`[data-periodo-lanc=${k2}]`)?.classList.contains("ativo") && document.querySelector("[data-teste=lanc-totais]") && !/Carregando/.test(document.querySelector("[data-teste=lanc-corpo]")?.textContent || ""), k);
       assert.ok(await page.locator("[data-lancamento]").count() >= 1, `há lançamentos em ${k}`);

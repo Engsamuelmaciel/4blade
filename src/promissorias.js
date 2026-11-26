@@ -4,7 +4,7 @@
 import { json, HttpError, readJson, validId, exigirMotivo, auditoriaSe, hojeBrasil } from "./util.js";
 import { isGestao } from "./perfis.js";
 import { exigirBarbearia } from "./usuarios.js";
-import { lerPagamentos, telefoneReal, linkWhatsapp, somarDias } from "./agenda-util.js";
+import { lerPagamentos, telefoneReal, linkWhatsapp, somarDias, mesFechado, MSG_MES_FECHADO } from "./agenda-util.js";
 import { caixaParaLancar, sqlCaixaOk } from "./caixa.js";
 
 const erro = (msg, status = 400) => { throw new HttpError(msg, status); };
@@ -100,7 +100,7 @@ export async function rotasPromissorias(ctx, path, method) {
         id: x.id, data: x.data, cliente: x.cliente, totalCentavos: x.total_centavos, notas: Number(x.notas), situacao: x.situacao,
         motivoEstorno: x.motivo_estorno || null, por: x.usuario,
         pagamentos: (x.formas || "").split(",").filter(Boolean).map(f => ({ forma: f.split(":")[0], valorCentavos: Number(f.split(":")[1]) })),
-        podeEstornar: isGestao(user) && x.situacao === "ativo" && x.caixa_situacao === "aberto"
+        podeEstornar: isGestao(user) && x.situacao === "ativo" && x.caixa_situacao === "aberto" && !mesFechado(x.data)
       }))
     });
   }
@@ -144,10 +144,11 @@ export async function rotasPromissorias(ctx, path, method) {
     const input = await readJson(request);
     if (!validId(input.recebimentoId)) erro("Recebimento inválido.");
     const motivo = exigirMotivo(input.motivo);
-    const r = await db.prepare(`SELECT r.*, cx.situacao AS caixa_situacao FROM promissoria_recebimentos r JOIN caixas cx ON cx.id = r.caixa_id
+    const r = await db.prepare(`SELECT r.*, cx.situacao AS caixa_situacao, cx.data AS caixa_data FROM promissoria_recebimentos r JOIN caixas cx ON cx.id = r.caixa_id
                                 WHERE r.id = ? AND r.barbearia_id = ?`).bind(input.recebimentoId, ctx.barbeariaId).first();
     if (!r) erro("Recebimento não encontrado.", 404);
     if (r.situacao !== "ativo") erro("Esse recebimento já foi estornado.", 409);
+    if (mesFechado(r.caixa_data)) erro(MSG_MES_FECHADO, 409);
     if (r.caixa_situacao !== "aberto") erro("O caixa do dia desse recebimento já foi fechado: reabra o caixa antes.", 409);
     const momento = new Date().toISOString();
     const feito = ["EXISTS (SELECT 1 FROM promissoria_recebimentos WHERE id = ? AND estornado_em = ?)", [r.id, momento]];

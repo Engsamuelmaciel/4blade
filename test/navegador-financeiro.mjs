@@ -160,6 +160,18 @@ async function rodar(tela) {
     await page.locator(".fin-movs").screenshot({ path: join(PRINTS, `${tela.nome}-${String(++n).padStart(2, "0")}-movimentos-entradas.png`) });
     console.log(`  print: docs/prints/financeiro/${tela.nome}-${String(n).padStart(2, "0")}-movimentos-entradas.png`);
 
+    passo("Lançamentos: mês completo; mês passado = só consulta (sem Corrigir) e com aviso");
+    await aba("lancamentos");
+    await page.waitForSelector("[data-teste=fin-lancamentos] [data-teste=lanc-totais]");
+    assert.equal(await page.locator("[data-teste=fin-lancamentos] [data-periodo-lanc]").evaluateAll(b => b.every(x => x.closest("[hidden]"))), true, "só o mês: sem escolha de período");
+    assert.ok(await page.locator("[data-teste=fin-lancamentos] [data-lancamento]").count() >= 5, "lançamentos do mês aparecem");
+    assert.equal(await page.locator("[data-teste=mes-fechado]").count(), 0, "mês atual não está fechado");
+    await print("lancamentos-mes");
+    await page.click("[data-teste=fin-lancamentos] .navega-data button:has-text('‹')");
+    await page.waitForSelector("[data-teste=mes-fechado]");
+    assert.equal(await page.locator("[data-teste=fin-lancamentos] button:has-text('Corrigir')").count(), 0, "mês fechado: sem editar");
+    await aba("resumo");
+
     passo("tabela do gráfico e tema escuro");
     await aba("resumo");
     await page.click(".fin-tabela summary");

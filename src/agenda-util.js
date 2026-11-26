@@ -1,5 +1,9 @@
 // Apoio da agenda: horas, regras de funcionamento/horário de trabalho/datas fechadas e link do WhatsApp.
-import { HttpError, validDate } from "./util.js";
+import { HttpError, validDate, hojeBrasil } from "./util.js";
+
+// Mês fechado: tudo de um mês que já passou fica só para consulta (nada é corrigido, cancelado nem reaberto).
+export const MSG_MES_FECHADO = "Esse mês já foi fechado: os lançamentos de meses anteriores ficam só para consulta.";
+export const mesFechado = (dataDia, hoje = hojeBrasil()) => String(dataDia).slice(0, 7) < hoje.slice(0, 7);
 
 const erro = (msg, status = 400) => { throw new HttpError(msg, status); };
 
