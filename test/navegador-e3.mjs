@@ -326,6 +326,15 @@ async function rodar(tela) {
     assert.match(await page.textContent('[data-produto-pdv="Shampoo Vitrine Novo"]'), /Estoque: 4/);
     assert.match(await page.textContent('[data-produto-pdv="Shampoo Vitrine Novo"]'), /40,00/);
     await print("caixa-novo-produto-na-vitrine");
+    await vitrine(page, "servicos");
+    await page.click("[data-teste=novo-servico-pdv]");
+    await page.fill("dialog[open] [name=nome]", "Sobrancelha Vitrine");
+    await page.fill("dialog[open] [name=preco]", "20,00");
+    await print("caixa-novo-servico-janela");
+    await page.click("dialog[open] button:has-text('Cadastrar serviço')");
+    await page.waitForSelector('[data-servico-pdv="Sobrancelha Vitrine"]');
+    assert.match(await page.textContent('[data-servico-pdv="Sobrancelha Vitrine"]'), /20,00/);
+    await print("caixa-novo-servico-na-vitrine");
 
     await page.evaluate(() => { location.hash = "#/caixa-historico"; });
     await page.waitForSelector(`[data-caixa-dia="${HOJE}"]`);

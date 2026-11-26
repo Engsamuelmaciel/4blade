@@ -365,6 +365,14 @@ async function rodar(tela) {
     await page.fill('input[name^="valor-prod-"]', "40,00");
     await page.waitForSelector("[data-teste=total-venda]:has-text('72,00')");   // 2 × 40,00 − 10%
     assert.ok(await page.locator('[data-produto-final="Pomada"] .alterado:visible').count(), "valor diferente da tabela destacado");
+    {
+      const bt = page.locator("[data-teste=carrinho] [data-teste=finalizar]");
+      assert.equal(await bt.isDisabled(), false, "com itens, Finalizar venda está ativo");
+      const antes = await bt.evaluate(e => getComputedStyle(e).backgroundColor);
+      await bt.hover();
+      await page.waitForTimeout(500);
+      assert.equal(await bt.evaluate(e => getComputedStyle(e).backgroundColor), antes, "Finalizar venda ativo não muda de cor com o mouse");
+    }
     await page.fill('input[name^="valor-prod-"]', "45,00");
     await page.waitForSelector("[data-teste=total-venda]:has-text('81,00')");
     await page.click("[data-teste=carrinho] button[type=submit]");

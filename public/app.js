@@ -3452,6 +3452,25 @@ function janelaAbrirCaixa(recarregar) {
 }
 
 // Sangria e suprimento num botão só (27/11/2026): dois cartões grandes e coloridos — vermelho (sai dinheiro) e verde (entra dinheiro).
+// Novo serviço pela vitrine do caixa: o mesmo cadastro de Serviços (nome, preço, duração), numa janela.
+function janelaNovoServicoCaixa(depois) {
+  return abrirJanela("Novo serviço", [
+    campo("Nome do serviço", { name: "nome", required: true, maxlength: "80" }),
+    el("div", { class: "lado-a-lado" },
+      campo("Preço (R$)", { name: "preco", required: true, inputmode: "decimal", placeholder: "40,00" }),
+      campo("Duração (min)", { name: "duracao", required: true, type: "number", min: "5", max: "480", step: "5", inputmode: "numeric", value: "30" }))
+  ], {
+    ok: "Cadastrar serviço",
+    aoConfirmar: async f => {
+      const preco = paraCentavos(f.preco.value);
+      if (preco === null) throw new Error("Preço inválido. Exemplo: 40,00");
+      await api("/servicos", { metodo: "POST", corpo: { nome: f.nome.value, precoCentavos: preco, duracaoMin: Number(f.duracao.value) } });
+      avisar("Serviço cadastrado.");
+      await depois();
+    }
+  });
+}
+
 // Novo produto pela vitrine do caixa: é a MESMA compra de produto das Despesas (cria o produto, entra no estoque e lança a despesa).
 async function janelaNovoProdutoCaixa(depois) {
   const { produtos } = await api("/estoque");
@@ -3927,15 +3946,19 @@ async function frenteCaixa(c, recarregar) {
           el("div", { class: "fc-lista" }, pagos.map(ticket))) : null);
     } else if (v === "servicos") {
       const vis = filtradosServ();
-      corpo = el("div", { class: "fc-grade" }, ...(vis.length ? vis.map(s => el("button", { type: "button", class: "fc-tile-item", "data-servico-pdv": s.nome, onclick: () => addServico(s) },
+      const grade = el("div", { class: "fc-grade" }, ...(vis.length ? vis.map(s => el("button", { type: "button", class: "fc-tile-item", "data-servico-pdv": s.nome, onclick: () => addServico(s) },
         el("strong", { text: s.nome }), el("span", { class: "preco", text: reais(s.precoCentavos) }), el("small", { text: `${s.duracaoMin} min` }))) : [el("p", { class: "vazio", text: "Nenhum serviço encontrado." })]));
+      corpo = el("div", { class: "fc-vit-corpo" }, grade,
+        gestao() ? botao("+ Novo serviço", () => janelaNovoServicoCaixa(recarregar), "dourado") : null);
+      corpo.lastElementChild?.setAttribute("data-teste", "novo-servico-pdv");
     } else {
       const vis = filtradosProd();
-      corpo = el("div", { class: "fc-grade" }, ...(vis.length ? vis.map(p => el("button", { type: "button", class: "fc-tile-item produto-tile", "data-produto-pdv": p.nome, disabled: saldoDe(p) < 1 || null, onclick: () => addProduto(p) },
+      const grade = el("div", { class: "fc-grade" }, ...(vis.length ? vis.map(p => el("button", { type: "button", class: "fc-tile-item produto-tile", "data-produto-pdv": p.nome, disabled: saldoDe(p) < 1 || null, onclick: () => addProduto(p) },
         el("strong", { text: p.nome }), el("span", { class: "preco", text: reais(p.precoCentavos) }), p.saldo !== undefined ? el("small", { text: `Estoque: ${p.saldo}` }) : null))
-        : [el("p", { class: "vazio", text: produtos.length ? "Nenhum produto encontrado." : "Nenhum produto com estoque para vender." })]),
-        gestao() ? botao("+ Novo produto", () => janelaNovoProdutoCaixa(recarregar), "pequeno novo-produto-pdv") : null);
-      corpo.querySelector(".novo-produto-pdv")?.setAttribute("data-teste", "novo-produto-pdv");
+        : [el("p", { class: "vazio", text: produtos.length ? "Nenhum produto encontrado." : "Nenhum produto com estoque para vender." })]));
+      corpo = el("div", { class: "fc-vit-corpo" }, grade,
+        gestao() ? botao("+ Novo produto", () => janelaNovoProdutoCaixa(recarregar), "dourado") : null);
+      corpo.lastElementChild?.setAttribute("data-teste", "novo-produto-pdv");
     }
     vitrineEl.replaceChildren(
       el("h3", { class: "fc-titulo", text: "Vitrine" }),
