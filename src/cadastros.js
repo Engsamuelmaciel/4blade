@@ -182,6 +182,8 @@ async function rotasCadastro(ctx, nome, def, path, method) {
   if (path === base && method === "POST") {
     // O barbeiro também cadastra cliente novo (ao marcar um horário), mas só cria: não lista, não edita, não desativa.
     if (nome === "clientes" && ctx.user.perfil === "barbeiro") exigirBarbearia(ctx);
+    // O caixa também CADASTRA produto e serviço novos (27/11/2026, pela vitrine do caixa), mas só cria: não edita, não desativa.
+    else if ((nome === "produtos" || nome === "servicos") && ctx.user.perfil === "caixa") exigirBarbearia(ctx);
     else exigirEdicao(ctx, nome);
     const input = await readJson(request);
     const valores = {};

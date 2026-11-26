@@ -374,6 +374,7 @@ async function rotasContas(ctx, path, method) {
         const usoInterno = Boolean(p.uso_interno);
         // Preço de venda atualizado junto (só produto de venda): fica registrado no histórico de auditoria.
         const mudaPreco = !usoInterno && Number.isInteger(precoIn) && precoIn > 0 && precoIn !== p.preco_centavos;
+        if (mudaPreco && !isGestao(user)) erro("Só o gerente muda o preço de venda de um produto já cadastrado.", 403);
         est = { p, q, c: Math.round(input.valorCentavos / q), mov: crypto.randomUUID(), usoInterno, preco: mudaPreco ? precoIn : p.preco_centavos, mudaPreco, precoAntes: p.preco_centavos };
       }
       if (semDescricao) descricao = `Compra: ${est.p.nome}`.slice(0, 100);
@@ -698,7 +699,8 @@ export async function rotasGestao(ctx, path, method) {
     if (method !== "GET") return fail("Rota não encontrada", 404);
     return raiz === "desempenho" ? desempenho(ctx) : extrato(ctx);
   }
-  exigirGestao(ctx);
+  // O caixa LANÇA despesa nova (27/11/2026), mas só isso: não vê a lista, não paga, não edita, não cancela.
+  if (!(ctx.user.perfil === "caixa" && raiz === "contas" && path === "/contas" && method === "POST")) exigirGestao(ctx);
   if (raiz === "painel" && method === "GET" && path === "/painel") return painel(ctx);
   const r = (raiz === "comissoes" && await rotasComissoes(ctx, path, method)) ||
     (raiz === "vales" && await rotasVales(ctx, path, method)) ||

@@ -52,8 +52,8 @@ describe("cada perfil recusado nas rotas que não pode", () => {
       ["/api/clientes", { nome: "Cliente X", telefone: "11 90000-0001", aceiteLgpd: true }],
       ["/api/modelos-mensagem/alterar", { tipo: "lembrete", texto: "Oi {cliente}, até {data}!" }]
     ];
-    // caixa (recepção) cadastra cliente e edita mensagens; serviço e produto continuam só com a gestão
-    const recepcao = ["/api/clientes", "/api/modelos-mensagem/alterar"];
+    // caixa (recepção) cadastra cliente, serviço e produto novos (27/11/2026) e edita mensagens; só a gestão EDITA serviço/produto (matriz acima)
+    const recepcao = ["/api/clientes", "/api/modelos-mensagem/alterar", "/api/servicos", "/api/produtos"];
     for (const [caminho, corpo] of criacoes) {
       for (const perfil of ["plataforma", "barbeiro", "caixa"]) {
         if (perfil === "caixa" && recepcao.includes(caminho)) continue;

@@ -612,7 +612,8 @@ async function dadosEditor(ctx, p) {
 
 export async function rotasPagina(ctx, path, method) {
   if (path !== "/pagina" && !path.startsWith("/pagina/")) return null;
-  if (!ctx.barbeariaId || !isGestao(ctx.user)) erro("Só o dono e o gerente editam a página.", 403);
+  // Dono, gerente e caixa (a recepção) cuidam da página e da divulgação (27/11/2026); o barbeiro não.
+  if (!ctx.barbeariaId || !(isGestao(ctx.user) || ctx.user.perfil === "caixa")) erro("Só o dono, o gerente e o caixa editam a página.", 403);
   const { db } = ctx;
 
   if (path === "/pagina" && method === "GET") {

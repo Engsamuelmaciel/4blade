@@ -147,7 +147,8 @@ describe("regras e permissões da gestão", () => {
         "/api/comissoes/fechamentos", "/api/contador/envios", "/api/exportar/clientes", "/api/configuracoes/contador"]) {
         assert.equal((await get(rota, t)).status, 403, rota);
       }
-      assert.equal((await post("/api/contas", t, { descricao: "x y", categoria: "luz", valorCentavos: 1, vencimento: "2026-11-10" })).status, 403);
+      // lançar despesa nova: só o barbeiro é barrado (o caixa lança; ver test/caixa-libera.test.js)
+      if (t === A.token) assert.equal((await post("/api/contas", t, { descricao: "x y", categoria: "luz", valorCentavos: 1, vencimento: "2026-11-10" })).status, 403);
     }
     assert.equal((await get("/api/desempenho", cx.token)).status, 403, "caixa não tem desempenho");
     assert.equal((await get("/api/extrato?mes=2026-11", cx.token)).status, 403);

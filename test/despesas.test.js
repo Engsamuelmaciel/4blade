@@ -102,7 +102,9 @@ describe("despesas: forma de pagamento e parcelas", () => {
     assert.equal((await amb.post("/api/contas/alterar", outra.ger.token, { id: c.id, forma: "pix" })).status, 404);
     assert.equal((await amb.post("/api/contas/cancelar", outra.ger.token, { id: c.id, motivo: "Tentativa", todasParcelas: true })).status, 404);
     assert.ok(!(await amb.get("/api/contas", outra.ger.token)).dados.contas.some(x => x.grupoId === c.grupoId));
-    // caixa não acessa despesas
-    assert.equal((await amb.post("/api/contas", amb.cx.token, { descricao: "X", categoria: "outros", valorCentavos: 100, vencimento: HOJE })).status, 403);
+    // caixa só LANÇA despesa (27/11/2026); não vê a lista, não paga e não cancela
+    assert.equal((await amb.post("/api/contas", amb.cx.token, { descricao: "Compra do caixa", categoria: "outros", valorCentavos: 100, vencimento: HOJE })).status, 201);
+    assert.equal((await amb.get("/api/contas", amb.cx.token)).status, 403);
+    assert.equal((await amb.post("/api/contas/pagar", amb.cx.token, { id: c.id, forma: "pix" })).status, 403);
   });
 });

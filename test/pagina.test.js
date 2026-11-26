@@ -58,11 +58,11 @@ describe("página da barbearia", () => {
     assert.equal((await post("/api/pagina/slug", outra.ger.token, { slug: "navalhaeco" })).status, 409);
   });
 
-  test("quem edita: só dono e gerente", async () => {
+  test("quem edita: dono, gerente e caixa (barbeiro não)", async () => {
     const amb = await cenario("pgc");
     assert.equal((await amb.get("/api/pagina", amb.b.prop)).status, 200);
     assert.equal((await amb.get("/api/pagina", amb.barb.token)).status, 403);
-    assert.equal((await amb.get("/api/pagina", amb.cx.token)).status, 403);
+    assert.equal((await amb.get("/api/pagina", amb.cx.token)).status, 200, "caixa cuida da página (27/11/2026)");
     assert.equal((await amb.post("/api/pagina/publicar", amb.barb.token, { publicar: true })).status, 403);
   });
 

@@ -3471,21 +3471,25 @@ function janelaNovoServicoCaixa(depois) {
   });
 }
 
-// Novo produto pela vitrine do caixa: é a MESMA compra de produto das Despesas (cria o produto, entra no estoque e lança a despesa).
-async function janelaNovoProdutoCaixa(depois) {
-  const { produtos } = await api("/estoque");
-  const form = formNovaDespesa(produtos.filter(p => p.ativo), { produtoNovo: true, aoSalvar: async () => { janela.close(); await depois(); } });
-  janela.replaceChildren(el("div", { class: "janela-form", "data-teste": "janela-novo-produto" },
-    el("h3", { text: "Novo produto" }),
-    el("p", { class: "suave", text: "Cadastra o produto, põe no estoque e lança a compra em Despesas — tudo de uma vez." }),
+// Despesa lançada de dentro do caixa (gerente e caixa). Com `produtoNovo`, já vem como compra de produto novo (entra no estoque).
+// O caixa não vê a lista de despesas: só lança. Para escolher um produto já cadastrado, usa a lista de produtos (que o caixa já enxerga).
+async function janelaDespesaCaixa(depois, { produtoNovo = false } = {}) {
+  const itens = gestao()
+    ? (await api("/estoque")).produtos.filter(p => p.ativo)
+    : (await api("/produtos")).produtos.filter(p => !p.usoInterno && (p.disponivel ?? p.ativo)).map(p => ({ ...p, saldo: p.saldo ?? 0 }));
+  const form = formNovaDespesa(itens, { produtoNovo, aoSalvar: async () => { janela.close(); await depois(); } });
+  janela.replaceChildren(el("div", { class: "janela-form", "data-teste": produtoNovo ? "janela-novo-produto" : "janela-despesa-caixa" },
+    el("h3", { text: produtoNovo ? "Novo produto" : "Lançar despesa" }),
+    el("p", { class: "suave", text: produtoNovo ? "Cadastra o produto, põe no estoque e lança a compra em Despesas — tudo de uma vez." : "Registra uma despesa da barbearia. Se for compra de produto, marque para entrar no estoque." }),
     form,
     el("div", { class: "janela-botoes um" }, el("button", { type: "button", class: "botao", text: "Fechar", onclick: () => janela.close() }))));
   aplicarMascaras(janela);
   janela.showModal();
 }
+const janelaNovoProdutoCaixa = depois => janelaDespesaCaixa(depois, { produtoNovo: true });
 
 function janelaMovimentacoes(recarregar, naGavetaCentavos = null) {
-  const abrir = tipo => { janela.close(); setTimeout(() => janelaMovimento(tipo, recarregar)); };
+  const abrir = tipo => { janela.close(); setTimeout(() => (tipo === "despesa" ? janelaDespesaCaixa(recarregar) : janelaMovimento(tipo, recarregar))); };
   const cartao = (tipo, seta, titulo, dica, exemplo) => el("button", { type: "button", class: `mov-cartao mov-${tipo}`, "data-mov": tipo, onclick: () => abrir(tipo) },
     el("span", { class: "mov-icone", "aria-hidden": "true" }, icone(seta)),
     el("strong", { class: "mov-titulo", text: titulo }),
@@ -3496,7 +3500,8 @@ function janelaMovimentacoes(recarregar, naGavetaCentavos = null) {
     el("p", { class: "suave centro", text: "O que aconteceu com o dinheiro da gaveta?" }),
     el("div", { class: "mov-escolha" },
       cartao("sangria", "setaBaixo", "Sangria", "Saiu dinheiro da gaveta", "Ex.: depósito no banco, pagamento em dinheiro"),
-      cartao("suprimento", "setaCima", "Suprimento", "Entrou dinheiro na gaveta", "Ex.: troco extra, reforço do caixa"))
+      cartao("suprimento", "setaCima", "Suprimento", "Entrou dinheiro na gaveta", "Ex.: troco extra, reforço do caixa"),
+      cartao("despesa", "contas", "Lançar despesa", "Conta paga ou a pagar da barbearia", "Ex.: compra de produtos, luz, material"))
   ].filter(Boolean), { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
 }
 
@@ -3955,7 +3960,7 @@ async function frenteCaixa(c, recarregar) {
       const grade = el("div", { class: "fc-grade" }, ...(vis.length ? vis.map(s => el("button", { type: "button", class: "fc-tile-item", "data-servico-pdv": s.nome, onclick: () => addServico(s) },
         el("strong", { text: s.nome }), el("span", { class: "preco", text: reais(s.precoCentavos) }), el("small", { text: `${s.duracaoMin} min` }))) : [el("p", { class: "vazio", text: "Nenhum serviço encontrado." })]));
       corpo = el("div", { class: "fc-vit-corpo" }, grade,
-        gestao() ? botao("+ Novo serviço", () => janelaNovoServicoCaixa(recarregar), "dourado") : null);
+        (gestao() || ehCaixa()) ? botao("+ Novo serviço", () => janelaNovoServicoCaixa(recarregar), "dourado") : null);
       corpo.lastElementChild?.setAttribute("data-teste", "novo-servico-pdv");
     } else {
       const vis = filtradosProd();
@@ -3963,7 +3968,7 @@ async function frenteCaixa(c, recarregar) {
         el("strong", { text: p.nome }), el("span", { class: "preco", text: reais(p.precoCentavos) }), p.saldo !== undefined ? el("small", { text: `Estoque: ${p.saldo}` }) : null))
         : [el("p", { class: "vazio", text: produtos.length ? "Nenhum produto encontrado." : "Nenhum produto com estoque para vender." })]));
       corpo = el("div", { class: "fc-vit-corpo" }, grade,
-        gestao() ? botao("+ Novo produto", () => janelaNovoProdutoCaixa(recarregar), "dourado") : null);
+        (gestao() || ehCaixa()) ? botao("+ Novo produto", () => janelaNovoProdutoCaixa(recarregar), "dourado") : null);
       corpo.lastElementChild?.setAttribute("data-teste", "novo-produto-pdv");
     }
     vitrineEl.replaceChildren(
@@ -7663,7 +7668,7 @@ function gruposDoMenu() {
 }
 function gruposDoPerfil(p) {
   if (p === "caixa") return [
-    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["visao-dia", "Visão do dia", "painel"], ["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["notas", "Notas em aberto", "contas"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"]] },
+    { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["visao-dia", "Visão do dia", "painel"], ["caixa", "Caixa", "caixa"], ["agenda", "Agenda", "agenda"], ["notas", "Notas em aberto", "contas"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"], ["minha-pagina", "Minha página", "loja"], ["divulgacao", "Divulgação", "megafone"]] },
     { id: "catalogo", titulo: "Catálogo", icone: "produtos", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos", "produtos"]] }
   ];
   if (p === "barbeiro") return [
@@ -7845,9 +7850,9 @@ const ROTAS = {
   produtos: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaProdutos },
   clientes: { perfis: ["proprietario", "gerente", "caixa"], tela: () => telaClientes() },
   mensagens: { perfis: ["proprietario", "gerente", "caixa"], tela: telaMensagens },
-  "minha-pagina": { perfis: ["proprietario", "gerente"], tela: telaMinhaPagina },
-  divulgacao: { perfis: ["proprietario", "gerente"], tela: telaFlyers },
-  flyers: { perfis: ["proprietario", "gerente"], tela: () => location.replace("#/divulgacao") },
+  "minha-pagina": { perfis: ["proprietario", "gerente", "caixa"], tela: telaMinhaPagina },
+  divulgacao: { perfis: ["proprietario", "gerente", "caixa"], tela: telaFlyers },
+  flyers: { perfis: ["proprietario", "gerente", "caixa"], tela: () => location.replace("#/divulgacao") },
   agenda: { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgenda },
   "agenda-lote": { perfis: ["proprietario", "gerente", "barbeiro", "caixa"], tela: telaAgendaLote },
   "minha-producao": { perfis: ["barbeiro"], tela: telaMinhaProducao },

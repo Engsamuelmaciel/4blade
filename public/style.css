@@ -2674,3 +2674,7 @@ dialog .mov-cartao[data-caixa-acao] { width: 100%; }
 .fc-vit-corpo > .botao.dourado { width: 100%; min-height: 48px; }
 /* Finalizar venda: nunca troca o fundo com mouse/toque (antes o .botao:hover deixava branco com texto branco) */
 .fc-finalizar:hover, .fc-finalizar:focus, .fc-finalizar:focus-visible, .fc-finalizar:active { background: var(--dourado); color: var(--sobre-dourado, #111317); border-color: transparent; }
+
+/* Movimentações: terceiro cartão "Lançar despesa" (ocupa a largura toda) */
+.mov-escolha .mov-despesa { grid-column: 1 / -1; background: var(--cartao); color: var(--texto, inherit); border-color: var(--linha); }
+.mov-despesa .mov-icone { background: var(--botao-principal); color: var(--botao-principal-texto); }

@@ -123,9 +123,11 @@ describe("material de uso e despesa com estoque", () => {
     assert.equal(m.dados.estoque.precoVendaCentavos, null);
     assert.equal(m.dados.estoque.margemBp, null);
     assert.equal((await get("/api/estoque", ger.token)).dados.produtos.find(x => x.nome === "Lâmina nova").usoInterno, true);
-    // barbeiro e caixa não lançam despesa
-    for (const u of [barb, cx]) assert.equal((await post("/api/contas", u.token, { categoria: "fornecedor", valorCentavos: 1000, vencimento: HOJE,
+    // barbeiro não lança despesa; o caixa lança (27/11/2026)
+    assert.equal((await post("/api/contas", barb.token, { categoria: "fornecedor", valorCentavos: 1000, vencimento: HOJE,
       estoque: { quantidade: 1, novo: { nome: "Tentativa" }, precoVendaCentavos: 100 } })).status, 403);
+    assert.equal((await post("/api/contas", cx.token, { categoria: "fornecedor", valorCentavos: 1000, vencimento: HOJE,
+      estoque: { quantidade: 1, novo: { nome: "Do Caixa" }, precoVendaCentavos: 100 } })).status, 201);
     // cancelar a despesa tira o que entrou do estoque (o produto continua cadastrado)
     assert.equal((await post("/api/contas/cancelar", ger.token, { id: c.dados.conta.id, motivo: "Lançada errado" })).status, 200);
     assert.equal((await get("/api/estoque", ger.token)).dados.produtos.find(x => x.nome === "Pomada modeladora").saldo, 0);
