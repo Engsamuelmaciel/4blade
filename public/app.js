@@ -2482,7 +2482,7 @@ function seletorCliente({ id, preSelecionado = null, aoMudar = () => {}, aoDigit
     }, 250);
   });
   desenhar();
-  return { el: el("div", { class: "seletor-cliente" }, blocoBusca, escolhidoEl), escolhido: () => escolhido };
+  return { el: el("div", { class: "seletor-cliente" }, blocoBusca, escolhidoEl), escolhido: () => escolhido, escolher: c => { escolhido = c; resultados.replaceChildren(); desenhar(); } };
 }
 
 // Painel de disponibilidade do dia: situação do profissional, ocupados e horários livres (tocar preenche a hora).
@@ -2556,6 +2556,39 @@ function janelaMarcar(ag, pre = {}) {
     semResultado: null,   // sem ninguém na lista: o aviso "Cliente novo" abaixo já explica
     aoDigitar: t => { digitado = t; atualizarNovo(); }, aoMudar: () => { digitado = seletor?.escolhido() ? "" : digitado; atualizarNovo(); } });
   tel.querySelector("input").addEventListener("input", () => { lgpd.hidden = tel.querySelector("input").value.replace(/\D/g, "").length < 10; });
+  // Botão "Cadastrar cliente novo" (27/11/2026): cadastro completo (nome, apelido, WhatsApp, LGPD) sem sair do horário; ao salvar, o cliente já fica escolhido.
+  const cc = {
+    nome: campo("Nome", { name: "ccNome", autocomplete: "off" }),
+    apelido: campo("Apelido (opcional)", { name: "ccApelido", maxlength: "40", autocomplete: "off", placeholder: "Como ele é chamado na barbearia" }),
+    tel: campo("WhatsApp", { name: "ccTel", inputmode: "tel", autocomplete: "off", placeholder: "(11) 91234-5678" }),
+    lgpd: caixaMarcar("O cliente aceita que o telefone seja usado para o atendimento (LGPD)", { name: "ccLgpd" })
+  };
+  const ccErro = el("p", { class: "erro", role: "alert", hidden: true });
+  const painelCad = el("div", { class: "cliente-cadastro", "data-teste": "cli-cadastro", hidden: true },
+    el("h5", { class: "form-secao-titulo", text: "Novo cadastro de cliente" }), cc.nome, cc.apelido, cc.tel, cc.lgpd, ccErro,
+    el("div", { class: "item-acoes" },
+      botao("Cadastrar e usar neste horário", async () => {
+        ccErro.hidden = true;
+        const nome = cc.nome.querySelector("input").value.trim();
+        const telefone = cc.tel.querySelector("input").value;
+        const aceite = cc.lgpd.querySelector("input").checked;
+        try {
+          if (nome.length < 2) throw new Error("Informe o nome do cliente.");
+          if (!telefone.replace(/\D/g, "").length) throw new Error("Informe o WhatsApp (DDD + número) para cadastrar.");
+          if (!aceite) throw new Error("Confirme o aceite do cliente (LGPD) para guardar o telefone.");
+          const r = await api("/clientes", { metodo: "POST", corpo: { nome, apelido: cc.apelido.querySelector("input").value.trim(), telefone, observacao: null, aceiteLgpd: true } });
+          seletor.escolher(r.cliente);
+          painelCad.hidden = true; botaoCad.hidden = false; seletor.el.hidden = false; atualizarNovo();
+          avisar(`${r.cliente.nome} cadastrado.`);
+        } catch (e) { ccErro.textContent = e.message; ccErro.hidden = false; }
+      }, "pequeno principal"),
+      botao("Voltar", () => { painelCad.hidden = true; botaoCad.hidden = false; seletor.el.hidden = false; atualizarNovo(); }, "pequeno")));
+  painelCad.addEventListener("input", () => { ccErro.hidden = true; });
+  const botaoCad = botao("+ Cadastrar cliente novo", () => {
+    painelCad.hidden = false; botaoCad.hidden = true; seletor.el.hidden = true; blocoNovo.hidden = true;
+    cc.nome.querySelector("input").value = digitado; cc.nome.querySelector("input").focus();
+  }, "pequeno");
+  botaoCad.dataset.teste = "cli-cadastrar";
   const disp = painelDisponibilidade();
 
   setTimeout(() => {
@@ -2596,7 +2629,7 @@ function janelaMarcar(ag, pre = {}) {
       disp.el),
     el("fieldset", { class: "servicos-escolha form-secao" }, el("legend", { class: "form-secao-titulo", text: "Serviços" }),
       servicos.map(linhaServico)),
-    el("fieldset", { class: "servicos-escolha bloco-cliente form-secao" }, el("legend", { class: "form-secao-titulo", text: "Cliente" }), seletor.el, blocoNovo),
+    el("fieldset", { class: "servicos-escolha bloco-cliente form-secao" }, el("legend", { class: "form-secao-titulo", text: "Cliente" }), seletor.el, blocoNovo, botaoCad, painelCad),
     el("section", { class: "form-secao" }, el("h4", { class: "form-secao-titulo", text: "Detalhes" }),
       campo("Observação", { name: "obs", maxlength: "300", autocomplete: "off", placeholder: "Opcional" }),
       el("div", { class: "lado-a-lado" },

@@ -201,6 +201,24 @@ async function rodar(tela) {
     await page.click("[data-teste=alerta-aceite] button:has-text('Não marcar')");
     await page.click("dialog[open] button:has-text('Cancelar')");
 
+    passo("barbeiro usa o botão \"Cadastrar cliente novo\" no Novo horário: cadastro completo e o cliente já fica escolhido");
+    await page.click("text=+ Novo horário");
+    await page.waitForSelector("dialog[open] [data-teste=cli-cadastrar]");
+    await page.click("dialog[open] [data-teste=cli-cadastrar]");
+    await page.waitForSelector("dialog[open] [data-teste=cli-cadastro]:visible");
+    assert.equal(await page.locator("dialog[open] #cli-busca").isVisible(), false, "enquanto cadastra, só um campo de cliente fica aberto");
+    await page.click("dialog[open] button:has-text('Cadastrar e usar neste horário')");
+    await page.waitForSelector("dialog[open] [data-teste=cli-cadastro] .erro:visible");   // sem nome/telefone/LGPD: explica o que falta
+    await page.fill("dialog[open] [name=ccNome]", "Cadastro Completo Fictício");
+    await page.fill("dialog[open] [name=ccApelido]", "Completo");
+    await page.fill("dialog[open] [name=ccTel]", "(11) 95555-0001");
+    await page.check("dialog[open] [name=ccLgpd]");
+    await print("barbeiro-cadastrar-cliente-novo");
+    await page.click("dialog[open] button:has-text('Cadastrar e usar neste horário')");
+    await page.waitForSelector("dialog[open] [data-teste=cli-escolhido]:visible");
+    assert.match(await page.textContent("dialog[open] [data-teste=cli-escolhido]"), /Cadastro Completo Fictício/);
+    await page.click("dialog[open] button:has-text('Cancelar')");
+
     passo("barbeiro bloqueia um horário");
     await page.click(".acoes-agenda button:has-text('Bloquear')");
     await page.fill("[name=hIni]", "15:00");

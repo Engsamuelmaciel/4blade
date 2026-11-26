@@ -57,6 +57,7 @@ describe("cada perfil recusado nas rotas que não pode", () => {
     for (const [caminho, corpo] of criacoes) {
       for (const perfil of ["plataforma", "barbeiro", "caixa"]) {
         if (perfil === "caixa" && recepcao.includes(caminho)) continue;
+        if (perfil === "barbeiro" && caminho === "/api/clientes") continue;   // 27/11/2026: o barbeiro cadastra cliente novo ao marcar horário (só cria; ver test/cliente-barbeiro.test.js)
         assert.equal((await post(caminho, tokens[perfil], corpo)).status, 403, `${perfil} em ${caminho}`);
       }
     }
