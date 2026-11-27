@@ -2678,3 +2678,7 @@ dialog .mov-cartao[data-caixa-acao] { width: 100%; }
 /* Movimentações: terceiro cartão "Lançar despesa" (ocupa a largura toda) */
 .mov-escolha .mov-despesa { grid-column: 1 / -1; background: var(--cartao); color: var(--texto, inherit); border-color: var(--linha); }
 .mov-despesa .mov-icone { background: var(--botao-principal); color: var(--botao-principal-texto); }
+
+/* Novo horário: dois atalhos lado a lado (Bloquear este horário / Marcar vários) */
+.link-chip-linha { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+button.link-chip { border: 0; cursor: pointer; font-family: inherit; color: inherit; background: var(--neutro, #eee); }

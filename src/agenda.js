@@ -825,23 +825,39 @@ async function registrarMensagem(ctx) {
 async function bloquear(ctx) {
   const { db, user, request } = ctx;
   const input = await readJson(request);
-  const prof = await profissional(ctx, input.barbeiroId);
+  // "todos": bloqueia a agenda de TODOS os profissionais ativos de uma vez (só gestão e caixa); senão, de um só.
+  const paraTodos = input.barbeiroId === "todos";
+  if (paraTodos && !veTodasAgendas(user)) erro("Só o gerente, o dono e o caixa bloqueiam a agenda de todos.", 403);
+  const profs = paraTodos
+    ? (await db.prepare("SELECT id, nome FROM usuarios WHERE barbearia_id = ? AND ativo = 1 AND perfil IN ('proprietario','gerente','barbeiro') ORDER BY nome").bind(ctx.barbeariaId).all()).results
+    : [await profissional(ctx, input.barbeiroId)];
+  if (!profs.length) erro("Não há profissional ativo para bloquear.");
   const inicio = exigirMomento(input.inicio, "Início");
   const fim = exigirMomento(input.fim, "Fim");
   if (fim <= inicio) erro("O fim precisa ser depois do início.");
   if (fim.slice(0, 10) > somarDias(inicio.slice(0, 10), 60)) erro("Bloqueio de no máximo 60 dias.");
   const motivo = textoOpcional(input.motivo, 120);
   if (motivo === false) erro("Motivo muito longo (até 120 letras).");
-  const marcados = await db.prepare(`SELECT COUNT(*) AS n FROM agendamentos WHERE barbearia_id = ? AND barbeiro_id = ? AND situacao = 'agendado' AND inicio < ? AND fim > ?`)
-    .bind(ctx.barbeariaId, prof.id, fim, inicio).first();
-  if (Number(marcados.n) > 0) erro(`Há ${marcados.n} atendimento(s) marcado(s) nesse período. Remarque ou cancele antes de bloquear.`, 409);
-  const id = crypto.randomUUID();
-  await db.batch([
+  // Atendimento já marcado no período: precisa remarcar/cancelar antes (para todos, lista quem tem).
+  const comMarcados = [];
+  for (const p of profs) {
+    const marcados = await db.prepare(`SELECT COUNT(*) AS n FROM agendamentos WHERE barbearia_id = ? AND barbeiro_id = ? AND situacao = 'agendado' AND inicio < ? AND fim > ?`)
+      .bind(ctx.barbeariaId, p.id, fim, inicio).first();
+    if (Number(marcados.n) > 0) comMarcados.push({ nome: p.nome, n: Number(marcados.n) });
+  }
+  if (comMarcados.length) {
+    erro(paraTodos
+      ? `Há atendimento marcado nesse período para: ${comMarcados.map(c => `${c.nome} (${c.n})`).join(", ")}. Remarque ou cancele antes de bloquear todos.`
+      : `Há ${comMarcados[0].n} atendimento(s) marcado(s) nesse período. Remarque ou cancele antes de bloquear.`, 409);
+  }
+  const lote = profs.map(p => ({ id: crypto.randomUUID(), p }));
+  await db.batch(lote.flatMap(({ id, p }) => [
     db.prepare("INSERT INTO bloqueios (id, barbearia_id, barbeiro_id, inicio, fim, motivo, criado_por) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .bind(id, ctx.barbeariaId, prof.id, inicio, fim, motivo, user.id),
-    auditoria(ctx, "bloqueio_criado", id, { depois: { barbeiro: prof.id, inicio, fim, motivo } })
-  ]);
-  return json({ bloqueio: { id, barbeiroId: prof.id, inicio, fim, motivo } }, 201);
+      .bind(id, ctx.barbeariaId, p.id, inicio, fim, motivo, user.id),
+    auditoria(ctx, "bloqueio_criado", id, { depois: { barbeiro: p.id, inicio, fim, motivo, ...(paraTodos ? { paraTodos: true } : {}) } })
+  ]));
+  const bloqueios = lote.map(({ id, p }) => ({ id, barbeiroId: p.id, inicio, fim, motivo }));
+  return json({ bloqueio: bloqueios[0], bloqueios }, 201);
 }
 
 async function cancelarBloqueio(ctx) {
@@ -850,13 +866,20 @@ async function cancelarBloqueio(ctx) {
   if (!validId(input.id)) erro("Bloqueio inválido.");
   const b = await db.prepare("SELECT * FROM bloqueios WHERE id = ? AND barbearia_id = ? AND ativo = 1").bind(input.id, ctx.barbeariaId).first();
   if (!b) erro("Bloqueio não encontrado.", 404);
-  if (!isGestao(user) && b.barbeiro_id !== user.id) erro("Esse bloqueio é da agenda de outro profissional.", 403);
+  if (!veTodasAgendas(user) && b.barbeiro_id !== user.id) erro("Esse bloqueio é da agenda de outro profissional.", 403);
   const motivo = exigirMotivo(input.motivo);
-  await db.batch([
-    db.prepare("UPDATE bloqueios SET ativo = 0, motivo_cancelamento = ? WHERE id = ? AND barbearia_id = ?").bind(motivo, b.id, ctx.barbeariaId),
-    auditoria(ctx, "bloqueio_cancelado", b.id, { motivo, antes: { ativo: 1 }, depois: { ativo: 0 } })
-  ]);
-  return json({ mensagem: "Bloqueio cancelado." });
+  // "todos": desbloqueia o grupo criado junto (mesmo período, mesmo autor e mesmo instante) — só gestão e caixa.
+  let alvos = [b];
+  if (input.todos === true) {
+    if (!veTodasAgendas(user)) erro("Só o gerente, o dono e o caixa desbloqueiam todos de uma vez.", 403);
+    alvos = (await db.prepare("SELECT * FROM bloqueios WHERE barbearia_id = ? AND ativo = 1 AND inicio = ? AND fim = ? AND criado_por IS ? AND criado_em = ?")
+      .bind(ctx.barbeariaId, b.inicio, b.fim, b.criado_por ?? null, b.criado_em).all()).results;
+  }
+  await db.batch(alvos.flatMap(x => [
+    db.prepare("UPDATE bloqueios SET ativo = 0, motivo_cancelamento = ? WHERE id = ? AND barbearia_id = ?").bind(motivo, x.id, ctx.barbeariaId),
+    auditoria(ctx, "bloqueio_cancelado", x.id, { motivo, antes: { ativo: 1 }, depois: { ativo: 0 } })
+  ]));
+  return json({ mensagem: alvos.length > 1 ? `${alvos.length} bloqueios cancelados.` : "Bloqueio cancelado.", cancelados: alvos.length });
 }
 
 // ---------- CLIENTE PELO TELEFONE (na hora de marcar) ----------
@@ -1042,8 +1065,8 @@ export async function atendimentoAvulso(ctx) {
 export async function rotasAgenda(ctx, path, method) {
   if (path !== "/agenda" && !path.startsWith("/agenda/")) return null;
   exigirAgenda(ctx);
-  // Caixa: cobra pela tela do caixa; não reabre atendimento nem bloqueia agenda de profissional.
-  if (ctx.user.perfil === "caixa" && ["/agenda/finalizar", "/agenda/reabrir", "/agenda/bloqueios", "/agenda/bloqueios/cancelar"].includes(path)) erro("Sem permissão", 403);
+  // Caixa: cobra pela tela do caixa e não reabre atendimento; bloquear e desbloquear horário da agenda passou a valer para ele (27/11/2026).
+  if (ctx.user.perfil === "caixa" && ["/agenda/finalizar", "/agenda/reabrir"].includes(path)) erro("Sem permissão", 403);
   if (path === "/agenda" && method === "GET") return listarAgenda(ctx);
   if (path === "/agenda/ocupacao" && method === "GET") return ocupacao(ctx);
   if (path === "/agenda/disponibilidade" && method === "GET") return disponibilidade(ctx);

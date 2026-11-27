@@ -1528,7 +1528,7 @@ async function telaAgenda() {
       temModo ? alternaModoAgenda() : null,
       el("div", { class: "acoes-agenda" },
         botao("+ Novo horário", () => janelaMarcar(ag), "principal pequeno novo-horario"),
-        ehCaixa() ? null : botao("Bloquear", () => janelaBloquear(ag), "pequeno"))));
+        botao("Bloquear", () => janelaBloquear(ag), "pequeno"))));
 
   const profs = ag.profissionais.filter(p => !estadoAgenda.barbeiroId || p.id === estadoAgenda.barbeiroId);
   let corpo;
@@ -2204,11 +2204,17 @@ function cartaoBloqueio(b, ini, fim, mostrarNome) {
       el("span", { class: "etiqueta", text: "Bloqueado" })),
     el("p", { class: "suave", text: [mostrarNome ? b.barbeiroNome : null, b.motivo || "Sem motivo informado"].filter(Boolean).join(" · ") }),
     el("div", { class: "item-acoes" },
-      ehCaixa() ? null : botao("Desbloquear", () => pedirMotivo("Desbloquear horário", "O horário volta a ficar livre na agenda.", async motivo => {
+      botao("Desbloquear", () => pedirMotivo("Desbloquear horário", "O horário volta a ficar livre na agenda.", async motivo => {
         await api("/agenda/bloqueios/cancelar", { metodo: "POST", corpo: { id: b.id, motivo } });
         avisar("Horário desbloqueado.");
         recarregarHorarios();
-      }, "Desbloquear"), "pequeno")));
+      }, "Desbloquear"), "pequeno"),
+      // Bloqueou todos de uma vez? Gestão e caixa desfazem o grupo inteiro com um toque.
+      veTodas() ? botao("Desbloquear todos", () => pedirMotivo("Desbloquear todos", "Libera esse período para todos os profissionais que foram bloqueados juntos.", async motivo => {
+        await api("/agenda/bloqueios/cancelar", { metodo: "POST", corpo: { id: b.id, motivo, todos: true } });
+        avisar("Horários desbloqueados.");
+        recarregarHorarios();
+      }, "Desbloquear todos"), "pequeno") : null));
 }
 
 // Abre o WhatsApp (link wa.me) e registra o envio (quem, quando, qual modelo).
@@ -2450,10 +2456,13 @@ function janelaAtendimento(a, mostrarNome = true) {
   return abrirJanela(`${dataLonga(a.data)} · ${a.inicio}–${a.fim}`, [cartaoAgendamento(a, mostrarNome)], { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
 }
 
-function campoProfissional(ag, escolhido = null) {
+function campoProfissional(ag, escolhido = null, { todos = false } = {}) {
   if (!veTodas()) return null;
   const padrao = escolhido || estadoAgenda.barbeiroId || (ag.profissionais.some(p => p.id === usuario.id) ? usuario.id : ag.profissionais[0]?.id);
-  return campo("Profissional", { tag: "select", name: "prof", valor: padrao, opcoes: ag.profissionais.map(p => [p.id, p.nome]) });
+  const opcoes = ag.profissionais.map(p => [p.id, p.nome]);
+  // "Todos os profissionais": bloqueia a agenda de todo mundo com um comando só (só no bloqueio).
+  if (todos && ag.profissionais.length > 1) opcoes.push(["todos", "Todos os profissionais"]);
+  return campo("Profissional", { tag: "select", name: "prof", valor: padrao, opcoes });
 }
 
 // Escolher cliente: da base (busca por nome ou telefone) ou digitar um cliente novo/avulso.
@@ -2670,7 +2679,15 @@ function janelaMarcar(ag, pre = {}) {
       el("label", { for: id }, el("span", { class: "serv-nome", text: sv.nome }), el("span", { class: "serv-meta", text: `${reais(sv.precoCentavos)} · ${sv.duracaoMin} min` })));
   };
   return abrirJanela("Novo horário", [
-    el("p", { class: "link-chip-linha" }, el("a", { class: "link-chip", href: "#/agenda-lote", "data-teste": "link-lote", text: "Marcar vários de uma vez  ›", onclick: () => { voltarLote = "#/agenda"; janela.close(); } })),
+    el("p", { class: "link-chip-linha" },
+      el("button", { type: "button", class: "link-chip", "data-teste": "bloquear-do-novo", text: "Bloquear este horário", onclick: () => {
+        // Leva o que já foi escolhido (profissional, dia e hora) para a janela de bloqueio.
+        const v = n => janela.querySelector(`[name=${n}]`)?.value;
+        const pre2 = { barbeiroId: v("prof"), data: v("data"), hora: v("hora") };
+        janela.close();
+        janelaBloquear(ag, pre2);
+      } }),
+      el("a", { class: "link-chip", href: "#/agenda-lote", "data-teste": "link-lote", text: "Marcar vários de uma vez  ›", onclick: () => { voltarLote = "#/agenda"; janela.close(); } })),
     el("section", { class: "form-secao" }, el("h4", { class: "form-secao-titulo", text: "Quando" }),
       campoProfissional(ag, pre.barbeiroId),
       el("div", { class: "lado-a-lado" },
@@ -2773,16 +2790,20 @@ function janelaRemarcar(a, ag) {
   });
 }
 
-function janelaBloquear(ag) {
+function janelaBloquear(ag, pre = {}) {
+  const dia = pre.data || estadoAgenda.data;
+  const hIni = pre.hora || "12:00";
+  const [hh, mm] = hIni.split(":").map(Number);
+  const hFimPadrao = pre.hora ? `${String(Math.min(23, hh + 1)).padStart(2, "0")}:${String(mm || 0).padStart(2, "0")}` : "13:00";
   return abrirJanela("Bloquear horário", [
     el("p", { class: "suave", text: "Almoço, folga, férias ou compromisso. A agenda não aceita marcação no período." }),
-    campoProfissional(ag),
+    campoProfissional(ag, pre.barbeiroId, { todos: true }),
     el("div", { class: "lado-a-lado" },
-      campo("De (data)", { name: "dIni", type: "date", value: estadoAgenda.data, required: true }),
-      campo("Hora", { name: "hIni", type: "time", value: "12:00", required: true })),
+      campo("De (data)", { name: "dIni", type: "date", value: dia, required: true }),
+      campo("Hora", { name: "hIni", type: "time", value: hIni, required: true })),
     el("div", { class: "lado-a-lado" },
-      campo("Até (data)", { name: "dFim", type: "date", value: estadoAgenda.data, required: true }),
-      campo("Hora", { name: "hFim", type: "time", value: "13:00", required: true })),
+      campo("Até (data)", { name: "dFim", type: "date", value: dia, required: true }),
+      campo("Hora", { name: "hFim", type: "time", value: hFimPadrao, required: true })),
     campo("Motivo (opcional)", { name: "motivoBloq", maxlength: "120", placeholder: "Ex.: almoço, folga, férias", autocomplete: "off" })
   ], {
     ok: "Bloquear",
@@ -2791,7 +2812,7 @@ function janelaBloquear(ag) {
         metodo: "POST",
         corpo: { barbeiroId: f.prof?.value, inicio: `${f.dIni.value}T${f.hIni.value}`, fim: `${f.dFim.value}T${f.hFim.value}`, motivo: f.motivoBloq.value || null }
       });
-      avisar("Horário bloqueado.");
+      avisar(f.prof?.value === "todos" ? "Agenda de todos bloqueada." : "Horário bloqueado.");
       recarregarHorarios();
     }
   });
