@@ -4,7 +4,7 @@
   const CHAVE = "4blade.aparencia";
   const PALETAS = ["navalha", "ganache", "berinjela", "violeta", "indigo", "cereja"];
   const MODOS = ["claro", "escuro", "sistema"];
-  const COR_TOPO = { navalha: ["#24272c", "#0f1114"], ganache: ["#4a2c21", "#1e130f"], berinjela: ["#3d2147", "#1a0f1f"], violeta: ["#1b1716", "#0f0d0c"], indigo: ["#231a4f", "#120d2b"], cereja: ["#2f3748", "#171b24"] };
+  const COR_TOPO = { navalha: ["#24282b", "#0c0e10"], ganache: ["#3d251c", "#140d0a"], berinjela: ["#3a2044", "#120a16"], violeta: ["#1d1918", "#0c0a0a"], indigo: ["#231a4f", "#0d0921"], cereja: ["#2f3748", "#12151c"] };
   const escuroDoSistema = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
   function ler() {
     try {
