@@ -1,0 +1,6 @@
+/* fontes do site de venda (gerado por gerar.py) */
+@font-face{font-family:"SnBebas";src:url(/fontes/bebas-neue.woff2) format("woff2");font-display:swap}
+@font-face{font-family:"SnMont";font-weight:500;src:url(/fontes/montserrat-500.woff2) format("woff2");font-display:swap}
+@font-face{font-family:"SnMont";font-weight:800;src:url(/fontes/montserrat-800.woff2) format("woff2");font-display:swap}
+@font-face{font-family:"SnSerif";font-style:italic;font-weight:700;src:url(/fontes/playfair-700-italic.woff2) format("woff2");font-display:swap}
+@font-face{font-family:"SnMao";src:url(/fontes/pacifico.woff2) format("woff2");font-display:swap}

@@ -117,7 +117,8 @@ export async function rotasPublicasAssinatura({ db, request, env, ipHash, limita
     if (!cobrancaAtiva(env)) {
       const p = planosPublicos();
       return json({
-        planos: p.planos.map(({ mensalCentavos, anualCentavos, ...resto }) => resto),
+        // preços à mostra no site mesmo sem a cobrança on-line (decisão do responsável, 27/11/2026)
+        planos: p.planos, mesesDoAnual: p.mesesDoAnual,
         siteDisponivel: p.siteDisponivel, cobrancaAtiva: false, assinaturaDisponivel: false, contato
       });
     }

@@ -42,7 +42,7 @@ function abasDaSecao() {
 }
 
 function mostrar(...filhos) {
-  document.body.classList.remove("tela-entrada");
+  document.body.classList.remove("tela-entrada", "tela-site");
   filhos = filhos.flat().filter(Boolean);
   const abas = abasDaSecao();
   if (abas) { const i = filhos.findIndex(f => f.classList?.contains("cabecalho")); filhos.splice(i + 1, 0, abas); }
@@ -1017,28 +1017,6 @@ async function telaChamados(id) {
 }
 
 // ---------- LANDING PAGE (forblade.com.br, sem login) ----------
-const LP_RECURSOS = [
-  ["agenda", "Agenda que não se perde", "Horários livres de cada barbeiro na hora, cliente fixo toda semana, remarcar com um toque e visão do mês por cores."],
-  ["caixa", "Caixa sem erro", "Pix, dinheiro com troco, cartões e notas (fiado). Abertura, sangria, fechamento com diferença registrada."],
-  ["comissao", "Comissão automática", "Cada atendimento e venda já calcula a comissão. Vales descontados e fechamento do período sem planilha."],
-  ["estoque", "Estoque com custo médio", "Entrada, ajuste e inventário. Avisa o que precisa repor e o que está vencendo."],
-  ["mensagem", "WhatsApp pronto", "Lembrete, confirmação e promoções com o nome do cliente, abertos no seu WhatsApp. Sem custo por mensagem."],
-  ["contador", "Pronto para o contador", "Resumo do mês em PDF e planilha com tudo, enviados pelo celular. Seus dados sempre seus."]
-];
-const LP_DORES = [
-  ["O que fica de cabeça, fica pelo caminho.", "Cada horário, atendimento e venda fica registrado na hora, no celular."],
-  ["Comissão anotada à mão é comissão discutida.", "O sistema calcula a comissão de cada atendimento. O barbeiro vê o mesmo número que você."],
-  ["Estoque de memória acaba na hora errada.", "O 4blade avisa o que precisa repor antes de faltar na prateleira."],
-  ["Quem não anota não sabe se lucrou.", "O painel mostra o que entrou, o que saiu e o lucro do dia, da semana e do mês."]
-];
-const LP_PERFIS = [
-  ["Dono (gerente)", "Atende com agenda própria e vê o lucro, o painel e tudo o que acontece, de onde estiver."],
-  ["Gerente", "Organiza agenda, equipe, comissões e contas — e também atende."],
-  ["Barbeiro", "Vê a própria agenda, finaliza atendimentos e acompanha quanto ganhou."],
-  ["Caixa / recepção", "Marca horários para todos, cobra, vende e fecha o caixa."]
-];
-const LP_PRINTS = [["marcar-horario", "Novo horário mostra só o que está livre"], ["cobrar", "Caixa separado por forma de pagamento"], ["painel", "Painel com faturamento, comissões e lucro"]];
-const LP_DUVIDAS = ["Dá para usar no celular? Como instalo o app?", "Qual a diferença entre os planos?", "O que acontece se eu atrasar?", "Meus dados ficam salvos? Posso baixar tudo?", "Por onde eu começo?"];
 
 function blocoPlanos(info) {
   const area = el("div", { class: "planos" });
@@ -1054,80 +1032,152 @@ function blocoPlanos(info) {
   return { alterna, area };
 }
 
+// Site de venda (página inicial sem login). Vive num shadow DOM: o CSS dele não mexe no app e vice-versa.
+// Conteúdo em public/site/ (gerado do protótipo aprovado; ver /mnt/project-files/4blade-site/publicacao/gerar.py).
 async function telaInicio() {
-  const info = await carregarPlanos();
-  const { alterna, area } = blocoPlanos(info);
-  const todas = AJUDA().duvidas;
-  const duvidas = LP_DUVIDAS.map(q => todas.find(d => d.p === q)).filter(Boolean).slice(0, 4);
-  const contato = info.contato || {};
-  const whats = contato.whatsapp ? `https://wa.me/55${contato.whatsapp}?text=${encodeURIComponent("Olá! Quero conhecer o 4blade para a minha barbearia.")}` : null;
-  const cta = (classe = "") => el("div", { class: `lp-acoes ${classe}` },
-    info.cobrancaAtiva
-      ? el("a", { class: "botao lp-botao-principal", href: "#/planos", "data-teste": "lp-comecar", text: `Começar ${info.testeDias} dias grátis` })
-      : el("a", { class: "botao lp-botao-principal", href: "#/teste-gratis", "data-teste": "lp-teste-gratis", text: "Solicitar teste grátis" }),
-    el("a", { class: "botao lp-botao-secundario", href: "#/entrar", "data-teste": "lp-entrar", text: "Já sou cliente: entrar" }));
+  const [info, html] = await Promise.all([carregarPlanos(), fetch("/site/site.html").then(r => r.text())]);
+  if (!document.querySelector("link[data-fontes-site]")) document.head.append(el("link", { rel: "stylesheet", href: "/site/fontes.css", "data-fontes-site": "" }));
+  const host = el("div", { class: "site-host" });
+  const raiz = host.attachShadow({ mode: "open" });
+  const corpo = el("div", { class: "sn", hidden: "" });
+  corpo.innerHTML = html;
+  const css = el("link", { rel: "stylesheet", href: "/site/site.css" });
+  css.addEventListener("load", () => corpo.removeAttribute("hidden"));
+  raiz.append(css, corpo);
+  mostrar(host);
+  document.body.classList.add("tela-entrada", "tela-site");
+  iniciarSite(raiz, host, info);
+}
 
-  mostrar(el("div", { class: "lp" },
-    el("header", { class: "lp-barra" },
-      el("img", { src: "/icons/logo.png", alt: "4blade", width: "110", height: "45" }),
-      el("nav", {}, el("a", { href: "#lp-planos", onclick: e => { e.preventDefault(); document.getElementById("lp-planos").scrollIntoView({ behavior: "smooth" }); }, text: "Planos" }),
-        el("a", { class: "botao pequeno", href: "#/entrar", text: "Entrar" }))),
-    el("section", { class: "lp-hero" },
-      el("div", { class: "lp-hero-texto" },
-        el("p", { class: "lp-kicker", text: "Da cadeira ao caixa, sem erro." }),
-        el("h1", {}, "Gestão ", el("span", { text: "afiada" }), " para sua barbearia."),
-        el("p", { class: "lp-sub", text: "Agenda, caixa, estoque, comissões e WhatsApp num só lugar. Funciona no celular e no computador, sem instalar nada." }),
-        cta(),
-        el("p", { class: "lp-miudo", text: info.cobrancaAtiva ? "Sem cartão para testar · Cancele quando quiser · Seus dados são seus" : "Teste grátis com acompanhamento · Funciona no celular e no computador · Seus dados são seus" })),
-      el("div", { class: "lp-hero-print" },
-        el("img", { src: "/tutoriais/agenda-dia.jpg", alt: "Agenda do 4blade no celular", width: "390", height: "760" }))),
-    el("section", { class: "lp-secao", "data-teste": "lp-caderno" },
-      el("h2", { text: "Ainda no caderninho?" }),
-      el("p", { class: "lp-intro", text: "Anotar à mão funciona até o dia em que não funciona." }),
-      el("div", { class: "lp-dores" }, LP_DORES.map(([dor, solucao]) => el("div", { class: "lp-dor" },
-        el("strong", { text: dor }), el("p", { text: solucao }))))),
-    el("section", { class: "lp-secao" },
-      el("h2", { text: "Feito para a rotina da barbearia" }),
-      el("p", { class: "lp-intro", text: "Menos papel, menos conta de cabeça, mais tempo na cadeira." }),
-      el("div", { class: "lp-recursos" }, LP_RECURSOS.map(([ic, t, d]) => el("article", { class: "lp-recurso" },
-        el("span", { class: "lp-icone" }, icone(ic)), el("h3", { text: t }), el("p", { text: d }))))),
-    el("section", { class: "lp-secao lp-escura" },
-      el("h2", { text: "Veja por dentro" }),
-      el("div", { class: "lp-prints" }, LP_PRINTS.map(([id, leg]) => el("figure", {},
-        el("img", { src: `/tutoriais/${id}.jpg`, alt: leg, width: "390", height: "700", loading: "lazy" }),
-        el("figcaption", { text: leg })))),
-      el("p", { class: "lp-miudo centro", text: "Telas reais do sistema, com dados fictícios." })),
-    el("section", { class: "lp-secao" },
-      el("h2", { text: "Cada um vê o que precisa" }),
-      el("div", { class: "lp-perfis" }, LP_PERFIS.map(([t, d]) => el("div", { class: "lp-perfil" }, el("strong", { text: t }), el("p", { text: d })))),
-      el("p", { class: "lp-intro", text: "Cada pessoa tem o próprio usuário e senha. Tudo o que é feito fica registrado: quem, quando e o que mudou." })),
-    !info.cobrancaAtiva ? null : el("section", { class: "lp-secao lp-passos-secao" },
-      el("h2", { text: "Comece hoje, em 3 passos" }),
-      el("ol", { class: "lp-passos" },
-        el("li", {}, el("strong", { text: "Escolha o plano" }), el("span", { text: "e crie seu acesso em 2 minutos." })),
-        el("li", {}, el("strong", { text: "Cadastre o básico" }), el("span", { text: "horário de funcionamento, serviços e equipe. Os tutoriais mostram cada tela." })),
-        el("li", {}, el("strong", { text: "Use por 14 dias grátis" }), el("span", { text: "e só então decida. A 1ª mensalidade vence no fim do teste." })))),
-    el("section", { class: "lp-secao", id: "lp-planos" },
-      el("h2", { text: "Planos" }),
-      el("p", { class: "lp-intro", text: "Escolha pelo número de barbeiros. Gerentes e caixas sem limite em todos." }),
-      el("div", { class: "centro lp-alterna" }, alterna),
-      area),
-    el("section", { class: "lp-secao" },
-      el("h2", { text: "Dúvidas comuns" }),
-      el("div", { class: "lp-duvidas" }, duvidas.map(d => el("details", { class: "duvida" }, el("summary", { text: d.p }), el("p", { text: d.r })))),
-      el("p", { class: "centro" }, el("a", { href: "#/duvidas", text: "Ver todas as dúvidas frequentes" }))),
-    el("section", { class: "lp-final" },
-      el("h2", { text: "Corte certo nos números da sua barbearia." }),
-      cta("centro"),
-      whats ? el("p", {}, el("a", { class: "lp-whats", href: whats, target: "_blank", rel: "noopener", "data-teste": "lp-whats", text: "Prefere conversar? Chame no WhatsApp" })) : null),
-    el("footer", { class: "lp-rodape" },
-      el("img", { src: "/icons/logo.png", alt: "4blade", width: "86", height: "35" }),
-      el("nav", {},
-        el("a", { href: "#/planos", text: "Planos" }), el("a", { href: "#/duvidas", text: "Dúvidas" }),
-        el("a", { href: "#/termos", text: "Termos de uso" }), el("a", { href: "#/privacidade", text: "Privacidade" }), el("a", { href: "#/entrar", text: "Entrar" })),
-      contato.email ? el("p", {}, el("a", { href: `mailto:${contato.email}`, text: contato.email })) : null,
-      el("p", { class: "lp-miudo", text: `© ${new Date().getFullYear()} 4blade · Gestão para barbearias` }))));
-  document.body.classList.add("tela-entrada");
+function iniciarSite(R, host, info) {
+  const $ = id => R.getElementById(id), $$ = q => R.querySelectorAll(q);
+  const vivo = () => host.isConnected;
+  const real = c => (c / 100).toLocaleString("pt-BR", { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 });
+  // chamada principal: pedir teste (cobrança desligada) ou planos (ligada)
+  const alvo = info.cobrancaAtiva ? "#/planos" : "#/teste-gratis";
+  $$("[data-cta]").forEach((a, i) => { a.href = alvo; if (i === 0) a.dataset.teste = info.cobrancaAtiva ? "lp-comecar" : "lp-teste-gratis"; });
+  // WhatsApp só aparece com o número do suporte preenchido no painel
+  const zap = info.contato && info.contato.whatsapp;
+  $$("[data-whats]").forEach((a, i) => {
+    if (!zap) { a.hidden = true; return; }
+    a.href = `https://wa.me/55${zap}?text=${encodeURIComponent("Olá! Quero conhecer o 4blade para a minha barbearia.")}`;
+    a.target = "_blank"; a.rel = "noopener"; if (i === 0) a.dataset.teste = "lp-whats";
+  });
+  // preços vindos do servidor
+  const porId = Object.fromEntries((info.planos || []).map(p => [p.id, p]));
+  $$(".plano").forEach((card, i) => {
+    const p = porId[["basico", "standard", "pro"][i]];
+    if (!p || p.mensalCentavos == null) return;
+    const anual = p.mensalCentavos * (info.mesesDoAnual || 10);
+    const preco = card.querySelector(".preco"), an = card.querySelector(".anual");
+    preco.dataset.m = real(p.mensalCentavos); preco.dataset.a = real(anual);
+    preco.replaceChildren("R$ ", el("b", { text: preco.dataset.m }), el("small", { text: "/mês" }));
+    an.dataset.m = `ou R$ ${real(anual)} no ano (2 meses grátis)`; an.dataset.a = `equivale a R$ ${real(Math.round(anual / 12))} por mês`;
+    an.textContent = an.dataset.m;
+  });
+  // âncoras internas: rolam sem mudar o endereço (o # é das rotas do app)
+  $$("[data-rolar]").forEach(a => a.addEventListener("click", e => { e.preventDefault(); const d = $(a.getAttribute("href").slice(1)); if (d) d.scrollIntoView({ behavior: "smooth" }); }));
+
+  const topo = $("topo"), barra = $("barra-movel"), ol = $("passos");
+  const aoRolar = () => {
+    if (!vivo()) { window.removeEventListener("scroll", aoRolar); return; }
+    const y = scrollY;
+    topo.classList.toggle("rolou", y > 20);
+    barra.classList.toggle("on", y > 620 && y < document.documentElement.scrollHeight - innerHeight * 1.6);
+    const r = ol.getBoundingClientRect();
+    ol.style.setProperty("--prog", Math.max(0, Math.min(1, (innerHeight * 0.5 - r.top) / r.height)));
+  };
+  window.addEventListener("scroll", aoRolar, { passive: true }); aoRolar();
+
+  // "um dia": celular fixo no computador, cópia das cenas no celular
+  const cenas = $$("#tela-dia .cena");
+  $$(".phone-inline").forEach(box => {
+    const c = cenas[+box.dataset.clone].cloneNode(true); c.classList.add("on");
+    box.append(el("div", { class: "phone" }, el("div", { class: "tela" }, el("div", { class: "ilha" }), c)));
+  });
+  const passos = $$(".passo");
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    passos.forEach(p => p.classList.toggle("ativo", p === e.target));
+    cenas.forEach(c => c.classList.toggle("on", c.dataset.c === e.target.dataset.cena));
+  }), { rootMargin: "-45% 0px -45% 0px" });
+  passos.forEach(p => io.observe(p));
+
+  // faixas que correm: duplicar o conteúdo
+  for (const id of ["trilho", "letreiro"]) { const t = $(id); t.append(...[...t.children].map(n => n.cloneNode(true))); }
+  const rv = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("vis"); rv.unobserve(e.target); } }), { threshold: 0.15 });
+  $$(".rev").forEach(n => rv.observe(n));
+  const cio = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return; cio.unobserve(e.target);
+    const b = e.target, f = +b.dataset.conta, t0 = performance.now();
+    const q = t => { const k = Math.min(1, (t - t0) / 1100); b.textContent = Math.round(f * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(q); };
+    requestAnimationFrame(q);
+  }), { threshold: 0.6 });
+  $$("[data-conta]").forEach(b => cio.observe(b));
+
+  // endereço digitado no navegador desenhado
+  const nomes = ["barbearia-demonstracao", "studio-do-bruno", "sua-barbearia"], dig = $("digita");
+  let i = 0, k = 0, apaga = false;
+  (function tic() {
+    if (!vivo()) return;
+    const n = nomes[i];
+    if (!apaga) { k++; if (k > n.length) { apaga = true; return setTimeout(tic, 1800); } }
+    else { k--; if (k === 0) { apaga = false; i = (i + 1) % nomes.length; } }
+    dig.textContent = n.slice(0, k); setTimeout(tic, apaga ? 35 : 85);
+  })();
+
+  // abas dos perfis
+  const tabs = [...$$("[role=tab]")];
+  const sel = t => tabs.forEach(x => { const on = x === t; x.setAttribute("aria-selected", on); x.tabIndex = on ? 0 : -1; $(x.getAttribute("aria-controls")).classList.toggle("on", on); });
+  tabs.forEach((t, ix) => {
+    t.addEventListener("click", () => sel(t));
+    t.addEventListener("keydown", e => { const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0; if (d) { const n = tabs[(ix + d + tabs.length) % tabs.length]; n.focus(); sel(n); } });
+  });
+
+  // simulador de comissão (cupom)
+  const fmt = v => "R$ " + Math.round(v).toLocaleString("pt-BR");
+  const at = $("s-at"), tk = $("s-tk"), pc = $("s-pc"), cup = $("cupom");
+  const calc = () => {
+    const a = +at.value, t = +tk.value, p = +pc.value, tot = a * t, b = tot * p / 100;
+    $("o-at").textContent = a; $("o-tk").textContent = fmt(t); $("o-pc").textContent = p + "%";
+    $("c-at").textContent = a; $("c-tk").textContent = fmt(t); $("c-br").textContent = fmt(tot); $("c-pc").textContent = p + "%";
+    $("r-barb").textContent = fmt(b); $("r-casa").textContent = fmt(tot - b);
+    $("r-mes").textContent = `No mês (24 dias): ${fmt(b * 24)} para ele, ${fmt((tot - b) * 24)} para a casa.`;
+    cup.classList.toggle("imprime", false); void cup.offsetWidth; cup.classList.add("imprime");
+  };
+  [at, tk, pc].forEach(x => x.addEventListener("input", calc)); calc();
+
+  // antes x depois arrastável
+  const ad = $("ad"), adr = $("ad-r");
+  adr.addEventListener("input", () => ad.style.setProperty("--pos", adr.value + "%"));
+
+  // planos mensal/anual
+  const bts = [...$$(".alterna button")];
+  bts.forEach(b => b.addEventListener("click", () => {
+    const per = b.dataset.per;
+    bts.forEach(x => x.setAttribute("aria-pressed", x === b));
+    $$(".preco").forEach(p => p.replaceChildren("R$ ", el("b", { text: p.dataset[per] }), el("small", { text: per === "m" ? "/mês" : "/ano" })));
+    $$(".anual").forEach(p => { p.textContent = p.dataset[per]; });
+  }));
+
+  // QR decorativo
+  const qr = $("qr"); let sem = 7;
+  for (let n = 0; n < 49; n++) {
+    const x = n % 7, y = n / 7 | 0, canto = (x < 3 && y < 3) || (x > 3 && y < 3) || (x < 3 && y > 3);
+    const on = canto ? (x === 0 || y === 0 || x === 2 || y === 2 || x === 4 || x === 6 || y === 4 || y === 6) : ((sem = (sem * 13 + 5) % 17) > 7);
+    qr.append(el("i", { class: on ? "" : "v" }));
+  }
+
+  // palco 3D e luz seguindo o mouse (só com mouse e sem "reduzir movimento")
+  if (matchMedia("(pointer:fine)").matches && !matchMedia("(prefers-reduced-motion:reduce)").matches) {
+    const hero = $("hero"), palco = $("palco");
+    hero.addEventListener("mousemove", e => {
+      const r = hero.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+      hero.style.setProperty("--mx", (x * 100) + "%"); hero.style.setProperty("--my", (y * 100) + "%");
+      palco.style.setProperty("--ry", (-14 + (x - 0.5) * 16) + "deg"); palco.style.setProperty("--rx", (5 - (y - 0.5) * 10) + "deg");
+    });
+    $$(".bx").forEach(b => b.addEventListener("mousemove", e => { const r = b.getBoundingClientRect(); b.style.setProperty("--bx", (e.clientX - r.left) + "px"); b.style.setProperty("--by", (e.clientY - r.top) + "px"); }));
+  }
 }
 
 // ---------- SOLICITAR TESTE GRÁTIS (site, sem login) ----------

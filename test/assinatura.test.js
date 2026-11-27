@@ -378,7 +378,8 @@ describe("cobrança DESLIGADA (padrão em produção: COBRANCA_ON_LINE ausente)"
     assert.equal(planos.cobrancaAtiva, false);
     assert.equal(planos.assinaturaDisponivel, false);
     assert.deepEqual(planos.planos.map(p => [p.id, p.barbeiros]), [["basico", 2], ["standard", 4], ["pro", 10]]);
-    assert.ok(planos.planos.every(p => p.mensalCentavos === undefined && p.anualCentavos === undefined), "nenhum preço");
+    assert.deepEqual(planos.planos.map(p => p.mensalCentavos), [7900, 10990, 14990], "preços à mostra no site");
+    assert.equal(planos.mesesDoAnual, 10);
     assert.equal(planos.testeDias, undefined);
     const ass = await amb.chamar("/api/assinar", { metodo: "POST", corpo: dados({ documento: CPF_B, login: "outro.login" }), ip: "10.7.0.1" });
     assert.equal(ass.status, 404);

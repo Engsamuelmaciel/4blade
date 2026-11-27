@@ -71,11 +71,11 @@ async function rodar(tela) {
     await page.goto(base);
     await page.waitForSelector("[data-teste=lp-entrar]");
     await pronto();
-    const landing = await page.locator(".lp").innerText();
-    assert.ok(!/R\$|dias grátis|mensalidade|Cancele quando quiser/.test(landing), "landing sem preço nem pagamento");
+    const landing = await page.locator("[data-teste=site-venda]").innerText();
+    assert.ok(/R\$\s*79/.test(landing) && /109,90/.test(landing) && /149,90/.test(landing), "site de venda com os preços (decisão de 27/11/2026)");
     assert.equal(await page.locator("[data-teste=lp-comecar]").count(), 0);
-    assert.equal(await page.locator(".lp [data-plano]").count(), 3, "planos aparecem (sem preço)");
-    assert.ok(await page.locator('.lp [data-plano="pro"]').innerText().then(t => /Até 10 barbeiros[\s\S]*lista de produtos/.test(t)));
+    assert.equal(await page.locator("[data-teste=lp-teste-gratis]").getAttribute("href"), "#/teste-gratis");
+    assert.equal(await page.locator("[data-teste=site-venda] .plano").count(), 3, "3 planos no site");
     await print("landing-sem-precos");
     await page.goto(`${base}/#/assinar/pro`);
     await page.waitForFunction(() => location.hash === "#/planos");

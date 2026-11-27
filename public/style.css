@@ -2686,3 +2686,7 @@ button.link-chip { border: 0; cursor: pointer; font-family: inherit; color: inhe
 /* Página inicial (27/11/2026): o 2º botão do topo ficava invisível (fundo branco do .botao por cima do transparente). */
 .lp .botao.lp-botao-secundario, .lp .botao.lp-botao-secundario:hover { background: transparent; color: #fff; border-color: rgba(255, 255, 255, .45); }
 .lp .botao.lp-botao-secundario:hover { background: rgba(255, 255, 255, .08); }
+
+/* site de venda (página inicial sem login): o conteúdo vive num shadow DOM, ver telaInicio */
+body.tela-site { background: #0b0c0e; }
+.site-host { display: block; min-height: 100vh; }

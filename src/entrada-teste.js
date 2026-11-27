@@ -34,6 +34,23 @@ import iconeM512 from "../public/icons/icon-v2-maskable-512.png";
 import iconeApple from "../public/icons/apple-touch-icon-v2.png";
 import favicon from "../public/icons/favicon-v2.png";
 import cabecalhosTexto from "../public/_headers";
+import siteHtml from "../public/site/site.html";
+import siteCss from "../public/site/site.css";
+import siteFontes from "../public/site/fontes.css";
+import site_impacto from "../public/site/impacto.jpg";
+import site_stylos from "../public/site/stylos.jpg";
+import site_f0 from "../public/site/f0.jpg";
+import site_f1 from "../public/site/f1.jpg";
+import site_f2 from "../public/site/f2.jpg";
+import site_f3 from "../public/site/f3.jpg";
+import site_f4 from "../public/site/f4.jpg";
+import site_f5 from "../public/site/f5.jpg";
+import site_f6 from "../public/site/f6.jpg";
+import site_f7 from "../public/site/f7.jpg";
+import site_f8 from "../public/site/f8.jpg";
+import site_f9 from "../public/site/f9.jpg";
+import site_f10 from "../public/site/f10.jpg";
+import site_f11 from "../public/site/f11.jpg";
 
 const ARQUIVOS = {
   "/index.html": [indexHtml, "text/html; charset=utf-8"],
@@ -57,6 +74,23 @@ const ARQUIVOS = {
   "/fontes/playfair-700.woff2": [fonte_playfair_700, "font/woff2"],
   "/fontes/playfair-700-italic.woff2": [fonte_playfair_700_italic, "font/woff2"],
   "/sw.js": [swJs, "text/javascript; charset=utf-8"],
+  "/site/site.html": [siteHtml, "text/html; charset=utf-8"],
+  "/site/site.css": [siteCss, "text/css; charset=utf-8"],
+  "/site/fontes.css": [siteFontes, "text/css; charset=utf-8"],
+  "/site/impacto.jpg": [site_impacto, "image/jpeg"],
+  "/site/stylos.jpg": [site_stylos, "image/jpeg"],
+  "/site/f0.jpg": [site_f0, "image/jpeg"],
+  "/site/f1.jpg": [site_f1, "image/jpeg"],
+  "/site/f2.jpg": [site_f2, "image/jpeg"],
+  "/site/f3.jpg": [site_f3, "image/jpeg"],
+  "/site/f4.jpg": [site_f4, "image/jpeg"],
+  "/site/f5.jpg": [site_f5, "image/jpeg"],
+  "/site/f6.jpg": [site_f6, "image/jpeg"],
+  "/site/f7.jpg": [site_f7, "image/jpeg"],
+  "/site/f8.jpg": [site_f8, "image/jpeg"],
+  "/site/f9.jpg": [site_f9, "image/jpeg"],
+  "/site/f10.jpg": [site_f10, "image/jpeg"],
+  "/site/f11.jpg": [site_f11, "image/jpeg"],
   "/manifest.json": [manifest, "application/manifest+json"],
   "/icons/marca.png": [marca, "image/png"],
   "/icons/logo.png": [logo, "image/png"],

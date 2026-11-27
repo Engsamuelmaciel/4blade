@@ -74,10 +74,10 @@ async function rodar(tela) {
     await page.goto(base);
     await page.waitForSelector("[data-teste=lp-comecar]");
     await pronto();
-    await page.waitForFunction(() => [...document.querySelectorAll(".lp img")].slice(0, 2).every(i => i.complete && i.naturalWidth > 0));
-    assert.equal(await page.locator('.lp [data-plano]').count(), 3, "planos na landing");
-    assert.equal(await page.locator(".lp .duvida").count(), 4, "dúvidas comuns na landing");
-    assert.equal(await page.locator("[data-teste=lp-caderno] .lp-dor").count(), 4, "seção do caderninho");
+    assert.equal(await page.locator("[data-teste=lp-comecar]").getAttribute("href"), "#/planos");
+    assert.equal(await page.locator("[data-teste=site-venda] .plano").count(), 3, "planos no site");
+    assert.equal(await page.locator("[data-teste=site-venda] details").count(), 5, "dúvidas no site");
+    assert.ok(await page.locator("[data-teste=site-venda] img").first().evaluate(i => i.complete && i.naturalWidth > 0), "logo carregou");
     await print("landing");
     await page.click("[data-teste=lp-entrar]");
     await page.waitForSelector("[data-teste=link-planos]");
