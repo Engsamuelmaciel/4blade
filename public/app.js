@@ -36,6 +36,7 @@ function abasDaSecao() {
   const r = location.hash.replace(/^#\/?/, "").split("/")[0];
   const abas = usuario && SECOES_JUNTAS[r];
   if (!abas) return null;
+  if (visualNovo() && SECOES_JUNTAS[r] === SECOES_JUNTAS.financeiro) return null;   // visual novo: Relatórios num nível só; Painel e Contador no menu
   return el("nav", { class: "abas-secao", "aria-label": "Nesta área", "data-teste": "abas-secao" }, abas.map(([rota, txt]) =>
     el("a", { href: `#/${rota}`, class: rota === r ? "ativa" : "", "aria-current": rota === r ? "page" : null, "data-aba-secao": rota, text: txt })));
 }
@@ -3065,6 +3066,37 @@ async function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar =
 // ---------- FUNCIONAMENTO (gestão) ----------
 // Aba aberta na tela Funcionamento (fica a mesma depois de salvar/cancelar).
 const estadoFuncionamento = { aba: "semana" };
+// Visual novo (27/11/2026): cada dia vira uma linha "Seg · 09:00–19:00 · pausa 12:00–13:00"; tocar abre os 4 campos.
+// "Copiar para todos" leva o horário do 1º dia aberto para os outros dias abertos (antes: 28 campos para um ajuste simples).
+function funcionamentoCompacto(form) {
+  const linhas = [...form.querySelectorAll(".linha-dia")];
+  const texto = l => {
+    const v = n => l.querySelector(`[name$="-${n}"]`);
+    if (!v("aberto").checked) return "Fechado";
+    const h = n => v(n).value.replace(/:00$/, "h");   // 09:00 → 09h (cabe numa linha no celular)
+    return `${h("abre")}–${h("fecha")}${v("ii").value && v("if").value ? ` · pausa ${h("ii")}–${h("if")}` : ""}`;
+  };
+  linhas.forEach(l => {
+    const res = el("button", { type: "button", class: "vn-dia-res", "aria-expanded": "false", onclick: () => { const ab = !l.classList.contains("aberta"); l.classList.toggle("aberta", ab); res.setAttribute("aria-expanded", String(ab)); } });
+    const atualizar = () => res.replaceChildren(el("span", { text: texto(l) }), el("span", { class: "vn-dia-seta", "aria-hidden": "true", text: "›" }));
+    l.addEventListener("input", atualizar); l.addEventListener("change", atualizar);
+    l.querySelector(".marcar").after(res);
+    atualizar();
+  });
+  const copiar = botao("Copiar o horário do 1º dia aberto para todos os dias abertos", () => {
+    const base = linhas.find(l => l.querySelector("[name$=-aberto]").checked);
+    if (!base) return avisar("Marque pelo menos um dia como aberto.", "erro");
+    const val = n => base.querySelector(`[name$="-${n}"]`).value;
+    linhas.filter(l => l !== base && l.querySelector("[name$=-aberto]").checked).forEach(l => {
+      ["abre", "fecha", "ii", "if"].forEach(n => { const i = l.querySelector(`[name$="-${n}"]`); i.value = val(n); });
+      l.dispatchEvent(new Event("change"));
+    });
+    avisar("Copiado. Toque em Salvar funcionamento para guardar.");
+  }, "pequeno vn-copiar-dias");
+  copiar.dataset.teste = "copiar-dias";
+  form.querySelector(".dias-func").before(copiar);
+  form.classList.add("vn-func");
+}
 async function telaFuncionamento() {
   const f = await api("/funcionamento");
   const linhas = f.dias.map(d => {
@@ -3085,6 +3117,7 @@ async function telaFuncionamento() {
     el("div", { class: "dias-func" }, linhas),
     el("p", { class: "ajuda", text: "A pausa é opcional (ex.: almoço das 12:00 às 13:00). Deixe em branco se não houver." }),
     el("button", { type: "submit", class: "botao principal", text: "Salvar funcionamento" }));
+  if (visualNovo()) funcionamentoCompacto(form);
   form.addEventListener("submit", ev => {
     ev.preventDefault();
     enviar(form, async () => {
@@ -4753,6 +4786,29 @@ async function telaFinanceiro() {
     corpo = [
       fixa(`Movimentos do período (${f.movimentosTotal ?? f.movimentos.length})`, "movimentos", listaMov),
       el("p", { class: "suave centro" }, "Planilha completa e envio ao contador: ", el("a", { href: "#/contador", text: "Contador e dados" }), ".")];
+  }
+  if (visualNovo()) {
+    // Visual novo (27/11/2026): um nível só — período no alto e a página rola por seções; o resultado vem primeiro, como placar.
+    const placar = el("section", { class: `vn-placar-fin ${t.resultadoCentavos < 0 ? "negativo" : ""}`, "data-teste": "placar-resultado" },
+      el("small", { class: "vn-rotulo", text: `Resultado (lucro) · ${f.periodo.titulo}` }),
+      el("strong", { text: reais(t.resultadoCentavos) }),
+      el("p", { text: `Entrou ${reais(t.entradasCentavos)} · saiu ${reais(t.saidasCentavos)} · ${t.atendimentosQtd} atendimento(s)` }));
+    const recolhida = (titulo, id, ...filhos) => el("details", { class: "cartao fin-secao", "data-secao-fin": id }, el("summary", {}, el("span", { class: "fin-secao-tit", text: titulo })), ...filhos);
+    return mostrar(
+      cabecalho("Relatórios"),
+      controles, placar, cartoes, blocoMais,
+      secaoFixa(tituloGrafico, temSerie ? graficoEntradasSaidas(f.serie, f.periodo, aoEscolher) : el("p", { class: "vazio", text: "Sem entradas nem saídas neste período." })),
+      el("div", { class: "duas-colunas iguais" },
+        fixa("De onde veio o dinheiro", "entradas", formas.length ? listaPartes(formas, "partes-entrada") : el("p", { class: "vazio", text: "Sem entradas no período." })),
+        fixa("Para onde foi o dinheiro", "saidas", saidas.length ? listaPartes(saidas, "partes-saida") : el("p", { class: "vazio", text: "Sem saídas no período." }))),
+      fixa("Resultado do período (lucro)", "resultado", demonstrativo),
+      fixa("Equipe", "profissionais", profs),
+      el("div", { class: "duas-colunas iguais" },
+        fixa("Serviços que mais faturaram", "servicos", top(f.maisVendidos.servicos, "vez(es)")),
+        fixa("Produtos mais vendidos", "produtos", top(f.maisVendidos.produtos, "un."))),
+      recolhida(`Movimentos do período (${f.movimentosTotal ?? f.movimentos.length})`, "movimentos", listaMov),
+      recolhida("Extrato de um profissional", "extrato", blocoExtratoProfissional(true)),
+      el("p", { class: "suave centro" }, "Planilha e envio ao contador: ", el("a", { href: "#/contador", text: "Contador e dados" }), "."));
   }
   mostrar(
     cabecalho("Relatórios", "Quanto entrou, quanto saiu e o que sobrou — por período, equipe e vendas."),
@@ -7233,17 +7289,26 @@ async function telaMinhaPagina() {
       onclick: () => { ap.cor = c; cores.querySelectorAll("button").forEach(b => { const on = b.dataset.corPagina === c; b.classList.toggle("ativa", on); b.setAttribute("aria-checked", String(on)); }); pintarPrevia(); } },
       el("span", { class: `mp-cor-bola mpv-cor-${c}`, "aria-hidden": "true" }), el("small", { text: NOME_COR_PAGINA[c] }))));
   pintarPrevia();
+  // Modelo da página (27/11/2026): "Clássico" (o de sempre) ou "Impacto" (capa em tela cheia, cardápio com barra de pedido).
+  let modeloEscolhido = p.modelo || "classico";
+  const NOME_MODELO = { classico: ["Clássico", "O modelo de sempre, em blocos"], impacto: ["Impacto (novo)", "Foto em tela cheia, cardápio com barra de pedido, fotos grandes"] };
+  const modeloPagina = el("div", { class: "seletor-visual", role: "radiogroup", "aria-label": "Modelo da página", "data-teste": "modelo-pagina" }, (d.modelos || ["classico"]).map(m =>
+    el("button", { type: "button", role: "radio", class: `seletor-visual-opcao ${m === modeloEscolhido ? "ativo" : ""}`, "aria-checked": String(m === modeloEscolhido), "data-modelo-pagina": m,
+      onclick: ev => { modeloEscolhido = m; ev.currentTarget.parentElement.querySelectorAll("button").forEach(b => { const on = b.dataset.modeloPagina === m; b.classList.toggle("ativo", on); b.setAttribute("aria-checked", String(on)); }); } },
+      el("strong", { text: NOME_MODELO[m][0] }), el("small", { text: NOME_MODELO[m][1] }))));
   const fTextos = el("form", { class: "mp-form" },
     campo("Nome na página", { name: "nomeExibicao", value: p.nomeExibicao || "", maxlength: "80", placeholder: d.barbearia.nome, autocomplete: "off" }, "Vazio = nome da barbearia no sistema."),
     campo("Frase de efeito", { name: "frase", value: p.frase || "", maxlength: "120", placeholder: "Ex.: Corte de respeito desde 2012.", autocomplete: "off" }),
     campo("Sobre a barbearia", { tag: "textarea", name: "sobre", value: p.sobre || "", maxlength: "600", rows: "5", placeholder: "Conte a história, o estilo e o que a barbearia oferece." }, "Até 600 caracteres."),
+    el("h4", { text: "Modelo da página" }),
+    modeloPagina,
     el("h4", { text: "Aparência" }),
     el("div", { class: "mp-aparencia" },
       el("div", {}, modos, el("p", { class: "ajuda", text: "Clara, escura ou preto e branco (sem cor e com as fotos em tons de cinza)." }),
         el("p", { class: "rotulo-secao mp-rotulo-cor", text: "Cor de destaque" }), cores),
       previa),
     el("button", { type: "submit", class: "botao principal pequeno", text: "Salvar textos e aparência" }));
-  fTextos.addEventListener("submit", ev => { ev.preventDefault(); salvar({ nomeExibicao: fTextos.nomeExibicao.value, frase: fTextos.frase.value, sobre: fTextos.sobre.value, cor: ap.cor, modo: ap.modo }); });
+  fTextos.addEventListener("submit", ev => { ev.preventDefault(); salvar({ nomeExibicao: fTextos.nomeExibicao.value, frase: fTextos.frase.value, sobre: fTextos.sobre.value, cor: ap.cor, modo: ap.modo, modelo: modeloEscolhido }); });
 
   // ---- Contato e endereço ----
   const fContato = el("form", { class: "mp-form" },
@@ -7504,6 +7569,23 @@ function aplicarModeloFlyer(m) {
   Object.assign(st, { modelo: m.id, estilo: m.estilo, cor: "", validade: "", mostrarWhats: Boolean(m.whats) || st.mostrarWhats });
 }
 
+// Visual novo (27/11/2026): editor como app de story — a prévia fica presa em cima e os 7 passos viram abas embaixo
+// (um passo por vez). No visual antigo, devolve o editor como sempre (todos os passos empilhados).
+function editorFlyerNovo(editor) {
+  if (!visualNovo()) return editor;
+  const passos = [...editor.querySelectorAll(":scope > .fl-passo")];
+  const atual = Math.min(estadoFlyer.passoNovo || 0, passos.length - 1);
+  const abas = el("div", { class: "vn-fl-abas", role: "tablist", "aria-label": "Passos do flyer" }, passos.map((pp, i) => {
+    const nome = pp.querySelector("h3").textContent.replace(/^\d+/, "").replace("Comece por um modelo", "Modelo");
+    return el("button", { type: "button", role: "tab", class: `vn-fl-aba ${i === atual ? "ativo" : ""}`, "aria-selected": String(i === atual), "data-passo-flyer": String(i + 1),
+      onclick: () => { estadoFlyer.passoNovo = i; passos.forEach((x, j) => { x.hidden = j !== i; }); abas.querySelectorAll(".vn-fl-aba").forEach((b, j) => { b.classList.toggle("ativo", j === i); b.setAttribute("aria-selected", String(j === i)); }); } },
+      el("span", { class: "fl-num", text: String(i + 1) }), nome);
+  }));
+  passos.forEach((x, j) => { x.hidden = j !== atual; });
+  editor.prepend(abas);
+  editor.classList.add("vn-fl-editor");
+  return editor;
+}
 async function telaFlyers() {
   const [FL, d, lista] = await Promise.all([carregarFlyersJs(), api("/pagina"), api("/pagina/flyers")]);
   FL.carregarFontes();
@@ -7758,8 +7840,8 @@ function montarFlyers(FL, d, lista, logo) {
       : "Desmarcado: o flyer fica guardado só para compartilhar, sem aparecer na página." }));
 
   mostrar(
-    cabecalho("Divulgação", "Flyers prontos para o Instagram e o WhatsApp, com link direto para o seu catálogo."),
-    ...avisos,
+    cabecalho("Divulgação", visualNovo() ? null : "Flyers prontos para o Instagram e o WhatsApp, com link direto para o seu catálogo."),
+    ...(visualNovo() ? [el("details", { class: "vn-avisos-fl" }, el("summary", { text: "Como funcionam os flyers" }), ...avisos.filter(Boolean))] : avisos),
     el("div", { class: "fl-grade" },
       el("div", { class: "fl-previa-col" },
         el("div", { class: "fl-previa" }, tela),
@@ -7768,7 +7850,7 @@ function montarFlyers(FL, d, lista, logo) {
           botaoSalvar(true),
           botao("Baixar imagem", baixar, "")),
         cheio ? el("p", { class: "suave", text: `Você já tem ${lista.limite} flyers guardados. Exclua um antigo para publicar outro.` }) : null),
-      el("div", { class: "fl-editor" },
+      editorFlyerNovo(el("div", { class: "fl-editor" },
         passo(1, "Comece por um modelo", el("p", { class: "suave", text: "Para que é o flyer? O modelo preenche tudo; depois você muda o que quiser." }), objetivos, listaModelos),
         passo(2, "Formato", formatos),
         passo(3, "Estilo", estilos),
@@ -7778,7 +7860,7 @@ function montarFlyers(FL, d, lista, logo) {
         passo(7, "Cor e detalhes", cores, extras),
         el("div", { class: "fl-fim" },
           botao("Ver como ficou ↑", () => tela.scrollIntoView({ behavior: "smooth", block: "center" })),
-          botaoSalvar(false)))),
+          botaoSalvar(false))))),
     el("section", { class: "fl-guardados", "aria-labelledby": "fl-guardados-t" },
       el("h3", { id: "fl-guardados-t", text: `Seus flyers (${lista.flyers.length} de ${lista.limite})` }),
       itensLista.length ? el("ul", { class: "fl-lista", "data-teste": "flyers-lista" }, itensLista) : el("p", { class: "vazio", text: "Nenhum flyer ainda. O primeiro fica pronto em um minuto." })));
@@ -7850,7 +7932,8 @@ function gruposDoPerfil(p) {
   return [
     // 25/11/2026: sem "Visão geral" — o Início (Visão do dia com a logo) fica no alto do menu, fora dos grupos.
     { id: "atendimento", titulo: "Atendimento", icone: "agenda", itens: [["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"], ["clientes", "Clientes", "clientes"], ["mensagens", "Mensagens", "mensagem"], ["minha-pagina", "Minha página", "loja"], ["divulgacao", "Divulgação", "megafone"]] },
-    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["lancamentos", "Lançamentos", "lista"], ["contas", "Despesas", "contas"], ["notas", "Notas em aberto", "contas"]] },
+    { id: "financeiro", titulo: "Financeiro", icone: "dinheiro", itens: [["financeiro", "Relatório financeiro", "grafico"], ["lancamentos", "Lançamentos", "lista"], ["contas", "Despesas", "contas"], ["notas", "Notas em aberto", "contas"],
+      ...(visualNovo() ? [["painel", "Painel e lucro", "painel"], ["contador", "Contador e dados", "contador"]] : [])] },
     { id: "catalogo", titulo: "Catálogo e estoque", icone: "estoque", itens: [["servicos", "Serviços", "servicos"], ["produtos", "Produtos e estoque", "estoque"]] },
     { id: "config", titulo: "Equipe e ajustes", icone: "config", itens: [["equipe", "Equipe", "equipe"], ["funcionamento", "Funcionamento", "relogio"], ["assinatura", "Meu plano", "dinheiro"]] }
   ];
@@ -8220,7 +8303,7 @@ function blocoAparencia() {
     const pref = t.ler();
     const novo = pref.visual === "novo";
     const modo = novo ? pref.modoNovo : pref.modo;
-    bloco.replaceChildren(
+    bloco.replaceChildren(...[
       el("h4", { text: "Visual do app" }),
       el("div", { class: "seletor-visual", role: "radiogroup", "aria-label": "Visual do app", "data-teste": "seletor-visual" }, (t.VISUAIS || []).map(v =>
         el("button", { type: "button", role: "radio", class: `seletor-visual-opcao ${pref.visual === v ? "ativo" : ""}`, "data-visual-opcao": v, "aria-checked": pref.visual === v ? "true" : "false",
@@ -8237,7 +8320,7 @@ function blocoAparencia() {
           onclick: () => { t.salvar({ paleta: p }); desenhar(); } },
           el("span", { class: `amostra amostra-${p}`, "aria-hidden": "true" }, el("span"), el("span")),
           el("strong", { text: NOME_PALETA[p][0] }), el("small", { text: NOME_PALETA[p][1] })))),
-      el("p", { class: "suave", text: "Fica guardado neste aparelho." }));
+      el("p", { class: "suave", text: "Fica guardado neste aparelho." })].filter(Boolean));
   };
   desenhar();
   return bloco;

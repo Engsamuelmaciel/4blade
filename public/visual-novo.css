@@ -279,3 +279,45 @@
 .vn-ganho-mes { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; padding-top: 12px; border-top: 1px solid var(--borda); }
 .vn-ganho-mes small { display: block; color: var(--suave); font-size: 12px; }
 .vn-ganho-mes b { font: 800 17px "Marca", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+
+/* ---------- Relatórios: placar do resultado ---------- */
+.vn-placar-fin { padding: 18px 16px; margin: 12px 0; border-radius: var(--raio-painel); background: var(--cartao); border: 1px solid var(--borda); }
+.vn-placar-fin strong { display: block; font: 800 48px/1 "Marca", system-ui, sans-serif; letter-spacing: -.035em; margin: 6px 0 8px; font-variant-numeric: tabular-nums; color: var(--texto); }
+.vn-placar-fin.negativo strong { color: var(--erro); }
+.vn-placar-fin p { margin: 0; color: var(--suave); }
+[data-visual="novo"] .fin-cartoes .cartao-num { border: 1px solid var(--borda); box-shadow: none; }
+[data-visual="novo"] .fin-cartoes .cartao-num::before, [data-visual="novo"] .fin-cartoes .cartao-num::after { display: none; }
+[data-visual="novo"] .fin-controles { position: sticky; top: calc(var(--topo-altura) + env(safe-area-inset-top)); z-index: 40; background: var(--fundo); padding: 6px 0; }
+
+/* ---------- Funcionamento compacto ---------- */
+.vn-func .linha-dia { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 10px; padding: 8px 0; border-bottom: 1px solid var(--borda); }
+.vn-func .linha-dia .marcar { margin: 0; }
+.vn-func .linha-dia .horas { grid-column: 1 / -1; display: none; }
+.vn-func .linha-dia.aberta .horas { display: grid; }
+.vn-dia-res { display: flex; justify-content: flex-end; align-items: center; gap: 10px; border: 0; background: none; color: var(--texto); font: inherit; font-weight: 600; cursor: pointer; min-height: 40px; font-variant-numeric: tabular-nums; }
+.vn-dia-seta { color: var(--suave); transition: transform .15s; font-size: 20px; }
+.linha-dia.aberta .vn-dia-seta { transform: rotate(90deg); }
+.vn-copiar-dias { margin: 4px 0 6px; white-space: normal; text-align: left; height: auto; padding: 8px 12px; }
+[data-visual="novo"] .vn-func .linha-dia, [data-visual="novo"] .vn-func .dias-func { background: none; border-radius: 0; box-shadow: none; }
+[data-visual="novo"] .vn-func .linha-dia { border: 0; border-bottom: 1px solid var(--borda); border-radius: 0; background: none; box-shadow: none; padding: 6px 0; margin: 0; opacity: 1; }
+[data-visual="novo"] .vn-dia-res { font-size: 14px; white-space: nowrap; }
+
+/* ---------- Divulgação: prévia presa em cima, passos em abas ---------- */
+.vn-avisos-fl { margin: 0 0 10px; color: var(--suave); font-size: var(--t-pequeno); }
+.vn-avisos-fl summary { cursor: pointer; font-weight: 600; }
+.vn-avisos-fl .info { margin: 8px 0 0; }
+.vn-fl-abas { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.vn-fl-abas::-webkit-scrollbar { display: none; }
+.vn-fl-aba { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--borda);
+  background: var(--cartao); color: var(--texto); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.vn-fl-aba .fl-num { width: 20px; height: 20px; font-size: 11px; }
+.vn-fl-aba.ativo { background: var(--texto); color: var(--fundo); border-color: var(--texto); }
+.vn-fl-editor > .fl-passo > h3 { display: none; }
+@media (max-width: 899px) {
+  [data-visual="novo"] .fl-previa-col { position: sticky; top: calc(var(--topo-altura) + env(safe-area-inset-top)); z-index: 30; background: var(--fundo); padding-bottom: 8px; }
+  [data-visual="novo"] .fl-previa { padding: 8px; }
+  [data-visual="novo"] .fl-previa canvas { max-height: 26vh; width: auto; }
+  [data-visual="novo"] .fl-previa-col > .suave { display: none; }
+  [data-visual="novo"] .fl-previa-col .fl-carrossel .ajuda { display: none; }
+  [data-visual="novo"] .fl-previa-col .fl-botoes { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+}

@@ -34,6 +34,12 @@
       ajuda.hidden = false;
     } else ajuda.hidden = true;
     botao.href = "https://wa.me/55" + whats + "?text=" + encodeURIComponent(texto);
+    // Modelo Impacto: a barra de pedido mostra a escolha e dá um pulinho a cada toque.
+    const barra = document.getElementById("pg-barra");
+    if (barra) {
+      barra.classList.toggle("tem-escolha", escolhidos.length > 0);
+      barra.classList.remove("pulo"); void barra.offsetWidth; barra.classList.add("pulo");
+    }
   }
   // Tocar em qualquer parte da linha (ou no +) escolhe/tira o serviço.
   document.querySelectorAll(".pg-servico").forEach(li => li.addEventListener("click", () => {
@@ -44,6 +50,17 @@
     b.setAttribute("aria-pressed", on ? "true" : "false");
     b.textContent = on ? "✓" : "+";
     atualizar();
+  }));
+
+  // Mapa só ao tocar (modelo Impacto): não pesa no celular de quem só quer ver os preços.
+  document.querySelectorAll(".pg-carregar-mapa").forEach(b => b.addEventListener("click", () => {
+    const quadro = document.createElement("div");
+    quadro.className = "pg-mapa";
+    const f = document.createElement("iframe");
+    f.src = b.dataset.mapa; f.title = b.dataset.titulo || "Mapa"; f.loading = "lazy";
+    f.referrerPolicy = "no-referrer-when-downgrade"; f.allowFullscreen = true;
+    quadro.appendChild(f);
+    b.replaceWith(quadro);
   }));
 
   // Link de uma promoção (?promo=<id>): rola até o flyer.

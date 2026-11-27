@@ -477,7 +477,7 @@ async function rodar(tela) {
     assert.ok(gruposCaixa.some(t => /Catálogo/.test(t)), `Mais do caixa: ${gruposCaixa}`);
     await ir(page, "Agenda");
     await page.waitForSelector(".filtro-prof");
-    assert.equal(await page.locator(".acoes-agenda button:has-text('Bloquear')").count(), 0, "caixa não bloqueia agenda");
+    assert.equal(await page.locator(".acoes-agenda button:has-text('Bloquear')").count(), 1, "caixa bloqueia agenda (desde 27/11/2026)");
     await page.click("button:has-text('+ Novo horário')");
     const nomesProf = await page.locator("dialog[open] #c-prof option").allInnerTexts();
     assert.ok(nomesProf.includes("Ana Barbeira") && nomesProf.includes("Beto Barbeiro"), `profissionais: ${nomesProf}`);

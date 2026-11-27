@@ -277,4 +277,32 @@ describe("página da barbearia", () => {
     assert.equal(n.totais.whatsapp, 1);
     assert.equal(n.dias.length, 7);
   });
+  test("modelo Impacto (27/11/2026): escolhido em Minha página, clássico continua igual, inválido recusado, auditado e isolado", async () => {
+    const amb = await cenario("pgm");
+    const outra = await cenario("pgn", amb, amb.p);
+    const { post, get, ger, env } = amb;
+    await get("/api/pagina", ger.token);
+    await post("/api/pagina/slug", ger.token, { slug: "navalhaimpacto" });
+    await post("/api/pagina/salvar", ger.token, { nomeExibicao: "Navalha & Co.", whatsapp: "(11) 90000-0000" });
+    await post("/api/pagina/publicar", ger.token, { publicar: true });
+    const classico = (await abrir(amb, "/navalhaimpacto")).texto;
+    assert.doesNotMatch(classico, /modelo-impacto|pg-barra-pedido/, "sem escolha = clássico");
+    assert.equal((await get("/api/pagina", ger.token)).dados.pagina.modelo, "classico");
+    assert.equal((await post("/api/pagina/salvar", ger.token, { modelo: "neon" })).status, 400);
+    assert.equal((await post("/api/pagina/salvar", ger.token, { modelo: "impacto" })).status, 200);
+    const imp = (await abrir(amb, "/navalhaimpacto")).texto;
+    assert.match(imp, /<html lang="pt-BR" class="[^"]*modelo-impacto">/);
+    assert.match(imp, /pg-barra-pedido/);
+    assert.match(imp, /Agendar no WhatsApp/);
+    assert.equal((await get("/api/pagina", ger.token)).dados.pagina.modelo, "impacto");
+    const aud = env.DB.raw.prepare("SELECT detalhes FROM auditoria WHERE acao = 'pagina_editada' ORDER BY rowid DESC LIMIT 1").get();
+    assert.match(aud.detalhes, /"modelo":\{"antes":"classico","depois":"impacto"\}/);
+    // outra barbearia: continua clássica e mudar a dela não mexe na primeira
+    assert.equal((await outra.get("/api/pagina", outra.ger.token)).dados.pagina.modelo, "classico");
+    assert.equal((await outra.post("/api/pagina/salvar", outra.ger.token, { modelo: "classico" })).status, 200);
+    assert.match((await abrir(amb, "/navalhaimpacto")).texto, /modelo-impacto/);
+    // volta ao clássico: mesmo HTML de antes
+    await post("/api/pagina/salvar", ger.token, { modelo: "classico" });
+    assert.equal((await abrir(amb, "/navalhaimpacto")).texto, classico);
+  });
 });

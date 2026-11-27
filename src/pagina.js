@@ -22,8 +22,11 @@ const aparenciaDe = p => (CORES_PAGINA.includes(p.ap_cor) && MODOS_PAGINA.includ
   ? { cor: p.ap_cor, modo: p.ap_modo }
   : (([cor, modo]) => ({ cor, modo }))(TEMA_ANTIGO[p.tema] || TEMA_ANTIGO.classico));
 const classeAparencia = p => { const a = aparenciaDe(p); return `modo-${a.modo} cor-${a.cor}`; };
-const SQL_PAGINA = `SELECT p.*, a.cor AS ap_cor, a.modo AS ap_modo, COALESCE(o.mostrar_novidades, 1) AS mostrar_novidades FROM paginas p
-  LEFT JOIN paginas_aparencia a ON a.barbearia_id = p.barbearia_id LEFT JOIN paginas_opcoes o ON o.barbearia_id = p.barbearia_id`;
+const SQL_PAGINA = `SELECT p.*, a.cor AS ap_cor, a.modo AS ap_modo, COALESCE(o.mostrar_novidades, 1) AS mostrar_novidades,
+  COALESCE(m.modelo, 'classico') AS modelo FROM paginas p
+  LEFT JOIN paginas_aparencia a ON a.barbearia_id = p.barbearia_id LEFT JOIN paginas_opcoes o ON o.barbearia_id = p.barbearia_id
+  LEFT JOIN paginas_modelo m ON m.barbearia_id = p.barbearia_id`;
+export const MODELOS_PAGINA = ["classico", "impacto"];
 export const FORMAS_PAGINA = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro" };
 export const MAX_GALERIA = 12;
 export const MAX_FOTO_BYTES = 700 * 1024;              // o celular já reduz para ~500 KB; folga para PNG pequeno
@@ -432,30 +435,7 @@ function montarHtml({ p, c, aberto, horarios, origem, previa, promo = null, supo
       : `<span class="pg-hora">${h}</span>`).join("")}</div></details></li>`;
   }).join("") : "";
 
-  return `<!doctype html>
-<html lang="pt-BR" class="${e(classeAparencia(p))}">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>${e(titulo)}</title>
-<meta name="description" content="${e(descricao)}">
-${previa ? '<meta name="robots" content="noindex">' : `<link rel="canonical" href="${e(url)}">`}
-<meta property="og:type" content="website">
-<meta property="og:title" content="${e(ogTitulo)}">
-<meta property="og:description" content="${e(ogDescricao)}">
-<meta property="og:url" content="${e(ogUrl)}">
-<meta property="og:image" content="${e(imagem)}">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="theme-color" content="#24272c">
-<link rel="icon" href="${c.logo ? `/f/${e(c.logo)}` : "/icons/favicon-v2.png"}">
-<link rel="stylesheet" href="/pagina.css">
-<script src="/pagina.js" defer></script>
-<script type="application/ld+json">${ldJson}</script>
-</head>
-<body class="${e(classeAparencia(p))}" data-slug="${e(p.slug)}" data-nome="${e(nome)}"
-  ${c.whatsapp ? `data-whats="${e(c.whatsapp)}" data-msg-padrao="${e(msgPadrao)}"` : ""}>
-${previa ? '<div class="pg-faixa-previa" role="status">Prévia: só você está vendo. Publique em "Minha página" para todos verem.</div>' : ""}
-<header class="pg-capa${c.capa ? "" : " sem-foto"}">
+  const classicoHtml = `<header class="pg-capa${c.capa ? "" : " sem-foto"}">
   ${c.capa ? `<img class="pg-capa-img" src="/f/${e(c.capa)}" alt="" fetchpriority="high">` : ""}
   <div class="pg-capa-conteudo">
     ${c.logo ? `<img class="pg-logo" src="/f/${e(c.logo)}" alt="Logo da ${e(nome)}" width="112" height="112">` : `<span class="pg-logo pg-logo-letra" aria-hidden="true">${e(nome.trim().charAt(0).toUpperCase())}</span>`}
@@ -498,7 +478,94 @@ ${previa ? '<div class="pg-faixa-previa" role="status">Prévia: só você está 
     <p class="pg-4b-acoes"><span>Gostou desta página?</span>
       <a class="pg-4b-link" href="${e(rodape4blade)}" ${rodape4blade.startsWith("https://wa.me") ? 'target="_blank" rel="noopener"' : ""}>Fale com a equipe 4blade</a></p>
   </div>
-</footer>
+</footer>`;
+
+  // Modelo "Impacto" (27/11/2026, escolhido em Minha página): capa em tela cheia com o nome em letra de cartaz,
+  // cardápio que monta o pedido com barra fixa embaixo, galeria grande, equipe com "Agendar com", horário de hoje
+  // numa linha e mapa só ao tocar. Mesmo conteúdo do clássico; só muda a ordem e o desenho.
+  const impacto = p.modelo === "impacto";
+  let htmlImpacto = "";
+  if (impacto) {
+    const hojeF = c.especiais.find(x => x.data === hojeBrasil()) || (funcPor[hojeDia]?.aberto ? funcPor[hojeDia] : null);
+    const fechaHoje = hojeF ? minParaHora(hojeF.fecha_min) : null;
+    const abreHoje = hojeF ? minParaHora(hojeF.abre_min) : null;
+    const selo = temFuncionamento ? `<span class="pg-aberto ${aberto ? "sim" : "nao"}">${aberto ? `Aberto${fechaHoje ? ` · fecha às ${e(fechaHoje)}` : ""}` : "Fechado agora"}</span>` : "";
+    const agendarCom = u => linkWhats(c.whatsapp, `Olá, ${nome}! Vim pela sua página e quero agendar com ${u.nome.split(" ")[0]}. Qual horário vocês têm?`);
+    const equipeImp = c.equipe.map(u => `<li class="pg-pessoa">${u.foto ? `<img src="/f/${e(u.foto)}" alt="${e(u.nome)}" loading="lazy">`
+      : `<span class="pg-inicial" aria-hidden="true">${e(u.nome.trim().charAt(0).toUpperCase())}</span>`}
+      <strong>${e(u.nome.split(" ")[0])}</strong>${u.especialidade ? `<small>${e(u.especialidade)}</small>` : ""}
+      ${c.whatsapp ? `<a class="pg-com" data-evento="whatsapp" href="${e(agendarCom(u))}" target="_blank" rel="noopener">Agendar com ${e(u.nome.split(" ")[0])}</a>` : ""}</li>`).join("");
+    const sec = {
+      serv: c.servicos.length ? `<section class="pg-secao pg-s-serv" aria-labelledby="t-serv"><h2 id="t-serv">Serviços</h2>
+        ${c.whatsapp ? '<p class="pg-dica">Toque nos serviços que você quer. O pedido vai pronto para o WhatsApp.</p>' : ""}${servicosHtml}</section>` : "",
+      promo: promosHtml && p.mostrar_novidades !== 0 ? `<section class="pg-secao pg-s-promo" aria-labelledby="t-promo"><h2 id="t-promo">Novidades</h2><ul class="pg-promos">${promosHtml}</ul></section>` : "",
+      gal: galeriaHtml ? `<section class="pg-secao pg-s-gal" aria-labelledby="t-gal"><h2 id="t-gal">O trabalho</h2><ul class="pg-galeria">${galeriaHtml}</ul></section>` : "",
+      eq: equipeImp ? `<section class="pg-secao pg-s-eq" aria-labelledby="t-eq"><h2 id="t-eq">Quem atende</h2><ul class="pg-equipe">${equipeImp}</ul></section>` : "",
+      hor: horariosHtml ? `<section class="pg-secao pg-s-hor" aria-labelledby="t-hor"><h2 id="t-hor">Horários livres</h2><ul class="pg-dias">${horariosHtml}</ul></section>` : "",
+      func: temFuncionamento || linhasEspeciais ? `<section class="pg-secao pg-s-func" aria-labelledby="t-func"><h2 id="t-func">Horário</h2>
+        ${temFuncionamento ? `<details class="pg-semana"><summary><span>Hoje</span><strong>${abreHoje ? `${e(abreHoje)} – ${e(fechaHoje)}` : "Fechado"}</strong><span class="pg-ver-semana">ver semana</span></summary><ul class="pg-funcionamento">${linhasHorario}</ul></details>` : ""}
+        ${linhasEspeciais ? `<div class="pg-especiais" data-teste="aberturas-especiais"><h3>Abertura em caráter especial</h3><ul class="pg-funcionamento">${linhasEspeciais}</ul></div>` : ""}</section>` : "",
+      local: end.completo ? `<section class="pg-secao pg-s-local" aria-labelledby="t-local"><h2 id="t-local">Onde fica</h2>
+        <div class="pg-local"><p><strong>${e(end.linha1)}</strong>${end.linha2 ? `<br>${e(end.linha2)}` : ""}</p>
+        <div class="pg-acoes">${mapa ? `<a class="pg-botao" data-evento="rota" href="${e(mapa)}" target="_blank" rel="noopener">Como chegar</a>` : ""}
+          ${waze ? `<a class="pg-botao contorno" data-evento="rota" href="${e(waze)}" target="_blank" rel="noopener">Waze</a>` : ""}</div></div>
+        ${mapaEmbutido ? `<button type="button" class="pg-carregar-mapa" data-mapa="${e(mapaEmbutido)}" data-titulo="Mapa: ${e(end.completo)}">Ver no mapa</button>` : ""}</section>` : "",
+      sobre: p.sobre ? `<section class="pg-secao pg-s-sobre" aria-labelledby="t-sobre"><h2 id="t-sobre">Sobre</h2><p class="pg-sobre">${e(p.sobre)}</p></section>` : "",
+      cont: tel || insta ? `<section class="pg-secao pg-s-cont" aria-labelledby="t-cont"><h2 id="t-cont">Contato</h2><ul class="pg-contato">
+        ${tel ? `<li><a href="tel:+55${e(tel)}">${ICONE_TEL}Telefone ${e(foneTexto(tel))}</a></li>` : ""}
+        ${insta ? `<li><a data-evento="instagram" href="${e(insta)}" target="_blank" rel="noopener">${ICONE_INSTA}Instagram @${e(p.instagram)}</a></li>` : ""}</ul></section>` : "",
+      pag: c.formas.length ? `<section class="pg-secao pg-s-pag" aria-labelledby="t-pag"><h2 id="t-pag">Pagamento</h2>
+        <p class="pg-formas">${c.formas.map(f => `<span>${e(FORMAS_PAGINA[f])}</span>`).join("")}</p></section>` : ""
+    };
+    htmlImpacto = `<header class="pg-capa pg-capa-impacto${c.capa ? "" : " sem-foto"}">
+  ${c.capa ? `<img class="pg-capa-img" src="/f/${e(c.capa)}" alt="" fetchpriority="high">` : ""}
+  <div class="pg-capa-topo">
+    ${c.logo ? `<img class="pg-logo" src="/f/${e(c.logo)}" alt="Logo da ${e(nome)}" width="56" height="56">` : `<span class="pg-logo pg-logo-letra" aria-hidden="true">${e(nome.trim().charAt(0).toUpperCase())}</span>`}
+    ${selo}
+  </div>
+  <div class="pg-capa-conteudo">
+    <h1>${e(nome)}</h1>
+    ${p.frase ? `<p class="pg-frase">${e(p.frase)}</p>` : p.end_cidade ? `<p class="pg-frase">${e(p.end_cidade)}${p.end_uf ? `/${e(p.end_uf)}` : ""}</p>` : ""}
+    ${whats ? `<a class="pg-botao grande" data-evento="whatsapp" href="${e(whats)}" target="_blank" rel="noopener">Agendar no WhatsApp</a>` : ""}
+    ${c.servicos.length ? '<a class="pg-ver" href="#t-serv">Ver serviços e preços</a>' : ""}
+    ${insta ? `<a class="pg-insta" data-evento="instagram" href="${e(insta)}" target="_blank" rel="noopener">${ICONE_INSTA}@${e(p.instagram)}</a>` : ""}
+  </div>
+</header>
+<main class="pg-corpo pg-corpo-impacto">
+  <div class="pg-col pg-col-a">${sec.serv}${sec.hor}${sec.func}${sec.sobre}${sec.pag}</div>
+  <div class="pg-col pg-col-b">${sec.promo}${sec.gal}${sec.eq}${sec.local}${sec.cont}</div>
+</main>
+${whats ? `<div class="pg-barra-pedido" id="pg-barra"><p class="pg-cta-ajuda" id="pg-escolhidos" hidden></p>
+  <a class="pg-botao" id="pg-solicitar" data-evento="whatsapp" href="${e(whats)}" target="_blank" rel="noopener">${ICONE_WHATS}Agendar no WhatsApp</a></div>` : ""}
+<footer class="pg-rodape pg-rodape-leve" aria-label="Sobre o 4blade">
+  <p>Página feita com o <a href="${e(rodape4blade)}" ${rodape4blade.startsWith("https://wa.me") ? 'target="_blank" rel="noopener"' : ""}><strong>4blade</strong></a>, o app das barbearias.</p>
+</footer>`;
+  }
+
+  return `<!doctype html>
+<html lang="pt-BR" class="${e(classeAparencia(p))}${impacto ? " modelo-impacto" : ""}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>${e(titulo)}</title>
+<meta name="description" content="${e(descricao)}">
+${previa ? '<meta name="robots" content="noindex">' : `<link rel="canonical" href="${e(url)}">`}
+<meta property="og:type" content="website">
+<meta property="og:title" content="${e(ogTitulo)}">
+<meta property="og:description" content="${e(ogDescricao)}">
+<meta property="og:url" content="${e(ogUrl)}">
+<meta property="og:image" content="${e(imagem)}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#24272c">
+<link rel="icon" href="${c.logo ? `/f/${e(c.logo)}` : "/icons/favicon-v2.png"}">
+<link rel="stylesheet" href="/pagina.css">
+<script src="/pagina.js" defer></script>
+<script type="application/ld+json">${ldJson}</script>
+</head>
+<body class="${e(classeAparencia(p))}${impacto ? " modelo-impacto" : ""}" data-slug="${e(p.slug)}" data-nome="${e(nome)}"
+  ${c.whatsapp ? `data-whats="${e(c.whatsapp)}" data-msg-padrao="${e(msgPadrao)}"` : ""}>
+${previa ? '<div class="pg-faixa-previa" role="status">Prévia: só você está vendo. Publique em "Minha página" para todos verem.</div>' : ""}
+${impacto ? htmlImpacto : classicoHtml}
 <dialog class="pg-ampliar" id="pg-ampliar" aria-label="Foto ampliada"><button type="button" class="pg-fechar" aria-label="Fechar">×</button><img alt=""><p></p></dialog>
 </body>
 </html>`;
@@ -586,7 +653,7 @@ async function dadosEditor(ctx, p) {
   try { formas = JSON.parse(p.formas || "[]"); } catch { /* vazio */ }
   return {
     pagina: {
-      slug: p.slug, publicada: Boolean(p.publicada), publicadaEm: p.publicada_em, tema: p.tema, aparencia: aparenciaDe(p), mostrarHorarios: Boolean(p.mostrar_horarios), mostrarNovidades: p.mostrar_novidades !== 0,
+      slug: p.slug, publicada: Boolean(p.publicada), publicadaEm: p.publicada_em, tema: p.tema, aparencia: aparenciaDe(p), modelo: p.modelo || "classico", mostrarHorarios: Boolean(p.mostrar_horarios), mostrarNovidades: p.mostrar_novidades !== 0,
       nomeExibicao: p.nome_exibicao, frase: p.frase, sobre: p.sobre, whatsapp: p.whatsapp, mensagemPadrao: p.mensagem_padrao,
       instagram: p.instagram, telefone: p.telefone, endRua: p.end_rua, endNumero: p.end_numero, endBairro: p.end_bairro,
       endCidade: p.end_cidade, endUf: p.end_uf, endCep: p.end_cep, mapsUrl: p.maps_url, formas
@@ -605,7 +672,7 @@ async function dadosEditor(ctx, p) {
       armazenamento: Boolean(armazenamento(ctx.env))
     },
     numeros7: { visita: numeros7.visita || 0, whatsapp: numeros7.whatsapp || 0, rota: numeros7.rota || 0, instagram: numeros7.instagram || 0 },
-    temas: TEMAS, cores: CORES_PAGINA, modos: MODOS_PAGINA, formasDisponiveis: FORMAS_PAGINA,
+    temas: TEMAS, cores: CORES_PAGINA, modos: MODOS_PAGINA, modelos: MODELOS_PAGINA, formasDisponiveis: FORMAS_PAGINA,
     flyersNoAr: Number(flyersNoAr?.n || 0)
   };
 }
@@ -691,6 +758,16 @@ async function salvarPagina(ctx, p) {
       mudouNovidades = { antes: Boolean(p.mostrar_novidades), depois: Boolean(nv) };
     }
   }
+  let mudouModelo = null;
+  if (input.modelo !== undefined) {
+    if (!MODELOS_PAGINA.includes(input.modelo)) erro("Modelo de página inválido.");
+    if (input.modelo !== (p.modelo || "classico")) {
+      cmds.push(db.prepare(`INSERT INTO paginas_modelo (barbearia_id, modelo, atualizado_por) VALUES (?, ?, ?)
+                            ON CONFLICT(barbearia_id) DO UPDATE SET modelo = excluded.modelo, atualizado_por = excluded.atualizado_por, atualizado_em = CURRENT_TIMESTAMP`)
+        .bind(ctx.barbeariaId, input.modelo, ctx.user.id));
+      mudouModelo = { antes: p.modelo || "classico", depois: input.modelo };
+    }
+  }
   if (input.cor !== undefined || input.modo !== undefined || input.tema !== undefined) {
     const atual = aparenciaDe(p);
     const base = input.tema !== undefined && TEMA_ANTIGO[input.tema] ? { cor: TEMA_ANTIGO[input.tema][0], modo: TEMA_ANTIGO[input.tema][1] } : atual;
@@ -736,7 +813,8 @@ async function salvarPagina(ctx, p) {
     ...(mudouServicos ? { servicos: input.servicos.map(s => `${s.visivel === false ? "-" : "+"}${s.id.slice(0, 8)}`) } : {}),
     ...(mudouEquipe ? { equipe: input.equipe.map(u => `${u.visivel ? "+" : "-"}${u.id.slice(0, 8)}`) } : {}),
     ...(mudouAparencia ? { aparencia: mudouAparencia } : {}),
-    ...(mudouNovidades ? { mostrarNovidades: mudouNovidades } : {})
+    ...(mudouNovidades ? { mostrarNovidades: mudouNovidades } : {}),
+    ...(mudouModelo ? { modelo: mudouModelo } : {})
   }));
   await db.batch(cmds);
   return json({ mensagem: "Página salva." });

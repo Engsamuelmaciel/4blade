@@ -232,7 +232,8 @@ async function rodar(tela) {
       await page.click("dialog[open] [data-teste=link-lote]");
     }
     await page.waitForSelector("[data-lote-linha='3']");
-    const dia = somarDias(HOJE, 2);
+    let dia = somarDias(HOJE, 2);
+    if (new Date(`${dia}T12:00:00`).getDay() === 0) dia = somarDias(HOJE, 3);   // domingo: a barbearia da demonstração não abre
     const linha = n => page.locator(`[data-lote-linha='${n}']`);
     const preencher = async (n, campo, valor) => { const c = linha(n).locator(`[data-campo=${campo}]`); await c.fill(valor); await c.dispatchEvent("input"); };
     for (const n of [1, 2, 3]) {

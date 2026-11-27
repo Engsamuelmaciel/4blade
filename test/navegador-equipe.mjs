@@ -266,7 +266,7 @@ async function rodar(tela) {
     assert.equal(await page.locator('[data-cliente^="Lote Fictício"]').count(), 3);
     await page.fill("input.busca-viva", "Agenda Lote");
     await page.waitForSelector('[data-cliente="Agenda Lote Três"]');
-    assert.equal(await page.locator('[data-cliente^="Agenda Lote"]').count(), 3, "o marcado, o só cadastrado e o da linha em conflito (a marcação já cadastra o cliente, como no Novo horário)");
+    assert.equal(await page.locator('[data-cliente^="Agenda Lote"]').count(), 2, "o marcado e o só cadastrado (o da linha em conflito, só com nome, é avulso e fica fora da lista desde 27/11/2026)");
     await sair();
 
     const reais = problemas.filter(p => !/status of 40[39]/.test(p));
