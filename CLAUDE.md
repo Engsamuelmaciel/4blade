@@ -295,6 +295,13 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
 
 - 26/11/2026: **Caixa: "Lançamentos do dia" em destaque** (pedido do responsável: o botão ficava pequeno embaixo da comanda). Sem migração. `telaCaixa`: dois botões grandes `[data-aba-caixa=venda|lancamentos]` (`.abas-caixa`, `[data-teste=abas-caixa]`) logo abaixo do cabeçalho, com bolinha `[data-teste=num-lancamentos]` = quantidade de lançamentos; o botão `[data-teste=ver-lancamentos]` dentro da comanda continua (os testes antigos usam). Teste: `test/navegador-e3.mjs` (alterna Vender/Lançamentos, contador; print `*-caixa-abas-vender-lancamentos`). Cache do sw `4blade-v85`. **Publicado em 26/11/2026 (autorizado, sem migração): versão 56ac8ca2** (forblade.com.br: sw `4blade-v85`, app.js e style.css com `abas-caixa`).
 
+- 27/11/2026: **Repaginação visual, fatia 1 (fundação)** na ramificação `repaginacao-visual` (a partir da `pagina-barbearia`; prompt em `docs/PROMPT-REPAGINACAO.md`, guia em `docs/guia-visual.md`). Só aparência: nenhum texto, ordem, rota ou marcador de teste mudou; sem migração.
+  - `public/style.css`: camada "REPAGINAÇÃO VISUAL v5" no fim (tokens de tipografia/espaço/raio/sombra/movimento, 6 paletas refinadas nos 2 modos, botões com todos os estados, foco visível, janelas/menu/listas/troca de tela com animação curta, esqueleto em `#app:empty`, "reduzir movimento" respeitado; amostras: Início, Mensagens até 980 px, agenda em grade, Novo horário). Cereja: destaque `#e11d48` (contraste). `tema.js` COR_TOPO e theme-color novos.
+  - `public/app.js`: só `ICONES` redesenhados (mesmas chaves/metáforas) e `mostrar()` com classe `tela-entra` quando muda o endereço.
+  - Ferramentas: `test/prints-repaginacao.mjs <pasta> [--ganache]` (prints + rolagem lateral + console) e `test/contraste-temas.mjs` (todos ≥ 4,5). Prints em `docs/prints/repaginacao/fatia-1/antes|depois`.
+  - Testes: `npm test` 216/216 (igual à base); navegador 15 de 18 passam, os mesmos da base — `navegador-agenda` (lote), `navegador-equipe` (lote) e `navegador-melhorias` ("caixa não bloqueia agenda") já falhavam antes, por testes desatualizados. Cache do sw `4blade-v122`.
+  - NÃO publicado: o ambiente do Claude não alcança api.cloudflare.com (proxy 403) para publicar no `4blade-teste`.
+
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
 - Publicar de novo: `npx wrangler deploy --config wrangler.teste.toml`; migrações: `npx wrangler d1 migrations apply 4blade-db-teste --remote --config wrangler.teste.toml`.
