@@ -2682,3 +2682,7 @@ dialog .mov-cartao[data-caixa-acao] { width: 100%; }
 /* Novo horário: dois atalhos lado a lado (Bloquear este horário / Marcar vários) */
 .link-chip-linha { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 button.link-chip { border: 0; cursor: pointer; font-family: inherit; color: inherit; background: var(--neutro, #eee); }
+
+/* Página inicial (27/11/2026): o 2º botão do topo ficava invisível (fundo branco do .botao por cima do transparente). */
+.lp .botao.lp-botao-secundario, .lp .botao.lp-botao-secundario:hover { background: transparent; color: #fff; border-color: rgba(255, 255, 255, .45); }
+.lp .botao.lp-botao-secundario:hover { background: rgba(255, 255, 255, .08); }

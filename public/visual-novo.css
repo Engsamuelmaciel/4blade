@@ -1,0 +1,281 @@
+/* =====================================================================================
+   4blade — VISUAL NOVO "Navalha Noir" (27/11/2026)
+   Só vale com <html data-visual="novo"> (Minha conta → Visual do app). O visual antigo não lê nada daqui.
+   Regras: grafite + um dourado (ação, item ativo, dinheiro); verde/vermelho só com significado;
+   títulos e números em Montserrat 800 ("Marca"); 6 tamanhos de letra; raios 10/16/24; sem moldura no título.
+   ===================================================================================== */
+
+/* ---------- cores ---------- */
+:root[data-visual="novo"] {
+  --fundo: #f6f5f2; --cartao: #ffffff; --texto: #16191c; --suave: #5b6168; --borda: #e3e1dc;
+  --primaria: #16191c; --primaria-hover: #2a2e33;
+  --neutro: #ecebe7; --neutro-2: #f1f0ec; --alterna-fundo: #ecebe7;
+  --campo: #ffffff; --campo-borda: #d6d3cc;
+  --botao-principal: var(--dourado); --botao-principal-texto: var(--sobre-dourado);
+  --linha: var(--borda);
+  --sombra: 0 1px 2px rgba(20, 20, 20, .04);
+  --sombra-alta: 0 24px 60px -18px rgba(0, 0, 0, .35);
+  --raio: 16px; --raio-botao: 12px; --raio-painel: 24px;
+  --t-titulo: 28px; --t-secao: 18px; --t-texto: 15px; --t-pequeno: 13px; --t-numero: 30px;
+  --mola: cubic-bezier(.2, .9, .25, 1.05);
+  --barra-baixo: 64px;
+}
+:root[data-visual="novo"][data-paleta="navalha"] { --destaque: #8a5d0b; }
+:root[data-visual="novo"][data-tema="escuro"] {
+  --fundo: #0e1012; --cartao: #171a1d; --texto: #f1efe9; --suave: #9ea3a8; --borda: #262a2e;
+  --primaria: #0e1012; --primaria-hover: #1d2124;
+  --neutro: #22262a; --neutro-2: #1c1f22; --alterna-fundo: #1c1f22;
+  --campo: #121417; --campo-borda: #33383d;
+  --destaque: var(--dourado);
+  --sombra: none;
+  --sombra-alta: 0 30px 70px -20px rgba(0, 0, 0, .8);
+}
+
+/* ---------- base e tipografia ---------- */
+[data-visual="novo"] body { font-size: var(--t-texto); background: var(--fundo); }
+[data-visual="novo"] main { padding-top: 14px; }
+[data-visual="novo"] h1, [data-visual="novo"] h2, [data-visual="novo"] h3 { font-family: "Marca", system-ui, sans-serif; font-weight: 800; letter-spacing: -.02em; }
+[data-visual="novo"] h3 { font-size: var(--t-secao); }
+[data-visual="novo"] .preco, [data-visual="novo"] .valor, [data-visual="novo"] .resumo-item strong { font-variant-numeric: tabular-nums; }
+
+/* ---------- topo: grafite liso, sem faixa dourada ---------- */
+[data-visual="novo"] .topo { background: var(--fundo); color: var(--texto); border-bottom: 1px solid var(--borda); box-shadow: none; }
+[data-visual="novo"][data-tema="claro"] .topo-logo img { filter: brightness(0) saturate(100%) invert(9%) sepia(5%) saturate(900%) hue-rotate(170deg); }
+[data-visual="novo"][data-tema="claro"] .topo .btn-menu,
+[data-visual="novo"][data-tema="claro"] .topo-conta,
+[data-visual="novo"][data-tema="claro"] #btn-notif,
+[data-visual="novo"][data-tema="claro"] #btn-ajuda { color: var(--texto); border-color: var(--borda); background: transparent; }
+[data-visual="novo"] .topo .sub { color: var(--suave); }
+[data-visual="novo"] .topo-conta { border-color: var(--borda); background: transparent; }
+[data-visual="novo"] .nav-topo { border-top-color: var(--borda); }
+[data-visual="novo"] .nav-aba { color: var(--suave); }
+[data-visual="novo"] .nav-aba.ativo { color: var(--texto); }
+/* sino: número discreto (só fica vermelho quando há algo novo, como antes, mas menor) */
+[data-visual="novo"] .sino-num { min-width: 16px; height: 16px; font-size: 10px; }
+
+/* ---------- título da tela: sem moldura, texto grande direto no fundo ---------- */
+[data-visual="novo"] .cabecalho { background: none; border: 0; box-shadow: none; padding: 4px 2px 0; min-height: 0; margin-bottom: 14px; }
+[data-visual="novo"] .cabecalho h2 { font-size: var(--t-titulo); line-height: 1.1; }
+[data-visual="novo"] .cabecalho h2::before { display: none; }
+[data-visual="novo"] .cabecalho > p { padding-left: 0; font-size: var(--t-pequeno); }
+[data-visual="novo"] .cab-chip { background: transparent; color: var(--suave); padding: 0; font-weight: 600; }
+[data-visual="novo"] .cab-chip .icone { display: none; }
+[data-visual="novo"] .cabecalho .voltar { background: transparent; padding: 0; color: var(--destaque); }
+@media (max-width: 560px) { [data-visual="novo"] .cabecalho h2 { font-size: 26px; } }
+
+/* ---------- superfícies ---------- */
+[data-visual="novo"] .cartao, [data-visual="novo"] .lista-x, [data-visual="novo"] .painel-novo, [data-visual="novo"] .mp-secao,
+[data-visual="novo"] .fl-passo, [data-visual="novo"] .vaga, [data-visual="novo"] .fin-secao, [data-visual="novo"] .visao-secao {
+  border: 1px solid var(--borda); box-shadow: var(--sombra); border-radius: var(--raio); background: var(--cartao);
+}
+[data-visual="novo"] .cartao .cartao { border: 0; background: var(--neutro-2); }
+[data-visual="novo"] .vazio { border: 0; background: transparent; color: var(--suave); text-align: center; padding: 28px 12px; }
+
+/* indicadores: placar — número grande, rótulo pequeno, sem bordas coloridas */
+[data-visual="novo"] .resumo-item { border: 1px solid var(--borda); box-shadow: none; background: var(--cartao); }
+[data-visual="novo"] .resumo-item small { letter-spacing: .04em; color: var(--suave); }
+[data-visual="novo"] .resumo-item strong { font-family: "Marca", system-ui, sans-serif; font-size: 24px; letter-spacing: -.02em; }
+[data-visual="novo"] .resumo-item.alerta { box-shadow: none; }
+[data-visual="novo"] .resumo-item.alerta strong { color: var(--erro); }
+[data-visual="novo"] .resumo-item.ok strong { color: var(--texto); }
+
+/* ---------- botões ---------- */
+[data-visual="novo"] .botao { border-color: var(--borda); background: var(--cartao); box-shadow: none; }
+[data-visual="novo"] .botao:hover { background: var(--neutro-2); }
+[data-visual="novo"] .botao.principal, [data-visual="novo"] .botao.dourado,
+[data-visual="novo"] .botao.principal:hover, [data-visual="novo"] .botao.dourado:hover {
+  background: var(--dourado); color: var(--sobre-dourado); border-color: transparent; box-shadow: none; filter: none;
+}
+[data-visual="novo"] .botao.principal:hover, [data-visual="novo"] .botao.dourado:hover { filter: brightness(1.06); }
+[data-visual="novo"] .botao:active:not(:disabled) { transform: scale(.97); }
+[data-visual="novo"] .botao.whats { background: var(--cartao); border-color: var(--borda); }
+[data-visual="novo"] .botao.whats::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #25d366; margin-right: 8px; flex: none; }
+[data-visual="novo"] .alterna .botao.ativo, [data-visual="novo"] .chip-filtro.ativo { background: var(--texto); color: var(--fundo); border-color: var(--texto); }
+
+/* ---------- campos ---------- */
+[data-visual="novo"] input, [data-visual="novo"] select, [data-visual="novo"] textarea { border-radius: 10px; }
+
+/* ---------- janelas: sobem de baixo no celular ---------- */
+[data-visual="novo"] dialog.janela { border-radius: var(--raio-painel); border: 1px solid var(--borda); box-shadow: var(--sombra-alta); }
+@media (max-width: 699px) {
+  [data-visual="novo"] dialog.janela[open] {
+    margin: auto 0 0; width: 100%; max-width: 100%; max-height: 92vh; border-radius: var(--raio-painel) var(--raio-painel) 0 0; border-bottom: 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-visual="novo"] dialog.janela[open] { animation: vn-sobe .24s var(--mola); }
+  [data-visual="novo"] dialog.janela[open]::backdrop { animation: vn-aparece .2s ease-out; }
+  [data-visual="novo"] main > * { animation: vn-aparece .18s ease-out; }
+}
+@keyframes vn-sobe { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes vn-aparece { from { opacity: 0; } to { opacity: 1; } }
+
+/* ---------- seletor Visual antigo / Visual novo (Minha conta) — vale nos dois visuais ---------- */
+.seletor-visual { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0 14px; }
+.seletor-visual-opcao { display: grid; gap: 2px; text-align: left; padding: 12px 14px; border-radius: 14px; border: 1.5px solid var(--borda); background: var(--cartao); color: var(--texto); font: inherit; cursor: pointer; }
+.seletor-visual-opcao small { color: var(--suave); font-size: 12.5px; line-height: 1.3; }
+.seletor-visual-opcao.ativo { border-color: var(--dourado); box-shadow: 0 0 0 3px color-mix(in srgb, var(--dourado) 22%, transparent); }
+.seletor-visual-opcao.ativo strong::after { content: " ✓"; color: var(--destaque); }
+
+/* ---------- Início "Agora" ---------- */
+.vn-ola { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 2px 14px; }
+.vn-ola small { color: var(--suave); font-size: var(--t-pequeno); font-weight: 600; }
+.vn-ola h2 { margin: 2px 0 0; font-size: var(--t-titulo); line-height: 1.05; }
+.vn-ola-logo { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex: none; }
+.vn-ola-logo.inicial { display: grid; place-items: center; background: var(--dourado); color: var(--sobre-dourado); font: 800 22px "Marca", system-ui, sans-serif; }
+.vn-proximo { padding: 16px; border-radius: var(--raio-painel); margin-bottom: 12px; border: 1px solid color-mix(in srgb, var(--dourado) 30%, var(--borda));
+  background: linear-gradient(160deg, color-mix(in srgb, var(--dourado) 14%, var(--cartao)), var(--cartao) 70%); }
+.vn-rotulo { display: block; color: var(--destaque); font-size: var(--t-pequeno); font-weight: 700; }
+.vn-proximo-linha { display: flex; align-items: center; gap: 14px; margin: 6px 0 14px; }
+.vn-hora { font: 800 40px/1 "Marca", system-ui, sans-serif; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.vn-proximo-linha b { display: block; font-size: 18px; }
+.vn-proximo-linha span { color: var(--suave); font-size: var(--t-pequeno); }
+.vn-proximo.vazio-prox b { display: block; font-size: 18px; margin: 6px 0 14px; }
+.vn-proximo-acoes { display: flex; gap: 8px; }
+.vn-proximo-acoes > * { flex: 1; justify-content: center; }
+.vn-placar { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+.vn-placar > div { padding: 12px; border-radius: var(--raio); background: var(--cartao); border: 1px solid var(--borda); min-width: 0; }
+.vn-placar strong { display: block; font: 800 20px/1.1 "Marca", system-ui, sans-serif; letter-spacing: -.02em; white-space: nowrap; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+.vn-placar small { color: var(--suave); font-size: 12px; line-height: 1.25; display: block; margin-top: 3px; }
+.vn-placar .alerta strong { color: var(--erro); }
+[data-visual="novo"] main > .visao-secao { margin-bottom: 12px; }
+@media (min-width: 1024px) {
+  .vn-proximo { max-width: none; }
+  .vn-placar strong { font-size: 26px; }
+}
+
+/* ---------- barra de baixo (celular) ---------- */
+.barra-baixo { display: none; }
+@media (max-width: 1023px) {
+  [data-visual="novo"] body.com-barra-baixo { padding-bottom: calc(var(--barra-baixo) + env(safe-area-inset-bottom) + 8px); }
+  [data-visual="novo"] body.com-barra-baixo #nav-topo,
+  [data-visual="novo"] body.com-barra-baixo .topo > .btn-menu { display: none !important; }
+  [data-visual="novo"] .barra-baixo {
+    display: grid; grid-template-columns: repeat(5, 1fr); align-items: center;
+    position: fixed; z-index: 320; left: 0; right: 0; bottom: 0;
+    height: calc(var(--barra-baixo) + env(safe-area-inset-bottom)); padding: 0 6px env(safe-area-inset-bottom);
+    background: color-mix(in srgb, var(--fundo) 94%, transparent); border-top: 1px solid var(--borda);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  }
+  [data-visual="novo"] .bb-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; height: 100%;
+    border: 0; background: none; color: var(--suave); font: inherit; font-size: 11.5px; font-weight: 600; text-decoration: none; cursor: pointer;
+    -webkit-tap-highlight-color: transparent; }
+  [data-visual="novo"] .bb-item .icone { width: 24px; height: 24px; }
+  [data-visual="novo"] .bb-item.ativo { color: var(--texto); }
+  [data-visual="novo"] .bb-item.ativo .icone { color: var(--dourado); }
+  [data-visual="novo"] .bb-mais-acao { justify-self: center; width: 54px; height: 54px; margin-top: -18px; border: 0; border-radius: 50%; cursor: pointer;
+    background: var(--dourado); color: var(--sobre-dourado); font: 800 32px/1 system-ui, sans-serif; display: grid; place-items: center;
+    box-shadow: 0 8px 20px -6px color-mix(in srgb, var(--dourado) 65%, transparent); -webkit-tap-highlight-color: transparent; }
+  [data-visual="novo"] .bb-mais-acao:active { transform: scale(.94); }
+  /* botão flutuante antigo do "+ Novo horário" não briga com a barra */
+  [data-visual="novo"] body.com-barra-baixo .acoes-agenda .novo-horario { display: none; }
+  /* "Mais": o menu sobe de baixo, sobre a barra */
+  [data-visual="novo"] body.com-barra-baixo .menu-lateral {
+    top: auto !important; bottom: 0; left: 0; right: 0; width: auto; max-width: none; max-height: 82vh;
+    border-radius: var(--raio-painel) var(--raio-painel) 0 0; border: 1px solid var(--borda); border-bottom: 0;
+    background: var(--cartao); color: var(--texto);
+    transform: translateY(105%); transition: transform .26s var(--mola); visibility: hidden; z-index: 400;
+    padding-bottom: calc(var(--barra-baixo) + env(safe-area-inset-bottom));
+  }
+  [data-visual="novo"] body.com-barra-baixo .menu-lateral.aberto { transform: none; visibility: visible; box-shadow: var(--sombra-alta); }
+  [data-visual="novo"] body.com-barra-baixo .fundo-menu { top: 0 !important; z-index: 350; }
+  [data-visual="novo"] body.com-barra-baixo .menu-lateral .menu-logo { display: none; }
+  [data-visual="novo"] body.com-barra-baixo .menu-lateral .nav-item, [data-visual="novo"] body.com-barra-baixo .menu-lateral .grupo-titulo { color: var(--texto); }
+  [data-visual="novo"] body.com-barra-baixo .menu-lateral .menu-cabecalho span { color: var(--suave); }
+  [data-visual="novo"] body.com-barra-baixo .menu-lateral .menu-rodape { display: none; }
+  [data-visual="novo"] body.com-barra-baixo .aviso-flutuante { bottom: calc(var(--barra-baixo) + 16px); }
+}
+@media (min-width: 1024px) { [data-visual="novo"] .vn-so-celular { display: none; } }
+
+/* ---------- ações rápidas (+) ---------- */
+.acoes-rapidas { display: grid; gap: 8px; margin: 4px 0 8px; }
+.acao-rapida { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: var(--raio); border: 1px solid var(--borda);
+  background: var(--cartao); color: var(--texto); font: inherit; text-align: left; cursor: pointer; }
+.acao-rapida:hover { background: var(--neutro-2); }
+.acao-rapida strong { display: block; font-size: 16px; }
+.acao-rapida small { color: var(--suave); font-size: var(--t-pequeno); }
+.acao-rapida-ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; flex: none;
+  background: color-mix(in srgb, var(--dourado) 16%, var(--cartao)); color: var(--destaque); }
+.acao-rapida-ic .icone { width: 22px; height: 22px; }
+
+/* ---------- agenda no celular ---------- */
+.vn-barra-agenda { display: grid; gap: 10px;
+  margin: -6px -16px 12px; padding: 8px 16px 10px; background: var(--fundo); border-bottom: 1px solid var(--borda); }
+.vn-dias { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; margin: 0 -16px; padding: 0 16px; }
+.vn-dias::-webkit-scrollbar { display: none; }
+.vn-dia { flex: none; width: 52px; padding: 7px 0; border-radius: 14px; border: 1px solid var(--borda); background: var(--cartao); color: var(--texto);
+  display: grid; justify-items: center; gap: 1px; font: inherit; cursor: pointer; scroll-snap-align: center; }
+.vn-dia small { font-size: 11.5px; color: var(--suave); font-weight: 600; }
+.vn-dia strong { font: 800 19px/1.1 "Marca", system-ui, sans-serif; }
+.vn-dia.hoje small { color: var(--destaque); }
+.vn-dia.ativo { background: var(--dourado); border-color: transparent; color: var(--sobre-dourado); }
+.vn-dia.ativo small { color: inherit; }
+.vn-profs { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+.vn-profs::-webkit-scrollbar { display: none; }
+.vn-prof { flex: none; display: grid; justify-items: center; gap: 3px; border: 0; background: none; color: var(--suave); font: inherit; cursor: pointer; width: 54px; }
+.vn-prof small { font-size: 11.5px; max-width: 54px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vn-prof-av { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--neutro); color: var(--texto);
+  font: 800 14px "Marca", system-ui, sans-serif; border: 2px solid transparent; }
+.vn-prof.ativo { color: var(--texto); }
+.vn-prof.ativo .vn-prof-av { border-color: var(--dourado); box-shadow: 0 0 0 2px var(--fundo) inset; }
+.vn-linha-agenda { display: flex; align-items: center; gap: 8px; }
+.vn-linha-agenda .vn-mes { flex: 1; font: 800 17px "Marca", system-ui, sans-serif; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vn-linha-agenda .vn-visao { width: auto; min-height: 38px; padding: 0 30px 0 12px; font-size: 14px; flex: none; }
+.vn-linha-agenda .alterna { flex: none; }
+.vn-barra-agenda .navega-data { display: flex; align-items: center; gap: 6px; }
+[data-visual="novo"] .slot-livre { border-style: dashed; }
+.vn-linha-agenda .modo-dia { margin: 0; width: auto; flex: none; display: inline-flex; }
+.vn-linha-agenda .modo-dia .botao { flex: none; padding: 0 12px; min-height: 38px; }
+/* livres: discretos (um traço, sem verde forte) — o dourado do "+" chama o toque */
+[data-visual="novo"] .slot-livre { min-height: 38px; background: transparent; border: 1px dashed var(--borda); border-left: 1px dashed var(--borda); color: var(--suave); }
+[data-visual="novo"] .slot-livre .slot-hora { color: var(--texto); font-weight: 700; }
+[data-visual="novo"] .slot-livre .marcar-aqui { color: var(--destaque); }
+[data-visual="novo"] .slot-livre:hover { background: var(--neutro-2); }
+[data-visual="novo"] .resumo-dia, [data-visual="novo"] .resumo-dia.livre { background: transparent; border: 0; padding: 0 2px; }
+[data-visual="novo"] .resumo-dia.livre p { display: none; }
+
+/* ---------- Novo horário em passos ---------- */
+.vn-passo .form-secao-titulo { display: flex; align-items: center; gap: 10px; font: 800 17px "Marca", system-ui, sans-serif; letter-spacing: -.01em; text-transform: none; color: var(--texto); }
+.vn-passo-num { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--dourado); color: var(--sobre-dourado); font-size: 13px; }
+[data-visual="novo"] .janela-form .janela-botoes { position: sticky; bottom: 0; background: var(--cartao); padding-top: 10px; }
+[data-visual="novo"] .disp-livres button, [data-visual="novo"] .disp-horas button { min-height: 40px; }
+/* aviso de sucesso com destaque */
+[data-visual="novo"] .aviso-flutuante { border-radius: 14px; font-weight: 700; }
+[data-visual="novo"] .vn-passo .form-secao-titulo { text-transform: none; letter-spacing: -.01em; font-size: 17px; color: var(--texto); }
+[data-visual="novo"] .chips-hora button, [data-visual="novo"] .chips-hora .botao { background: var(--cartao); color: var(--texto); border: 1px solid var(--borda); font-weight: 700; }
+[data-visual="novo"] .chips-hora button.ativo, [data-visual="novo"] .chips-hora button[aria-pressed="true"] { background: var(--dourado); color: var(--sobre-dourado); border-color: transparent; }
+[data-visual="novo"] dialog:has(.acoes-rapidas) .janela-botoes .botao { background: var(--neutro-2); color: var(--texto); }
+[data-visual="novo"] .disp-recolhivel .etiqueta { background: transparent; color: var(--destaque); padding: 0; }
+.vn-cobrar { min-height: 30px !important; padding: 0 12px !important; margin-left: auto; font-size: 13px; }
+[data-visual="novo"] .slot-topo:has(.vn-cobrar) .etiqueta { display: none; }
+
+/* ---------- caixa ---------- */
+[data-visual="novo"] .fc-topo { background: none; border: 0; box-shadow: none; padding: 4px 2px 0; }
+[data-visual="novo"] .fc-topo-titulo h2::before { display: none; }
+[data-visual="novo"] .fc-topo .fc-titulo-col h2 { font-size: var(--t-titulo); }
+[data-visual="novo"] .fc-topo .pdv-ferramentas .botao.ferramenta.destaque-mov { background: var(--cartao); color: var(--texto); border: 1px solid var(--borda); box-shadow: none; }
+[data-visual="novo"] .fc-topo .abas-topo .botao.ativo { background: var(--texto); color: var(--fundo); box-shadow: none; }
+[data-visual="novo"] .pdv-num.ouro strong { color: var(--destaque); }
+[data-visual="novo"] .fc-resumo, [data-visual="novo"] .fc-col, [data-visual="novo"] .fc-painel { box-shadow: none; }
+@media (max-width: 700px) {
+  [data-visual="novo"] .fc-topo .abas-topo { padding: 4px; border-radius: 14px; background: var(--neutro-2); }
+  [data-visual="novo"] .fc-topo .abas-topo .botao { min-height: 44px; font-size: 15px; border-radius: 11px; }
+  [data-visual="novo"] .fc-topo .abas-topo .botao:not(.ativo) { background: transparent; border: 0; }
+  [data-visual="novo"] .fc-topo .pdv-ferramentas .botao.ferramenta { min-height: 44px; }
+  [data-visual="novo"] .fc-resumo .pdv-formas { display: none; }
+  [data-visual="novo"] .fc-resumo .pdv-num small { display: none; }
+  [data-visual="novo"] .fc-resumo .pdv-num strong { font-family: "Marca", system-ui, sans-serif; }
+}
+@media (max-width: 1023px) {
+  [data-visual="novo"] body.com-barra-baixo .fc-movel { bottom: calc(var(--barra-baixo) + env(safe-area-inset-bottom)); border-top: 1px solid var(--borda); background: var(--cartao); }
+  [data-visual="novo"] body.com-barra-baixo .fc-movel .fc-movel-num { font-family: "Marca", system-ui, sans-serif; font-size: 18px; }
+}
+
+/* ---------- Início do barbeiro: "Meu dia" ---------- */
+.vn-ganho { padding: 18px 16px 14px; border-radius: var(--raio-painel); margin-bottom: 12px; background: var(--cartao); border: 1px solid var(--borda); }
+.vn-ganho-num { display: block; font: 800 46px/1.02 "Marca", system-ui, sans-serif; letter-spacing: -.035em; color: var(--destaque); margin: 4px 0 6px; font-variant-numeric: tabular-nums; }
+.vn-ganho > p { color: var(--suave); margin: 0 0 14px; }
+.vn-ganho > p b { color: var(--texto); }
+.vn-ganho-mes { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; padding-top: 12px; border-top: 1px solid var(--borda); }
+.vn-ganho-mes small { display: block; color: var(--suave); font-size: 12px; }
+.vn-ganho-mes b { font: 800 17px "Marca", system-ui, sans-serif; font-variant-numeric: tabular-nums; }

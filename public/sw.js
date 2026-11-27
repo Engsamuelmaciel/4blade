@@ -3,7 +3,7 @@
  * Guarda SOMENTE os arquivos da tela (para abrir sem internet).
  * NUNCA guarda nada de /api/ (dados e login sempre vão direto ao servidor).
  */
-const CACHE = "4blade-v121";
+const CACHE = "4blade-v122";
 
 const ARQUIVOS = [
   "/",
@@ -14,6 +14,7 @@ const ARQUIVOS = [
   "/ajuda.js",
   "/flyers.js",
   "/style.css",
+  "/visual-novo.css",
   "/manifest.json",
   "/icons/marca.png",
   "/icons/logo.png",

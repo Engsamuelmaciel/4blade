@@ -9,6 +9,7 @@ import legalJs from "../public/legal.js";
 import ajudaJs from "../public/ajuda.js";
 import { IMAGENS_TUTORIAIS } from "./arquivos-tutoriais.js";
 import styleCss from "../public/style.css";
+import visualNovoCss from "../public/visual-novo.css";
 import paginaCss from "../public/pagina.css";
 import paginaJs from "../public/pagina.js";
 import swJs from "../public/sw.js";
@@ -41,6 +42,7 @@ const ARQUIVOS = {
   "/legal.js": [legalJs, "text/javascript; charset=utf-8"],
   "/ajuda.js": [ajudaJs, "text/javascript; charset=utf-8"],
   "/style.css": [styleCss, "text/css; charset=utf-8"],
+  "/visual-novo.css": [visualNovoCss, "text/css; charset=utf-8"],
   "/pagina.css": [paginaCss, "text/css; charset=utf-8"],
   "/pagina.js": [paginaJs, "text/javascript; charset=utf-8"],
   "/flyers.js": [flyersJs, "text/javascript; charset=utf-8"],

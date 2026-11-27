@@ -1448,7 +1448,15 @@ const NOME_SITUACAO = { agendado: "Agendado", finalizado: "Finalizado", faltou: 
 const COR_SITUACAO = { agendado: "", finalizado: "verde", faltou: "amarela", cancelado: "vermelha" };
 
 // ---------- AGENDA ----------
-const estadoAgenda = { data: null, visao: "dia", barbeiroId: "", diasAbertos: new Set(), profsAbertos: null, modoDia: (() => { try { return localStorage.getItem("4blade.agendaModo") || "grade"; } catch { return "grade"; } })() };
+const lerModoAgenda = (chave, padrao) => { try { return localStorage.getItem(chave) || padrao; } catch { return padrao; } };
+// Visual novo no celular (27/11/2026): a agenda abre em Lista (com os livres entre os cartões); a escolha Grade/Lista
+// do celular no visual novo fica guardada à parte, sem mexer na do visual antigo.
+const agendaNovoCelular = () => visualNovo() && window.matchMedia("(max-width: 1023px)").matches;
+const CHAVE_MODO_AGENDA = () => (agendaNovoCelular() ? "4blade.agendaModoNovoCel" : "4blade.agendaModo");
+const estadoAgenda = { data: null, visao: "dia", barbeiroId: "", diasAbertos: new Set(), profsAbertos: null,
+  _modoDia: lerModoAgenda("4blade.agendaModo", "grade"), _modoCel: lerModoAgenda("4blade.agendaModoNovoCel", "lista"),
+  get modoDia() { return agendaNovoCelular() ? this._modoCel : this._modoDia; },
+  set modoDia(k) { if (agendaNovoCelular()) this._modoCel = k; else this._modoDia = k; } };
 let marcarParaCliente = null;
 let ultimaAgenda = null;   // profissionais da agenda aberta (usados ao remarcar)   // cliente escolhido na tela Clientes → abre o "Novo horário" já com ele
 let servicosCache = null;
@@ -1530,6 +1538,8 @@ async function telaAgenda() {
         botao("+ Novo horário", () => janelaMarcar(ag), "principal pequeno novo-horario"),
         botao("Bloquear", () => janelaBloquear(ag), "pequeno"))));
 
+  const novoCel = agendaNovoCelular();
+  const barraUsada = novoCel ? barraAgendaNovo(ag, { v, d0, irPara, mover, rotuloPeriodo, temModo }) : barra;
   const profs = ag.profissionais.filter(p => !estadoAgenda.barbeiroId || p.id === estadoAgenda.barbeiroId);
   let corpo;
   if ((v === "dia" || v === "semana") && !profs.length) {
@@ -1602,18 +1612,35 @@ async function telaAgenda() {
 
   const subtitulo = v === "dia" ? `${DIAS[diaDaSemana(d0)]}, ${dataBR(d0)}` : v === "semana" ? `Semana de ${dataBR(ag.data)} a ${dataBR(ag.ate)}`
     : v === "mes" ? "Toque num dia para ver os horários" : "Toque num mês para ver o calendário";
+  if (acaoPendente === "novo-horario" || acaoPendente === "bloquear") {
+    const a = acaoPendente;
+    acaoPendente = null;
+    setTimeout(() => (a === "bloquear" ? janelaBloquear(ag) : janelaMarcar(ag)));
+  }
   if (marcarParaCliente) {
     const c = marcarParaCliente;
     marcarParaCliente = null;
     setTimeout(() => janelaMarcar(ag, { cliente: c }));
   }
   mostrar(
-    cabecalho(veTodas() ? "Agenda" : "Minha agenda", subtitulo),
-    barra,
+    cabecalho(veTodas() ? "Agenda" : "Minha agenda", novoCel && v === "dia" ? null : subtitulo),
+    barraUsada,
     corpo);
+  if (novoCel) {
+    document.querySelector("#app .vn-dias .ativo")?.scrollIntoView({ inline: "center", block: "nearest" });
+    // deslizar o dedo para o lado troca o dia (ou a semana/mês)
+    let x0 = null, y0 = null;
+    corpo.addEventListener("touchstart", e => { if (e.target.closest(".grade-rolagem")) return; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+    corpo.addEventListener("touchend", e => {
+      if (x0 === null) return;
+      const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+      x0 = null;
+      if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.8) mover(dx < 0 ? 1 : -1);
+    }, { passive: true });
+  }
   // Hoje na grade: rola até a linha de "agora" (uma vez por visão/data; ações na tela não fazem pular).
   const chaveRolar = `${v}|${d0}|${estadoAgenda.modoDia}`;
-  if ((v === "dia" || v === "semana") && estadoAgenda.modoDia === "grade" && estadoAgenda.rolouAgora !== chaveRolar) {
+  if (!visualNovo() && (v === "dia" || v === "semana") && estadoAgenda.modoDia === "grade" && estadoAgenda.rolouAgora !== chaveRolar) {
     estadoAgenda.rolouAgora = chaveRolar;
     const agora = document.querySelector("#app .grade-agora");
     if (agora) requestAnimationFrame(() => {
@@ -1621,6 +1648,33 @@ async function telaAgenda() {
       if (r.top > window.innerHeight * .6 || r.top < 0) window.scrollTo({ top: Math.max(0, window.scrollY + r.top - window.innerHeight * .35), behavior: "auto" });
     });
   }
+}
+
+// Visual novo no celular: faixa de dias para tocar/deslizar, profissionais como avatares (filtro) e uma linha com
+// a visão (Dia/Semana/Mês/Ano), Lista/Grade e Bloquear. Fica presa no alto enquanto a lista rola.
+function barraAgendaNovo(ag, { v, d0, irPara, mover, rotuloPeriodo, temModo }) {
+  const hoje = hojeLocal();
+  const ini = d0 < hoje || d0 > somaDias(hoje, 10) ? somaDias(d0, -3) : somaDias(hoje, -1);
+  const dias = v === "dia" ? el("div", { class: "vn-dias", role: "list", "data-teste": "faixa-dias" }, Array.from({ length: 15 }, (_, i) => {
+    const d = somaDias(ini, i);
+    return el("button", { type: "button", role: "listitem", class: `vn-dia ${d === d0 ? "ativo" : ""} ${d === hoje ? "hoje" : ""}`, "data-dia-faixa": d,
+      "aria-current": d === d0 ? "date" : null, "aria-label": `${DIAS[diaDaSemana(d)]}, ${dataBR(d)}`, onclick: () => irPara(d, "dia") },
+      el("small", { text: d === hoje ? "Hoje" : DIAS[diaDaSemana(d)].slice(0, 3) }), el("strong", { text: d.slice(8) }));
+  })) : el("div", { class: "navega-data" }, botao("‹", () => mover(-1), "pequeno seta"), rotuloPeriodo, botao("›", () => mover(1), "pequeno seta"),
+    botao("Hoje", () => irPara(hojeLocal()), "pequeno"));
+  const profs = veTodas() && ag.profissionais.length > 1 ? el("div", { class: "vn-profs", role: "group", "aria-label": "Profissional", "data-teste": "avatares-profs" },
+    [{ id: "", nome: "Todos" }, ...ag.profissionais].map(p => el("button", { type: "button", class: `vn-prof ${estadoAgenda.barbeiroId === p.id ? "ativo" : ""}`,
+      "aria-pressed": estadoAgenda.barbeiroId === p.id ? "true" : "false", "data-prof-filtro": p.nome,
+      onclick: () => { estadoAgenda.barbeiroId = p.id; comCarga(telaAgenda).catch(e => avisar(e.message, "erro")); } },
+      el("span", { class: "vn-prof-av", text: p.id ? iniciais(p.nome) : "★" }), el("small", { text: p.id ? p.nome.split(" ")[0] : "Todos" })))) : null;
+  const visao = el("select", { class: "vn-visao", "aria-label": "Visão da agenda" },
+    [["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"], ["ano", "Ano"]].map(([k, t]) => el("option", { value: k, text: t, selected: v === k || null })));
+  visao.addEventListener("change", () => irPara(d0, visao.value));
+  return el("div", { class: "barra-agenda vn-barra-agenda" },
+    dias, profs,
+    el("div", { class: "vn-linha-agenda" },
+      el("strong", { class: "vn-mes", text: v === "dia" ? `${DIAS[diaDaSemana(d0)]}, ${dataBR(d0).slice(0, 5)}` : "" }),
+      visao, temModo ? alternaModoAgenda() : null));
 }
 
 // Calendário do mês: cada dia com a cor da ocupação e quantos horários livres.
@@ -2176,7 +2230,7 @@ function calendarioMesNovo(oc, ag, ym, irPara, profs) {
 function alternaModoAgenda() {
   return el("div", { class: "alterna modo-dia", role: "group", "aria-label": "Jeito de ver a agenda" },
     [["grade", "Grade"], ["lista", "Lista"]].map(([k, t]) => botao(t, () => {
-      estadoAgenda.modoDia = k; try { localStorage.setItem("4blade.agendaModo", k); } catch { /* sem espaço */ }
+      estadoAgenda.modoDia = k; try { localStorage.setItem(CHAVE_MODO_AGENDA(), k); } catch { /* sem espaço */ }
       comCarga(telaAgenda);
     }, `pequeno ${estadoAgenda.modoDia === k ? "ativo" : ""}`)));
 }
@@ -2331,6 +2385,20 @@ const cartoesAbertos = new Set();
 let depoisDeHorario = null;
 const recarregarHorarios = () => (depoisDeHorario || telaAgenda)();
 // recolhivel: na agenda o cartão fica compacto (hora, situação, cliente e serviço); tocar abre as informações e as ações.
+// Visual novo (27/11/2026): "Cobrar" direto no cartão do horário (hoje ou antes, ainda marcado), sem abrir a ficha nem ir ao Caixa.
+function botaoCobrarRapido(a) {
+  if (!visualNovo() || a.situacao !== "agendado" || a.data > hojeLocal()) return null;
+  return el("button", { type: "button", class: "botao pequeno principal vn-cobrar", "data-cobrar-rapido": a.cliente.nome, text: "Cobrar",
+    onclick: ev => { ev.stopPropagation(); if (ehCaixa()) cobrarPeloCaixa(a.id, recarregarHorarios); else janelaFinalizar(a, { aoTerminar: recarregarHorarios }); } });
+}
+async function cobrarPeloCaixa(id, aoTerminar) {
+  try {
+    const { atendimentos } = await api(`/caixa/atendimentos?id=${encodeURIComponent(id)}`);
+    const at = atendimentos.find(x => x.id === id && x.situacao === "agendado");
+    if (!at) { avisar("Esse atendimento não está mais aguardando pagamento."); return aoTerminar(); }
+    janelaFinalizar(at, { endpoint: "/caixa/cobrar", aoTerminar, titulo: `Concluir atendimento de ${at.cliente.nome}` });
+  } catch (e) { avisar(e.message, "erro"); }
+}
 function cartaoAgendamento(a, mostrarNome, { recolhivel = false } = {}) {
   const f = a.finalizacao;
   const destaque = gestao() && f?.valorAlterado;
@@ -2342,6 +2410,7 @@ function cartaoAgendamento(a, mostrarNome, { recolhivel = false } = {}) {
       el("span", { class: `etiqueta ${COR_SITUACAO[a.situacao]}`, text: NOME_SITUACAO[a.situacao] }),
       a.serie ? el("span", { class: "etiqueta fixo", text: a.serie.intervaloSemanas === 1 ? "Fixo semanal" : a.serie.intervaloSemanas === 2 ? "Fixo quinzenal" : `Fixo a cada ${a.serie.intervaloSemanas} sem.` }) : null,
       destaque ? el("span", { class: "etiqueta laranja", text: "Valor alterado" }) : null,
+      botaoCobrarRapido(a),
       recolhivel ? el("span", { class: "slot-seta", "aria-hidden": "true" }) : null),
     el("p", { class: "slot-cliente" }, el("strong", { text: a.cliente.nome }), a.cliente.telefone ? ` · ${fone(a.cliente.telefone)}` : " · sem telefone", " ", seloCliente(a.cliente)),
     el("p", { class: "suave", text: [mostrarNome ? a.barbeiroNome : null, a.servicos.map(s => s.nome).join(" + ")].filter(Boolean).join(" · ") })
@@ -2507,7 +2576,7 @@ function seletorCliente({ id, preSelecionado = null, aoMudar = () => {}, aoDigit
 // Painel de disponibilidade do dia: situação do profissional, ocupados e horários livres (tocar preenche a hora).
 function painelDisponibilidade() {
   const painel = el("div", { class: "disponibilidade", "data-teste": "disponibilidade", "aria-live": "polite" });
-  let vez = 0, aberto = false;   // começa recolhido (só o título e quantos horários livres); o gerente expande se quiser
+  let vez = 0, aberto = visualNovo();   // visual novo: livres já à vista (botões). Antigo: começa recolhido (só o título e quantos horários livres); o gerente expande se quiser
   async function atualizar({ data, barbeiroId, duracao, hora, aoEscolher }) {
     const minha = ++vez;
     if (!data) { painel.replaceChildren(); return; }
@@ -2678,8 +2747,7 @@ function janelaMarcar(ag, pre = {}) {
       el("input", { type: "checkbox", name: "serv", value: sv.id, id }),
       el("label", { for: id }, el("span", { class: "serv-nome", text: sv.nome }), el("span", { class: "serv-meta", text: `${reais(sv.precoCentavos)} · ${sv.duracaoMin} min` })));
   };
-  return abrirJanela("Novo horário", [
-    el("p", { class: "link-chip-linha" },
+  const atalhos = () => el("p", { class: "link-chip-linha" },
       el("button", { type: "button", class: "link-chip", "data-teste": "bloquear-do-novo", text: "Bloquear este horário", onclick: () => {
         // Leva o que já foi escolhido (profissional, dia e hora) para a janela de bloqueio.
         const v = n => janela.querySelector(`[name=${n}]`)?.value;
@@ -2687,22 +2755,31 @@ function janelaMarcar(ag, pre = {}) {
         janela.close();
         janelaBloquear(ag, pre2);
       } }),
-      el("a", { class: "link-chip", href: "#/agenda-lote", "data-teste": "link-lote", text: "Marcar vários de uma vez  ›", onclick: () => { voltarLote = "#/agenda"; janela.close(); } })),
-    el("section", { class: "form-secao" }, el("h4", { class: "form-secao-titulo", text: "Quando" }),
+      el("a", { class: "link-chip", href: "#/agenda-lote", "data-teste": "link-lote", text: "Marcar vários de uma vez  ›", onclick: () => { voltarLote = "#/agenda"; janela.close(); } }));
+  const secQuando = el("section", { class: "form-secao" }, el("h4", { class: "form-secao-titulo", text: "Quando" }),
       campoProfissional(ag, pre.barbeiroId),
       el("div", { class: "lado-a-lado" },
         campo("Data", { name: "data", type: "date", value: pre.data || estadoAgenda.data, required: true }),
         campo("Hora", { name: "hora", type: "time", step: "300", required: true })),
-      disp.el),
-    el("fieldset", { class: "servicos-escolha form-secao" }, el("legend", { class: "form-secao-titulo", text: "Serviços" }),
-      servicos.map(linhaServico), dur.el),
-    el("fieldset", { class: "servicos-escolha bloco-cliente form-secao" }, el("legend", { class: "form-secao-titulo", text: "Cliente" }), seletor.el, blocoNovo, botaoCad, painelCad),
-    el("section", { class: "form-secao" }, el("h4", { class: "form-secao-titulo", text: "Detalhes" }),
-      campo("Observação", { name: "obs", maxlength: "300", autocomplete: "off", placeholder: "Opcional" }),
-      el("div", { class: "lado-a-lado" },
-        campo("Horário fixo", { tag: "select", name: "repetir", opcoes: OPCOES_REPETIR }),
-        Object.assign(campo("Repetir até", { name: "repAte", type: "date" }), { hidden: true })))
-  ], {
+      disp.el);
+  const secServicos = el("fieldset", { class: "servicos-escolha form-secao" }, el("legend", { class: "form-secao-titulo", text: "Serviços" }),
+    servicos.map(linhaServico), dur.el);
+  const secCliente = el("fieldset", { class: "servicos-escolha bloco-cliente form-secao" }, el("legend", { class: "form-secao-titulo", text: "Cliente" }), seletor.el, blocoNovo, botaoCad, painelCad);
+  const secDetalhes = el("section", { class: "form-secao" }, el("h4", { class: "form-secao-titulo", text: "Detalhes" }),
+    campo("Observação", { name: "obs", maxlength: "300", autocomplete: "off", placeholder: "Opcional" }),
+    el("div", { class: "lado-a-lado" },
+      campo("Horário fixo", { tag: "select", name: "repetir", opcoes: OPCOES_REPETIR }),
+      Object.assign(campo("Repetir até", { name: "repAte", type: "date" }), { hidden: true })));
+  // Visual novo (27/11/2026): na ordem da conversa no balcão — 1 cliente, 2 serviço, 3 horário (livres já à vista); os atalhos vão para o fim.
+  const novo = visualNovo();
+  if (novo) {
+    [[secCliente, "1", "Quem é o cliente?"], [secServicos, "2", "O que vai fazer?"], [secQuando, "3", "Quando?"]].forEach(([sec, n, t]) => {
+      const tit = sec.querySelector(".form-secao-titulo");
+      tit.replaceChildren(el("span", { class: "vn-passo-num", text: n }), t);
+      sec.classList.add("vn-passo");
+    });
+  }
+  return abrirJanela("Novo horário", novo ? [secCliente, secServicos, secQuando, secDetalhes, atalhos()] : [atalhos(), secQuando, secServicos, secCliente, secDetalhes], {
     ok: "Marcar",
     aoConfirmar: async f => {
       const servicoIds = [...f.querySelectorAll("input[name=serv]:checked")].map(i => i.value);
@@ -2748,7 +2825,7 @@ function janelaMarcar(ag, pre = {}) {
           confirmar
         ], { ok: "Agora não", semCancelar: true, aoConfirmar: () => true });
       }
-      avisar("Horário marcado.");
+      avisar(visualNovo() ? `✓ Marcado: ${dataBR(f.data.value).slice(0, 5)} às ${f.hora.value}` : "Horário marcado.");
     }
   });
 }
@@ -2974,6 +3051,7 @@ async function janelaFinalizar(a, { endpoint = "/agenda/finalizar", aoTerminar =
         ...(correcao && (f.corrData.value !== a.data || f.corrHora.value !== a.inicio) ? { data: f.corrData.value, hora: f.corrHora.value } : {}),
         ...(correcao?.profissionais?.length && f.quemAtendeu?.value && f.quemAtendeu.value !== correcao.barbeiroId ? { barbeiroId: f.quemAtendeu.value } : {}) } }));
       avisar(correcao ? "Atendimento corrigido."
+        : visualNovo() ? `✓ ${reais(t)} recebido · ${a.cliente.nome}`
         : produtos.length ? "Atendimento e produtos cobrados. Entrada lançada no caixa." : "Atendimento finalizado. Entrada lançada no caixa.");
       aoTerminar();
     }
@@ -3613,6 +3691,8 @@ function blocoFechamento(c) {
 
 async function telaCaixa(dataHistorico = null) {
   clearTimeout(timerCaixa);
+  const acao = dataHistorico ? null : acaoPendente;   // ação do "+" (visual novo)
+  if (acao === "vender-produto" || acao === "lancar-atendimento") { acaoPendente = null; estadoCaixa.visao = "venda"; estadoCaixa.vitrine = acao === "vender-produto" ? "produtos" : "fila"; }
   const c = dataHistorico ? await api(`/caixa/dia?data=${dataHistorico}`) : await api("/caixa/hoje");
   const recarregar = () => telaCaixa(dataHistorico);
   const voltar = dataHistorico ? "#/caixa-historico" : null;
@@ -3732,6 +3812,7 @@ async function telaCaixa(dataHistorico = null) {
     el("div", { class: "fc-resumo" }, ...topo),
     c.reaberturas?.length ? el("p", { class: "suave", text: `Reaberto ${c.reaberturas.length}x (último motivo: ${c.reaberturas[0].motivo})` }) : null,
     frente.el);
+  if (acao === "lancar-atendimento") [...document.querySelectorAll("#app .fc-lista button")].find(b => b.textContent.trim() === "Lançar atendimento")?.click();
   timerCaixa = setTimeout(() => { if (location.hash === "#/caixa" && !janela.open && frente.vazia() && estadoCaixa.visao === "venda" && !document.activeElement?.matches?.("input, select, textarea")) telaCaixa().catch(() => {}); }, 30000);
 }
 
@@ -4830,6 +4911,30 @@ async function telaInicioBarbeiro() {
   const blocoAvisos = avisos.length ? el("section", { class: "cartao", "data-teste": "avisos-barbeiro" }, el("h3", { text: "Avisos" }),
     el("ul", { class: "avisos-barbeiro" }, avisos.map(([ic, t, k]) => el("li", { "data-aviso": k }, icone(ic), el("span", { text: t }))))) : null;
 
+  if (visualNovo()) {
+    // Visual novo: "Meu dia" — a minha parte de hoje em número grande, o próximo cliente com Cobrar, depois a lista.
+    const dia = `${["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][d.getDay()]}, ${dataBR(hojeD).slice(0, 5)}`;
+    const topo = el("header", { class: "vn-ola", "data-teste": "boas-vindas-barbeiro" },
+      el("div", {}, el("small", { text: `${dia} · ${nomeB}` }), el("h2", { text: `${saudacao}, ${primeiro}` })),
+      r.foto ? el("img", { class: "vn-ola-logo", src: fotoUrl(r.foto), alt: `Foto de ${primeiro}`, "data-teste": "foto-barbeiro" })
+        : el("span", { class: "vn-ola-logo inicial", "aria-hidden": "true", "data-teste": "foto-barbeiro-iniciais", text: iniciais(usuario.nome) }));
+    const meuDia = el("section", { class: "vn-ganho", "data-teste": "ganhos-barbeiro" },
+      el("small", { class: "vn-rotulo", text: "Sua parte hoje" }),
+      el("strong", { class: "vn-ganho-num", "data-teste": "liquido-hoje", text: reais(h.comissaoCentavos) }),
+      el("p", {}, "Bruto ", el("b", { "data-teste": "bruto-hoje", text: reais(h.brutoCentavos) }), ` · ${h.atendimentos} atendimento(s)`),
+      el("div", { class: "vn-ganho-mes" },
+        el("div", {}, el("small", { text: "No mês (sua parte)" }), el("b", { "data-teste": "liquido-mes", text: reais(co.totalCentavos) })),
+        el("div", {}, el("small", { text: "Bruto no mês" }), el("b", { "data-teste": "bruto-mes", text: reais(pr.totalCentavos) })),
+        el("a", { class: "botao pequeno", href: "#/minha-producao", text: "Ver ganhos" })));
+    const prox = proximo ? el("section", { class: "vn-proximo", "data-teste": "proximo-cliente" },
+      el("small", { class: "vn-rotulo", text: `Próximo · ${textoFalta(minutosAte(proximo.inicio))}` }),
+      el("div", { class: "vn-proximo-linha" }, el("strong", { class: "vn-hora", text: proximo.inicio }),
+        el("div", {}, el("b", { text: proximo.cliente.nome }), el("span", { text: proximo.servicos.map(x => x.nome).join(" + ") }))),
+      el("div", { class: "vn-proximo-acoes" },
+        botao("Ver ficha", () => janelaAtendimento(proximo), ""),
+        botao("Cobrar", () => janelaFinalizar(proximo, { aoTerminar: telaInicioBarbeiro }), "principal"))) : null;
+    return mostrar(topo, meuDia, prox, clientes, blocoAvisos, grade);
+  }
   mostrar(hero, ganhos,
     el("div", { class: "duas-colunas visao-colunas" }, el("div", {}, clientes), el("div", {}, blocoAvisos, grade)));
 }
@@ -6606,6 +6711,10 @@ async function telaVisaoDia() {
         el("p", { text: `${["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][d.getDay()]}, ${dataBR(v.hoje)} · ${r.marcados ? `${r.marcados} horário(s) hoje` : "nenhum horário marcado hoje"}` }))),
     !v.marca?.logo && gestao() ? el("a", { class: "inicio-dica", href: "#/minha-pagina", text: "Coloque a sua logo em Minha página para ela aparecer aqui." }) : null,
     el("nav", { class: "inicio-atalhos", "aria-label": "Atalhos" }, atalhos.map(([h, t, ic]) => el("a", { href: h, class: "inicio-atalho", "data-atalho": t }, icone(ic), el("span", { text: t })))));
+  if (visualNovo()) return mostrar(...inicioAgora(v, { saudacao, nomeB, d, cobrarAtendimento, whats, recarregar }),
+    naoFechados, agenda, notas, faltas, produtos, bloqueados,
+    el("section", { class: "cartao" }, el("div", { class: "secao-titulo" }, el("h3", { text: "Próximos 7 dias" })), semana),
+    emDia.length ? el("p", { class: "suave em-dia", "data-teste": "em-dia", text: `Tudo em dia: ${emDia.join(", ")}.` }) : null);
   mostrar(boasVindas,
     resumo,
     el("section", { class: "cartao" }, el("div", { class: "secao-titulo" }, el("h3", { text: "Próximos 7 dias" }), el("small", { class: "suave", text: "Toque no dia para abrir a agenda" })), semana),
@@ -6613,6 +6722,47 @@ async function telaVisaoDia() {
       el("div", {}, naoFechados, agenda, faltas),
       el("div", {}, notas, produtos, bloqueados)),
     emDia.length ? el("p", { class: "suave em-dia", "data-teste": "em-dia", text: `✔ Tudo em dia: ${emDia.join(", ")}.` }) : null);
+}
+
+// Visual novo (27/11/2026): Início "Agora" — quem é o próximo e o que fazer, 3 números e a linha do dia.
+// Usa os mesmos dados da Visão do dia; as seções de pendências vêm logo abaixo (mesmas da tela antiga).
+function minutosAte(hora) {
+  const [h, m] = hora.split(":").map(Number);
+  const agora = new Date();
+  return h * 60 + m - (agora.getHours() * 60 + agora.getMinutes());
+}
+function textoFalta(min) {
+  if (min <= 0) return min > -40 ? "agora" : "atrasado";
+  if (min < 60) return `em ${min} min`;
+  return `em ${Math.floor(min / 60)}h${String(min % 60).padStart(2, "0")}`;
+}
+function inicioAgora(v, { saudacao, nomeB, d, cobrarAtendimento, whats }) {
+  const r = v.resumo;
+  const aguardando = v.agenda.filter(a => a.situacao === "agendado");
+  const prox = aguardando.find(a => minutosAte(a.hora) > -40) || null;
+  const dia = `${["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][d.getDay()]}, ${dataBR(v.hoje).slice(0, 5)}`;
+  const topo = el("header", { class: "vn-ola", "data-teste": "boas-vindas" },
+    el("div", {}, el("small", { text: `${dia} · ${nomeB}` }), el("h2", { text: `${saudacao}, ${usuario.nome.split(" ")[0]}` })),
+    v.marca?.logo ? el("img", { class: "vn-ola-logo", src: fotoUrl(v.marca.logo), alt: `Logo da ${nomeB}`, "data-teste": "logo-barbearia" })
+      : el("span", { class: "vn-ola-logo inicial", "aria-hidden": "true", text: (nomeB || "4").charAt(0).toUpperCase() }));
+  const proximo = prox
+    ? el("section", { class: "vn-proximo", "data-teste": "proximo-cliente" },
+      el("small", { class: "vn-rotulo", text: `Próximo · ${textoFalta(minutosAte(prox.hora))}` }),
+      el("div", { class: "vn-proximo-linha" },
+        el("strong", { class: "vn-hora", text: prox.hora }),
+        el("div", {}, el("b", { text: prox.cliente }), el("span", { text: `${prox.barbeiro} · até ${prox.fim}` }))),
+      el("div", { class: "vn-proximo-acoes" },
+        whats(prox.whatsapp, "WhatsApp", prox.comNumero),
+        el("button", { type: "button", class: "botao principal", "data-teste": "cobrar-proximo", text: "Cobrar", onclick: () => cobrarAtendimento(prox.id) })))
+    : el("section", { class: "vn-proximo vazio-prox", "data-teste": "proximo-cliente" },
+      el("small", { class: "vn-rotulo", text: "Agora" }),
+      el("b", { text: aguardando.length ? "Sem mais ninguém para as próximas horas" : "Nenhum cliente aguardando hoje" }),
+      el("div", { class: "vn-proximo-acoes" }, el("a", { class: "botao principal", href: "#/agenda", text: "Abrir agenda", onclick: () => { estadoAgenda.data = v.hoje; } })));
+  const placar = el("div", { class: "vn-placar", "data-teste": "visao-resumo" },
+    el("div", {}, el("strong", { text: reais(r.recebidoCentavos) }), el("small", { "data-teste": "situacao-caixa", text: r.caixa === "aberto" ? "recebido · caixa aberto" : "recebido hoje" })),
+    el("div", {}, el("strong", { text: String(r.marcados) }), el("small", { text: `marcados · ${r.finalizados} atendidos` })),
+    el("div", { class: v.naoFechados.length ? "alerta" : "" }, el("strong", { text: String(v.naoFechados.length) }), el("small", { text: "sem fechar" })));
+  return [topo, proximo, placar];
 }
 
 // ---------- USO DO APP (painel do suporte, 17/11/2026) ----------
@@ -7779,6 +7929,7 @@ function montarMenuLateral() {
     })),
     el("div", { class: "menu-rodape", text: "4blade · gestão para barbearias" }));
   aside.hidden = false;
+  montarBarraBaixo();
 }
 function montarMenu() {
   if (!usaMenuTopo()) return montarMenuLateral();
@@ -7828,13 +7979,69 @@ function montarMenu() {
       const grupo = el("div", { class: `grupo ${aberto ? "aberto" : ""}`, "data-grupo": g.id }, titulo, itens);
       return grupo;
     })));
+  // Visual novo no celular: as abas do topo saem (vão para a barra de baixo); as que não couberem nela entram no "Mais".
+  if (visualNovo()) {
+    const naBarra = new Set(itensBarraBaixo().map(([r]) => r));
+    const sobram = principais.filter(([r]) => !naBarra.has(r));
+    if (sobram.length) aside.querySelector(".menu-nav").prepend(el("div", { class: "grupo aberto vn-so-celular", "data-grupo": "principais" },
+      el("div", { class: "grupo-itens" }, sobram.map(([rota, titulo, ic]) =>
+        el("a", { class: `nav-item ${rota === atual ? "ativo" : ""}`, href: `#/${rota}`, "data-nav": nomeCompleto[rota] || titulo,
+          onclick: () => { fecharMenu(); if (location.hash === `#/${rota}`) rotear(); } }, icone(ic), el("span", { text: nomeCompleto[rota] || titulo }))))));
+  }
   aside.hidden = false;
+  montarBarraBaixo();
+}
+
+// ---------- VISUAL NOVO: barra de baixo no celular (27/11/2026) ----------
+// Início · Agenda · [+] · Caixa (ou Ganhos) · Mais. O "+" abre as ações rápidas; "Mais" abre o menu de sempre.
+// No computador continua o menu de antes (a barra só aparece abaixo de 1024 px, pelo CSS).
+function itensBarraBaixo() {
+  const p = usuario?.perfil;
+  if (!usuario?.barbearia || p === "plataforma" || usuario.assinatura?.bloqueada) return [];
+  if (p === "barbeiro") return [["inicio", "Início", "casa"], ["agenda", "Agenda", "agenda"], ["minha-producao", "Ganhos", "grafico"]];
+  if (p === "caixa") return [["visao-dia", "Hoje", "casa"], ["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"]];
+  return [["inicio", "Início", "casa"], ["agenda", "Agenda", "agenda"], ["caixa", "Caixa", "caixa"]];
+}
+let acaoPendente = null;   // ação do "+" que a tela de destino executa ao abrir (ex.: abrir o Novo horário)
+function montarBarraBaixo() {
+  let barra = document.getElementById("barra-baixo");
+  const itens = visualNovo() ? itensBarraBaixo() : [];
+  document.body.classList.toggle("com-barra-baixo", itens.length > 0);
+  if (!itens.length) { barra?.remove(); return; }
+  if (!barra) { barra = el("nav", { id: "barra-baixo", class: "barra-baixo", "aria-label": "Navegação principal" }); document.body.append(barra); }
+  const atual = rotaAtual() === "visao-dia" && usuario.perfil === "caixa" ? "visao-dia" : rotaAtual();
+  const item = ([rota, titulo, ic]) => el("a", { class: `bb-item ${rota === atual ? "ativo" : ""}`, href: `#/${rota}`, "data-barra": titulo, "aria-current": rota === atual ? "page" : null,
+    onclick: () => { fecharMenu(); if (location.hash === `#/${rota}`) rotear(); } }, icone(ic), el("span", { text: titulo }));
+  const naBarra = new Set(itens.map(([r]) => r));
+  const maisAtivo = !naBarra.has(atual);
+  barra.replaceChildren(item(itens[0]), item(itens[1]),
+    el("button", { type: "button", class: "bb-mais-acao", "aria-label": "Ações rápidas", "data-teste": "barra-mais-acao", onclick: janelaAcoesRapidas }, el("span", { "aria-hidden": "true", text: "+" })),
+    item(itens[2]),
+    el("button", { type: "button", class: `bb-item ${maisAtivo ? "ativo" : ""}`, "data-barra": "Mais", "aria-label": "Mais telas", "aria-controls": "menu",
+      onclick: () => (menuEl().classList.contains("aberto") ? fecharMenu() : abrirMenu()) }, icone("menu"), el("span", { text: "Mais" })));
+}
+function janelaAcoesRapidas() {
+  fecharMenu();
+  const cx = gestao() || ehCaixa();
+  const ir = (hash, acao) => () => { janela.close(); acaoPendente = acao; if (location.hash === hash) rotear(); else location.hash = hash; };
+  const acoes = [
+    ["agenda", "Novo horário", "Cliente, serviço e horário", ir("#/agenda", "novo-horario")],
+    cx ? ["caixa", "Lançar atendimento", "Cobrar quem chegou sem horário", ir("#/caixa", "lancar-atendimento")] : null,
+    cx ? ["sacola", "Vender produto", "Pomada, shampoo, bebida…", ir("#/caixa", "vender-produto")] : null,
+    cx ? ["contas", "Lançar despesa", "Conta, compra ou material", () => { janela.close(); janelaDespesaCaixa(() => rotear()); }] : null,
+    ["cadeado", "Bloquear horário", "Almoço, folga, compromisso", ir("#/agenda", "bloquear")],
+    cx ? ["mensagem", "Mandar mensagem", "WhatsApp para os clientes", ir("#/mensagens", null)] : null
+  ].filter(Boolean);
+  abrirJanela("O que você quer fazer?", el("div", { class: "acoes-rapidas", "data-teste": "acoes-rapidas" }, acoes.map(([ic, t, sub, fn]) =>
+    el("button", { type: "button", class: "acao-rapida", "data-acao-rapida": t, onclick: fn }, el("span", { class: "acao-rapida-ic" }, icone(ic)),
+      el("span", {}, el("strong", { text: t }), el("small", { text: sub }))))), { ok: "Fechar", semCancelar: true, aoConfirmar: () => true });
 }
 const gruposFechados = new Set();
 void gruposAbertos;
 function abrirMenu() {
   // menu do topo: o painel desce logo abaixo do topo (altura muda entre celular e computador); lateral: da esquerda
-  const topo = usaMenuTopo() ? `${Math.round(document.querySelector(".topo").getBoundingClientRect().bottom)}px` : "";
+  const topo = usaMenuTopo() && !(visualNovo() && document.body.classList.contains("com-barra-baixo") && window.matchMedia("(max-width: 1023px)").matches)
+    ? `${Math.round(document.querySelector(".topo").getBoundingClientRect().bottom)}px` : "";
   menuEl().style.top = topo;
   document.getElementById("fundo-menu").style.top = topo;
   menuEl().classList.add("aberto");
@@ -8011,11 +8218,20 @@ function blocoAparencia() {
   const bloco = el("section", { class: "aparencia", "data-teste": "aparencia" });
   const desenhar = () => {
     const pref = t.ler();
+    const novo = pref.visual === "novo";
+    const modo = novo ? pref.modoNovo : pref.modo;
     bloco.replaceChildren(
+      el("h4", { text: "Visual do app" }),
+      el("div", { class: "seletor-visual", role: "radiogroup", "aria-label": "Visual do app", "data-teste": "seletor-visual" }, (t.VISUAIS || []).map(v =>
+        el("button", { type: "button", role: "radio", class: `seletor-visual-opcao ${pref.visual === v ? "ativo" : ""}`, "data-visual-opcao": v, "aria-checked": pref.visual === v ? "true" : "false",
+          onclick: () => trocarVisual(v) },
+          el("strong", { text: v === "novo" ? "Visual novo" : "Visual antigo" }),
+          el("small", { text: v === "novo" ? "Escuro, barra embaixo, menos toques" : "O de sempre, sem mudanças" })))),
       el("h4", { text: "Aparência" }),
       el("div", { class: "alterna largo", role: "group", "aria-label": "Tema" }, t.MODOS.map(m =>
-        el("button", { type: "button", class: `botao pequeno ${pref.modo === m ? "ativo" : ""}`, "data-modo": m, "aria-pressed": pref.modo === m ? "true" : "false", text: NOME_MODO[m],
-          onclick: () => { t.salvar({ modo: m }); desenhar(); } }))),
+        el("button", { type: "button", class: `botao pequeno ${modo === m ? "ativo" : ""}`, "data-modo": m, "aria-pressed": modo === m ? "true" : "false", text: NOME_MODO[m],
+          onclick: () => { t.salvar(novo ? { modoNovo: m } : { modo: m }); desenhar(); } }))),
+      novo ? el("p", { class: "suave", text: "Cor de destaque:" }) : null,
       el("div", { class: "paletas", role: "group", "aria-label": "Paleta de cores" }, t.PALETAS.map(p =>
         el("button", { type: "button", class: `paleta-opcao ${pref.paleta === p ? "ativa" : ""}`, "data-paleta-opcao": p, "aria-pressed": pref.paleta === p ? "true" : "false",
           onclick: () => { t.salvar({ paleta: p }); desenhar(); } },
@@ -8025,6 +8241,19 @@ function blocoAparencia() {
   };
   desenhar();
   return bloco;
+}
+
+// Visual antigo × visual novo (27/11/2026): troca na hora, monta de novo o menu e a tela atual. Guardado neste aparelho.
+const visualNovo = () => document.documentElement.dataset.visual === "novo";
+function trocarVisual(v) {
+  const t = window.temaApp;
+  if (!t || t.ler().visual === v) return;
+  t.salvar({ visual: v });
+  if (janela.open) janela.close();
+  fecharMenu();
+  if (usuario) atualizarTopo();
+  rotear();
+  avisar(v === "novo" ? "Visual novo ligado. Para voltar: Minha conta → Visual antigo." : "Visual antigo de volta.");
 }
 
 // Sem zoom no celular (25/11/2026): o iPhone ignora "user-scalable=no"; os gestos de pinça são barrados aqui.
