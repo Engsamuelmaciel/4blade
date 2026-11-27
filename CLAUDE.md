@@ -300,7 +300,7 @@ App de gestão para barbearias, vendido por assinatura para várias barbearias (
   - `public/app.js`: só `ICONES` redesenhados (mesmas chaves/metáforas) e `mostrar()` com classe `tela-entra` quando muda o endereço.
   - Ferramentas: `test/prints-repaginacao.mjs <pasta> [--ganache]` (prints + rolagem lateral + console) e `test/contraste-temas.mjs` (todos ≥ 4,5). Prints em `docs/prints/repaginacao/fatia-1/antes|depois`.
   - Testes: `npm test` 216/216 (igual à base); navegador 15 de 18 passam, os mesmos da base — `navegador-agenda` (lote), `navegador-equipe` (lote) e `navegador-melhorias` ("caixa não bloqueia agenda") já falhavam antes, por testes desatualizados. Cache do sw `4blade-v122`.
-  - NÃO publicado: o ambiente do Claude não alcança api.cloudflare.com (proxy 403) para publicar no `4blade-teste`.
+  - **Publicado em 27/11/2026 (autorizado, sem migração): versão f4371470** no oficial (forblade.com.br e www, 100%). `npm test` 216/216 antes. A chave da Cloudflare agora vem do ambiente (segredo de rede); ela não tem permissão de D1 (consulta de migrações dá 7403), só de Workers. O contêiner não abre forblade.com.br direto (proxy 403): conferido pela API de implantações.
 
 ## Versão de teste publicada (Cloudflare) — NÃO atualizar mais (decisão de 16/11/2026)
 - Endereço: https://4blade-teste.terraplanagem.workers.dev (Worker `4blade-teste`, banco D1 `4blade-db-teste`, região ENAM). Dados FICTÍCIOS apenas.
